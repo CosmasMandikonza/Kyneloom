@@ -1,0 +1,79 @@
+# 09 — Azure-native platform and operations
+
+> **Status:** Target deployment topology and operational requirements. No Azure infrastructure is currently declared running.
+
+## Service choices and their jobs
+
+| Component | Proposed Azure service | Why / operational concern |
+|---|---|---|
+| Append streaming input | Event Hubs | Partition by match for ordered arrival, independent consumer groups |
+| Ingestion + match reducer | Container Apps workers | Autoscaling and controlled runtime dependencies; checkpoint offsets |
+| Model, agents and evaluation | Microsoft Foundry + Microsoft Agent Framework | Managed model access, tracing, orchestration, evaluation |
+| Durable jobs / reviews | Durable Extension / Durable Task-backed workflows (Azure Functions or compatible worker) | Persist completion, recover, pause for human approval |
+| Match revisions, tenants, releases | Azure Database for PostgreSQL | Transactions, uniqueness, joins, RBAC mapping and audit/outbox |
+| Source archive and compiled assets | Blob Storage | Immutable and content-addressed artifacts; lifecycle policies |
+| Connected live clients | Web PubSub | Authenticated fan-out and reconnect handling |
+| Secret storage | Key Vault + managed identity | No secrets in code, public repo or browser |
+| API/app telemetry | Application Insights / Azure Monitor via OpenTelemetry | Correlation, p95, error rates, cost observability |
+| Historical analytics, optional | Fabric Eventhouse | Large historical queries and evaluation analysis off fast path |
+| IaC and delivery | Bicep + GitHub Actions | Reproducible environments and reviewable change history |
+
+Avoid premature Kubernetes and multiple database technologies for appearance. Choose the smallest viable service set demonstrating the real system.
+
+## Environments
+
+**Local:** seeded source, containerized reducer/PostgreSQL where feasible, mock identity, offline deterministic renderer and mocked agent responses labeled as mocks.
+
+**Dev:** minimal Azure environment with real auth and Foundry integration; synthetic fixtures only; limited quotas.
+
+**Judge/test:** reproducible scripted fixture, preloaded rights to fictional content, stable reviewer access with no privileged credentials exposed.
+
+**Production (future):** separate tenant isolation and observability, RBAC/MFA for privileged roles, managed key rotation, backup and disaster recovery policy.
+
+## Event Hubs policy
+
+- Use `matchId` partition key and explicit consumer groups for reducer, archive and analytics as needed.
+- Persist raw events separately; Event Hubs retention does not replace durable source records.
+- Poison-message policy: validation errors sent to a dead-letter/quarantine store with correlation IDs and PII-safe error text.
+- Checkpoint processed offsets after durable state/outbox work, honoring at-least-once replay.
+- Size partitions and throughput from measured fixture rates; avoid pretend million-event throughput claims.
+
+## Data and publication consistency
+
+PostgreSQL is the transactional source of truth for tenant permissions, approval decisions and release pointers. Content addressed, immutable manifest/assets live in blob. On publish: check tenant + rights + validated hash + expected revision; transact approval and outbox; async notifier distributes the release event idempotently. Browser validates entitlement for asset access.
+
+## Security topology
+
+Use least-privilege managed identities, no public DB, TLS, controlled CORS origins and narrow SAS/content access. Separate agent tool credentials from publication credentials. Use scoped signed access only where necessary; never embed storage keys or model endpoints with keys in front-end code.
+
+See [Security and rights](10-security-and-rights.md).
+
+## Health and operations
+
+**Core signals:**
+- stream ingress, consumer lag and rejected envelope rate
+- reducer p95 per-event work and checkpoint age
+- Web PubSub connected clients/fan-out failures
+- Foundry model/tool latency, retries, trace and cost/valid manifest
+- compile latency and manifest invalidation rate
+- authorization denials / publish approvals / revocations
+- client first-interactive-frame, frame-time p95 and fallback usage
+
+Every log/trace should include `tenantId`, `matchId`, `momentId`, `workflowId` as applicable, excluding sensitive payloads. Avoid excessive per-frame tracing.
+
+## Deployment and recovery requirements
+
+- CI validates schemas, deterministic fixtures, rights tests and static checks before build.
+- IaC validated in PR; changes are reviewed, environment variables documented without secrets.
+- Migration strategy includes backward-read compatibility for supported manifests.
+- Backup restore must be tested; specify RPO/RTO after observing cost and usage rather than inventing SLAs.
+- A failed worker restart must not duplicate a release.
+- A revoked release must not remain accessible through direct assets/manifest URLs.
+
+## Cloud-native judging proof, not slideware
+
+Use actual deployment outputs, reproducible Bicep, trace IDs, run logs, failure injection and before/after metrics. For a two-person team, demonstrate one coherent integration chain rather than a dozen provisioned unused Azure services.
+
+**Sources:** [Event Hubs features](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-features) · [Agent Framework Durable Extension](https://learn.microsoft.com/en-us/agent-framework/integrations/durable-extension) · [Azure Web PubSub](https://learn.microsoft.com/en-us/azure/azure-web-pubsub/overview).
+
+**Related:** [Architecture](04-system-architecture.md) · [Evaluation](11-evaluation-and-reliability.md).
