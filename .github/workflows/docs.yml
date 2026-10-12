@@ -1,0 +1,26 @@
+name: Documentation integrity
+on:
+  push:
+    paths:
+      - "**/*.md"
+      - "assets/**"
+      - "scripts/check-docs.mjs"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "assets/**"
+      - "scripts/check-docs.mjs"
+      - ".github/workflows/docs.yml"
+permissions:
+  contents: read
+jobs:
+  check-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check Markdown integrity
+        run: node scripts/check-docs.mjs
