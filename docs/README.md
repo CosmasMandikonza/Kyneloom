@@ -36,7 +36,7 @@
 
 ### Changing a foundational decision
 
-Open a design change with: the problem; alternatives; compatibility implications; security and performance consequences; test plan; rollout/migration. Record it in \`docs/decisions/\` and update all impacted specifications in the same change.
+Open a design change with: the problem; alternatives; compatibility implications; security and performance consequences; test plan; rollout/migration. Record it in `docs/decisions/` and update all impacted specifications in the same change.
 
 ### Definition of a documented feature
 
