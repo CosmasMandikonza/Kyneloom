@@ -144,6 +144,10 @@ This is an intentionally **honest** tracker; checkboxes are updated only when ev
 
 See [delivery roadmap](docs/12-delivery-roadmap.md) for milestone exit criteria, team responsibilities, and measurable acceptance tests.
 
+### Documentation quality
+
+The repo includes a zero-dependency [Markdown integrity checker](scripts/check-docs.mjs) and a [GitHub Actions check](.github/workflows/docs.yml) for local links, referenced assets and code-fence balance. Run `node scripts/check-docs.mjs` after editing docs; this checks documentation only, **not product behavior or deployment**.
+
 ### Getting started
 
 At present, **there is no runnable application in this repository**. Do not infer setup commands, demo availability, deployment links, or environment variables.
