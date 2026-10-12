@@ -43,7 +43,7 @@ A single trusted moment can be experienced as a cinematic replay, tactical explo
 
 ### One canonical event; multiple ways to see it
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A["Football-realistic<br/>synthetic event"] --> B["Deterministic<br/>match intelligence"]
     B --> C["Evidence-linked<br/>Playable Moment"]
@@ -53,7 +53,7 @@ flowchart LR
     C --> G["Producer studio"]
     G --> H["Approved release<br/>+ embed"]
     style C fill:#103e3d,stroke:#40ccb5,color:#fff
-\`\`\`
+```
 
 **Perspectives are not account types.** Fans can explore an analyst lens. Permissions govern what a user may *edit, approve, publish, or administer*; perspectives govern how they *experience* the scene.
 
@@ -63,7 +63,7 @@ flowchart LR
 |---|---|
 | **Living Replay** | Time-consistent 3D and 2D replay driven by versioned trajectories, not a pre-baked animation presented as data. |
 | **Evidence X-Ray** | Objective assertions connect to source events and deterministic calculations; tactical interpretations are labeled as hypotheses. |
-| **Experience Compiler** | AI proposes a constrained, versioned \`MomentManifest\`. The viewer never executes model-written JavaScript. |
+| **Experience Compiler** | AI proposes a constrained, versioned `MomentManifest`. The viewer never executes model-written JavaScript. |
 | **Editorial Studio** | Producers inspect a proposed experience, revise it, approve a specific version, and can revoke publication. |
 | **Audience Lenses** | Fan, analyst, producer-preview and accessibility experiences share the same authoritative match state. |
 | **Match Laboratory** | Seeded synthetic fixtures, missing-tracking tests, out-of-order records, and adversarial agent scenarios. |
@@ -74,7 +74,7 @@ For the exact product journey, see **[Experience specification](docs/02-experien
 
 **Two execution paths.** Real-time updates must not wait on model inference; selected, high-value moments enter a durable creative workflow.
 
-\`\`\`mermaid
+```mermaid
 flowchart TB
     S["Seeded synthetic match source"] --> I["Event Hubs + raw archive"]
     I --> P["Schema gate + ordered match processor"]
@@ -88,7 +88,7 @@ flowchart TB
     U --> R["Versioned publication + embed SDK"]
     style V fill:#2b253c,stroke:#a38bff,color:#fff
     style M fill:#103e3d,stroke:#40ccb5,color:#fff
-\`\`\`
+```
 
 **Proposed stack** · Next.js / TypeScript · React Three Fiber / Three.js · Microsoft Foundry + Agent Framework · Azure Event Hubs · Azure Container Apps · PostgreSQL · Blob Storage · Web PubSub · OpenTelemetry · Bicep.
 
@@ -98,7 +98,7 @@ Architecture decisions and trade-offs: **[System architecture](docs/04-system-ar
 
 ## ⚑ What we will not fake
 
-- **No fictional player positions passed off as observed tracking.** The renderer labels \`observed\`, \`synthetic\`, \`interpolated\`, and \`inferred\` motion.
+- **No fictional player positions passed off as observed tracking.** The renderer labels `observed`, `synthetic`, `interpolated`, and `inferred` motion.
 - **No LLM-calculated statistics.** Distances, event sequences, and objective numbers come from deterministic code.
 - **No “six agents” theater.** Each agent must have a bounded task, typed output, measurable contribution, and recovery behavior.
 - **No release without authority.** Publication requires real authorization, rights checks, and auditable approval.
