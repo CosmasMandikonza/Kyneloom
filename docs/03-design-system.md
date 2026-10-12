@@ -18,16 +18,16 @@
 
 | Token | Value | Usage |
 |---|---|---|
-| \`ink-950\` | \`#071319\` | Deep canvas / cinematic frame |
-| \`ink-900\` | \`#101E27\` | Main application background |
-| \`ink-800\` | \`#1B3039\` | Panel surfaces |
-| \`line\` | \`#37515A\` | Quiet, distinct controls |
-| \`mint-500\` | \`#51D7BD\` | Active interaction / trusted observed layer |
-| \`mint-200\` | \`#C6F9E7\` | Fine spatial emphasis |
-| \`amber-400\` | \`#F6BA77\` | Hypotheses, cautions, spatial comparison |
-| \`violet-400\` | \`#AE98F7\` | AI proposals / draft-only layers |
-| \`text-primary\` | \`#F2F8F6\` | Primary foreground |
-| \`text-muted\` | \`#A8C0C5\` | Supporting copy (contrast-test in context) |
+| `ink-950` | `#071319` | Deep canvas / cinematic frame |
+| `ink-900` | `#101E27` | Main application background |
+| `ink-800` | `#1B3039` | Panel surfaces |
+| `line` | `#37515A` | Quiet, distinct controls |
+| `mint-500` | `#51D7BD` | Active interaction / trusted observed layer |
+| `mint-200` | `#C6F9E7` | Fine spatial emphasis |
+| `amber-400` | `#F6BA77` | Hypotheses, cautions, spatial comparison |
+| `violet-400` | `#AE98F7` | AI proposals / draft-only layers |
+| `text-primary` | `#F2F8F6` | Primary foreground |
+| `text-muted` | `#A8C0C5` | Supporting copy (contrast-test in context) |
 
 **Data visual encoding:** use stroke patterns, explicit labels and legend—not only hue. Observed: solid. Interpolated: fine dotted. Inferred: dashed with “inferred” chip. Unsupported: omitted from release, surfaced in Studio QA.
 
