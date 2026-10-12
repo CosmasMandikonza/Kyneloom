@@ -25,6 +25,10 @@
 
 **Decision log:** [ADR-0001 Two execution paths](decisions/0001-dual-path-architecture.md) · [ADR-0002 Typed manifests](decisions/0002-typed-manifest.md) · [ADR-0003 Truthful reconstruction](decisions/0003-truthful-spatial-reconstruction.md)
 
+## Quality check
+
+Run `node scripts/check-docs.mjs` from the repository root. The [documentation workflow](../.github/workflows/docs.yml) also checks local links, image references and fenced-code structure on changes. This is not a substitute for testing application behavior.
+
 ## Ground rules
 
 1. **Concept is not implementation.** Update the README checklist and docs only after code, tests, or trace evidence exists.
