@@ -125,7 +125,7 @@ Architecture decisions and trade-offs: **[System architecture](docs/04-system-ar
 | [Competition evidence](docs/13-hackathon-submission.md) | Judging alignment without overclaiming |
 | [Competitive landscape](docs/14-competitive-landscape.md) | Inspiration, differentiation hypotheses, commercial risks |
 | [References](docs/REFERENCES.md) | Primary technical and product sources |
-| [Decision records](docs/decisions/0001-dual-path-architecture.md) | Why the platform is designed this way |
+| [First build: Playable Moment](docs/15-first-vertical-slice.md) | Golden fixture, proposed APIs, founder handoffs, build stories |\n| [Visual engineering & QA](docs/16-visual-reference-and-qa.md) | Source-grounded UI research and required screenshot/performance review |\n| [Decision records](docs/decisions/0001-dual-path-architecture.md) | Why the platform is designed this way |
 
 > **For AI coding agents and contributors:** read **[AGENTS.md](AGENTS.md)** before changing code or UI. Contracts and ADRs are the source of truth, not screenshots or an assistant's memory.
 
