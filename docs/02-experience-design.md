@@ -6,7 +6,7 @@
 
 The product has four primary surfaces—not four separate products:
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
  Home["Match / moment discovery"] --> Player["Living Moment viewer"]
  Player --> Lens["Fan · Analyst · Accessible lens"]
@@ -14,7 +14,7 @@ flowchart LR
  Player --> Studio["Studio (permission gated)"]
  Studio --> Review["Review & approve"]
  Review --> Deliver["Published playable moment"]
-\`\`\`
+```
 
 **Public/unprivileged:** match timeline, moment gallery, fan/analyst/accessible lens, player controls, evidence panel.
 
@@ -29,7 +29,7 @@ Fictional match fixture, 78:42. The goal is not a magical stat widget. It is a s
 | Step | Viewer sees | Viewer does | System outcome |
 |---|---|---|---|
 | 1. Open | Wide cinematic pitch with active 78:42 moment and concise hook | Click **Enter moment** | Bounded timeline and camera keyframes load |
-| 2. Orient | Overhead establishing shot: attackers, defenders and ball | Play / pause / scrub / select player | Same sampled match state at time \`t\` |
+| 2. Orient | Overhead establishing shot: attackers, defenders and ball | Play / pause / scrub / select player | Same sampled match state at time `t` |
 | 3. Discover | Off-ball run glows subtly; lane outline appears | Select run; follow camera | Timeline-linked geometry and claim reference |
 | 4. Verify | “Defender separation increased” measurement with source samples | Press **Show evidence** | Raw/source frame IDs, equation, coverage and data provenance |
 | 5. Interpret | “Likely opened passing space” presented as interpretation | Switch Analyst lens | Additional metric detail; no silent change to facts |
@@ -54,7 +54,7 @@ The experience must be understandable *without* the agent-trace view. Technical 
 ## Interaction grammar
 
 - **Primary input:** play/pause, timeline scrub, select a player or event, zoom/orbit camera, follow player, show/hide evidence, lens toggle.
-- **Camera:** \`Overhead\`, \`Broadcast\`, \`Player follow\`, \`Goalkeeper\`, \`Free orbit\`; mode change preserves playhead and gently interpolates unless reduced motion is enabled.
+- **Camera:** `Overhead`, `Broadcast`, `Player follow`, `Goalkeeper`, `Free orbit`; mode change preserves playhead and gently interpolates unless reduced motion is enabled.
 - **Selection:** a single canonical object ID; selection remains stable across cameras and lenses.
 - **Evidence:** clicking a highlighted claim opens a precise source window and explanatory method; raw points and modeled curves are rendered distinctly.
 - **Studio:** editing always creates a *draft revision*; approval refers to an exact revision/hash.
