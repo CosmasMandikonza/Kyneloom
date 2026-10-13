@@ -21,6 +21,8 @@
 > [!IMPORTANT]
 > **Build status — specification-first.** This repository was initialized as an architecture and product documentation foundation. The live event pipeline, AI agents, 3D renderer, production studio, and publishing service described below are **planned systems, not deployed or implemented features**. We will update the status with verified working capabilities as development progresses. No invented demos, performance claims, or customer logos.
 
+> **Start building:** [29 ordered GitHub issues and parallel founder lanes](https://github.com/CosmasMandikonza/Kyneloom/issues/29) · [Agent handoff playbook](docs/18-execution-board.md). Each issue includes direct Suzie Code/Codex prompts, verified behavior requirements and PR acceptance criteria.
+
 ## ✦ The idea
 
 A goal is scored. Everyone sees the finish. But the run that pulled a defender away, the space it opened, and the decision that made the goal possible can be almost invisible.
@@ -125,7 +127,8 @@ Architecture decisions and trade-offs: **[System architecture](docs/04-system-ar
 | [Competition evidence](docs/13-hackathon-submission.md) | Judging alignment without overclaiming |
 | [Competitive landscape](docs/14-competitive-landscape.md) | Inspiration, differentiation hypotheses, commercial risks |
 | [References](docs/REFERENCES.md) | Primary technical and product sources |
-| [First build: Playable Moment](docs/15-first-vertical-slice.md) | Golden fixture, proposed APIs, founder handoffs, build stories |\n| [Visual engineering & QA](docs/16-visual-reference-and-qa.md) | Source-grounded UI research and required screenshot/performance review |
+| [First build: Playable Moment](docs/15-first-vertical-slice.md) | Golden fixture, proposed APIs, founder handoffs, build stories |\n| [Execution board & agent handoff](docs/18-execution-board.md) | Parallel founder workflow, issue order, copy-ready agent prompt and quality stoplights |
+| [Visual engineering & QA](docs/16-visual-reference-and-qa.md) | Source-grounded UI research and required screenshot/performance review |
 | **[Source-verified frontend implementation](docs/17-source-verified-frontend.md)** | Inspected Cult UI, React Bits, Skiper UI and 2026 3D engineering source; concrete integration plan, UI rejection rules and visual proof |\n| [Decision records](docs/decisions/0001-dual-path-architecture.md) | Why the platform is designed this way |
 
 > **For AI coding agents and contributors:** read **[AGENTS.md](AGENTS.md)** before changing code or UI. Contracts and ADRs are the source of truth, not screenshots or an assistant's memory.
