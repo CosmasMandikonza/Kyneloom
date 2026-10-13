@@ -7,7 +7,7 @@ This file governs future work inside Kyneloom. **Read it before implementing.** 
 1. [Product promise](docs/01-product-vision.md) and [canonical user journey](docs/02-experience-design.md).
 2. [MomentManifest contract](docs/06-moment-manifest.md), [event envelope](docs/05-data-and-event-contracts.md), and relevant ADRs.
 3. [Architecture](docs/04-system-architecture.md), [agents](docs/07-agent-orchestration.md), [3D renderer](docs/08-3d-engine.md), and [security](docs/10-security-and-rights.md).
-4. [Design rules](docs/03-design-system.md) and [quality gates](docs/11-evaluation-and-reliability.md).
+4. **Mandatory for any UI implementation:** [source-verified frontend blueprint](docs/17-source-verified-frontend.md) → [Design rules](docs/03-design-system.md) → [visual QA](docs/16-visual-reference-and-qa.md) → [quality gates](docs/11-evaluation-and-reliability.md).
 5. The exact milestone/issue being worked on in [roadmap](docs/12-delivery-roadmap.md).
 
 ## Non-negotiable principles
@@ -23,11 +23,11 @@ This file governs future work inside Kyneloom. **Read it before implementing.** 
 ## Frontend bar
 
 - **Scene-first, not dashboard-first.** Interactive 3D spatial scene is the fan product; producer timeline and controls are the professional product.
-- **Reference → source → adapt → verify.** Inspect the *actual implementation/source* and license of chosen Cult UI, React Bits, Skiper UI, Codrops, Three.js/R3F components before adapting them. No visual guesswork from a screenshot alone.
-- No disconnected hero animations, meaningless cards, emoji UI, generic KPI grids, needless sidebars or motion that obscures data.
+- **Reference → source → adapt → verify.** Read [the actual source-verified component map](docs/17-source-verified-frontend.md). Inspect the **upstream implementation and license at a pinned commit**, not merely preview links, and log source/dependency/behavior before adapting Cult UI, React Bits, Skiper UI, Codrops, Three.js/R3F effects. No visual guesswork from a screenshot alone.
+- No disconnected hero animations, meaningless cards, emoji UI, generic KPI grids, needless sidebars or motion that obscures data. **Reject fan UI that resembles a research report or analytics admin panel.** The scene must dominate Explore and actual editor timeline dominate Studio.
 - Design every visible state: first load, ready, playing, paused, buffering, missing tracking, inferred path, rejected claim, permission denied, export failure.
 - Prove mobile usability, keyboard controls, visible focus, reduced-motion alternatives, 2D fallback and high-contrast evidence semantics.
-- Test 1440×900 desktop, 1024×768 tablet and 390×844 mobile **with real rendered screenshots**; inspect for clipping, misleading camera paths and unreadable overlays.
+- Test 1440×900 desktop, 1280×800 laptop, 1024×768 tablet, 390×844 and 375×812 mobile **with real rendered screenshots**; inspect for clipping, misleading camera paths and unreadable overlays. Record deviations from named references.
 - Use motion to clarify time, continuity, spatial causality or editorial intent—not decorate everything.
 
 ## Changes must be auditable
@@ -37,7 +37,7 @@ For each implementation change, provide:
 2. **Contract changes** (schemas/API/permissions), with backward-compatibility note.
 3. **Tests run and actual results.** Do not say “all passed” without execution output.
 4. **Visual verification** for UI work: viewport sizes, screenshots, found issues, fixes.
-5. **Operational impact**: new secrets/services, cost or latency implications, fallbacks.
+5. **Operational impact**: new secrets/services, cost or latency implications, fallbacks. For UI: include upstream source path/commit, license and screenshot/interaction comparison.
 6. **Docs/status updates** when a previously planned feature is demonstrably real.
 
 ### Before writing a new dependency or service
