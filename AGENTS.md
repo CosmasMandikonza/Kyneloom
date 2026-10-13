@@ -8,7 +8,9 @@ This file governs future work inside Kyneloom. **Read it before implementing.** 
 2. [MomentManifest contract](docs/06-moment-manifest.md), [event envelope](docs/05-data-and-event-contracts.md), and relevant ADRs.
 3. [Architecture](docs/04-system-architecture.md), [agents](docs/07-agent-orchestration.md), [3D renderer](docs/08-3d-engine.md), and [security](docs/10-security-and-rights.md).
 4. **Mandatory for any UI implementation:** [source-verified frontend blueprint](docs/17-source-verified-frontend.md) → [Design rules](docs/03-design-system.md) → [visual QA](docs/16-visual-reference-and-qa.md) → [quality gates](docs/11-evaluation-and-reliability.md).
-5. The exact milestone/issue being worked on in [roadmap](docs/12-delivery-roadmap.md).
+5. **[Live issue execution index](https://github.com/CosmasMandikonza/Kyneloom/issues/29)** and [two-founder agent handoff playbook](docs/18-execution-board.md), then the exact milestone/issue being worked on in [roadmap](docs/12-delivery-roadmap.md).
+
+**Do not begin by prompting an agent to “build the entire app.” Assign a specific linked GitHub issue and read its acceptance checks.**
 
 ## Non-negotiable principles
 
