@@ -1,6 +1,6 @@
 # 18 — Two-founder execution board and agent prompting playbook
 
-> **As of October 12, 2026.** This is an implementation coordination manual, not evidence the product is built. The full 29-issue backlog (KYN-00 through KYN-28) lives at **[Execution control room — issue #29](https://github.com/CosmasMandikonza/Kyneloom/issues/29)**. The official submission is due October 27, 2026, 11:59 PM Pacific, subject to organizer updates.
+> **As of October 12, 2026.** This is an implementation coordination manual, not evidence the product is built. The full 30-issue backlog (KYN-00 through KYN-29) lives at **[Execution control room — issue #29](https://github.com/CosmasMandikonza/Kyneloom/issues/29)**. The official submission is due October 27, 2026, 11:59 PM Pacific, subject to organizer updates.
 
 ## How to choose the next issue
 
@@ -18,6 +18,10 @@ The first parallel assignment:
 | [#21: Tenant/rights](https://github.com/CosmasMandikonza/Kyneloom/issues/21) before [#18: Publish](https://github.com/CosmasMandikonza/Kyneloom/issues/18) | Hook Studio to actual compiled/approved manifest |
 
 **Shared gating work:** [#24: golden end-to-end](https://github.com/CosmasMandikonza/Kyneloom/issues/24), [#27: independent visual direction](https://github.com/CosmasMandikonza/Kyneloom/issues/27), [#22: AI evaluation](https://github.com/CosmasMandikonza/Kyneloom/issues/22), [#25: judge-ready demo](https://github.com/CosmasMandikonza/Kyneloom/issues/25).
+
+**Realistic animation is a release gate, not a decorative stretch:** [#30 rigged footballers, skeletal animation and cinematic stadium](https://github.com/CosmasMandikonza/Kyneloom/issues/30) is required to finish [#6 Living Replay](https://github.com/CosmasMandikonza/Kyneloom/issues/6). It can be developed in parallel with the geometry/replay data integration, after both agree on root transform ownership and sample fixtures.
+
+**Entry architecture:** published authorized moments land in Fan view without a forced role selector. **Analyze** and accessible perspectives are opt-in inside the viewer. Professional `/studio` uses authenticated tenant/role permissions; see [experience design](02-experience-design.md) and [#11](https://github.com/CosmasMandikonza/Kyneloom/issues/11).
 
 **Distinctive expansions:** [#9 orb/stadium](https://github.com/CosmasMandikonza/Kyneloom/issues/9), [#10 collectible gallery](https://github.com/CosmasMandikonza/Kyneloom/issues/10), [#19 SDK](https://github.com/CosmasMandikonza/Kyneloom/issues/19), [#20 audio accessibility](https://github.com/CosmasMandikonza/Kyneloom/issues/20), [#23 reliability](https://github.com/CosmasMandikonza/Kyneloom/issues/23), [#26 customer validation](https://github.com/CosmasMandikonza/Kyneloom/issues/26), [#28 parallel perspectives](https://github.com/CosmasMandikonza/Kyneloom/issues/28).
 
