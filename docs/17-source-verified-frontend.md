@@ -21,6 +21,14 @@ The goal of this document is to connect *real source code and interaction mechan
 | [React Three Fiber performance](https://r3f.docs.pmnd.rs/advanced/scaling-performance) | Shared materials/geometries, instancing, measured draw calls and device-aware render costs | Core renderer and mobile optimization | Cannot assert frame rate without measuring on actual devices |
 | [Awwwards](https://www.awwwards.com/) | Visual quality/discovery gallery and case studies | Judge the level of finish, composition, motion design and coherence | Awwwards recognition does **not** mean implementation/source is public. Use primary developer breakdowns for engineering details. |
 
+### Critical source-versus-docs mismatch to avoid
+
+The live Cult UI Dock usage documentation shows an import containing `Card`, but the inspected [registry dock.tsx](https://github.com/nolly-studio/cult-ui/blob/main/apps/www/registry/default/ui/dock.tsx) exports `Dock`, `DockCard`, `DockCardInner`, `DockDivider`, and `useDock`—**not `Card`**. The registry implementation's `DockCardInner` also calls `parseInt(id)` for animation state. That is exactly the sort of hidden discrepancy that can make an AI-generated implementation break or look wrong.
+
+**Required implementation fix:** pin the specific version fetched by the registry CLI; inspect the actual generated component exports before writing imports; use consistent numeric string IDs or refactor the source to use stable string IDs throughout; replace demo image tiles with our own semantic, keyboard-operable command controls. Do not paste the documentation snippet unmodified or rely on its sample absolute positioning. Run a compile and interaction check on the actual installed code.
+
+The React Bits Tilted Card source similarly uses `setLastY` in a mouse-move handler, which can trigger React re-rendering on each pointer move. If using dozens of animated moment tiles, replace that hot state with a ref/motion value (and measure), or limit active animations. Exact visual fidelity **and** performance matter.
+
 ### Licenses matter
 
 - Cult UI repository: [MIT](https://github.com/nolly-studio/cult-ui/blob/main/LICENSE.md); preserve notices when copying source.
