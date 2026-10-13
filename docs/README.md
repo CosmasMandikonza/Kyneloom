@@ -7,7 +7,7 @@
 | If you are… | Read in this order | Decision to make |
 |---|---|---|
 | New founder / engineer | [Vision](01-product-vision.md) → [Architecture](04-system-architecture.md) → [Roadmap](12-delivery-roadmap.md) | Which vertical slice are we completing? |
-| Building the fan experience | [Experience](02-experience-design.md) → [Design system](03-design-system.md) → [3D engine](08-3d-engine.md) → [Manifest](06-moment-manifest.md) | What real input produces this interaction? |
+| Building the fan experience | [Experience](02-experience-design.md) → **[Verified source implementation](17-source-verified-frontend.md)** → [Design system](03-design-system.md) → [3D engine](08-3d-engine.md) → [Manifest](06-moment-manifest.md) | What real input produces this interaction? |
 | Building streams / backend | [Event contracts](05-data-and-event-contracts.md) → [Architecture](04-system-architecture.md) → [Azure](09-azure-platform.md) → [Reliability](11-evaluation-and-reliability.md) | What is the source of truth and failure policy? |
 | Building agents | [Agent orchestration](07-agent-orchestration.md) → [Manifest](06-moment-manifest.md) → [Evidence and safety](10-security-and-rights.md) → [Evaluation](11-evaluation-and-reliability.md) | What tool-bound, testable outcome does each model generate? |
 | Preparing a demo | [Experience](02-experience-design.md) → [Judging plan](13-hackathon-submission.md) → [Roadmap](12-delivery-roadmap.md) | What can a judge reproduce? |
@@ -21,7 +21,7 @@
 
 **Engineering:** [08 Spatial renderer](08-3d-engine.md) · [09 Azure](09-azure-platform.md) · [10 Security & rights](10-security-and-rights.md) · [11 Evaluation](11-evaluation-and-reliability.md)
 
-**Execution:** [12 Roadmap](12-delivery-roadmap.md) · [13 Competition](13-hackathon-submission.md) · [14 Market context](14-competitive-landscape.md) · [15 First build](15-first-vertical-slice.md) · [16 Visual QA](16-visual-reference-and-qa.md) · [References](REFERENCES.md)
+**Execution:** [12 Roadmap](12-delivery-roadmap.md) · [13 Competition](13-hackathon-submission.md) · [14 Market context](14-competitive-landscape.md) · [15 First build](15-first-vertical-slice.md) · [16 Visual QA](16-visual-reference-and-qa.md) · **[17 Source-verified UI implementation](17-source-verified-frontend.md)** · [References](REFERENCES.md)
 
 **Decision log:** [ADR-0001 Two execution paths](decisions/0001-dual-path-architecture.md) · [ADR-0002 Typed manifests](decisions/0002-typed-manifest.md) · [ADR-0003 Truthful reconstruction](decisions/0003-truthful-spatial-reconstruction.md)
 
