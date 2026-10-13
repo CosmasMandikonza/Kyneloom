@@ -22,6 +22,25 @@ flowchart LR
 
 **Admin:** organizations, data rights, roles, destination rules. Never blend admin screens into fan navigation.
 
+## Entry architecture — role-based authorization, not a role-selector landing page
+
+**The effective entry model is contextual:** a viewer opening an authorized share link lands directly in the *Fan* Living Replay, with no question about being a Fan, Analyst or Producer. The first screen should contain the football moment, not a four-card role onboarding wizard. In-view **Explain / Analyze** reveals tactical insight at the current playhead; Accessible controls are part of standard playback options. A viewer is free to ignore all additional lenses.
+
+**Professional product entry is separate:** `/studio` redirects unauthorized users to professional authentication, followed by an organization-scoped content workspace. Producers may preview all viewing perspectives, but only authorized roles may create/edit/approve/publish. A shared/private release may require a viewer entitlement/login if its rights demand it; public synthetic moments may load anonymously.
+
+**Hackathon judging:** first show a frictionless playable fan moment. Then switch through a real authenticated Studio account to demonstrate enterprise agentic creation and review. Different user experiences are *connected output surfaces*, not four isolated apps; a reviewer can inspect both without an artificial universal onboarding flow.
+
+**Role and lens test matrix:**
+
+| Visitor state | Opening an authorized published URL | Analyze control | Studio | Publish |
+|---|---|---|---|---|
+| Anonymous / public right | Direct Fan viewer | Available | Requires professional sign-in | Denied |
+| Signed-in fan | Direct Fan viewer | Available | Denied unless separately granted | Denied |
+| Signed-in producer | Viewer remains Fan by default unless preference set | Available | Organization workspace | Only if publisher privilege granted |
+| Org admin | As entitled by source rights | Available | Organization admin and Studio | By policy, audited |
+
+**Never use a role tile as a prerequisite to play.** The visible lens affordance should be small enough not to steal focus from the scene.
+
 ## The hero journey: "The invisible assist"
 
 Fictional match fixture, 78:42. The goal is not a magical stat widget. It is a story that *becomes explorable*.
