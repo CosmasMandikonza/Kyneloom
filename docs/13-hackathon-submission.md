@@ -54,12 +54,13 @@ The app should additionally deliver a machine-readable release and a match recap
 | Video time | What a judge sees |
 |---|---|
 | 0:00–0:12 | Fictional goal, “You saw the finish. What created it?” Enter the moment |
-| 0:12–0:35 | Fluid 3D scene, pause/rewind/follow decoy run |
-| 0:35–0:52 | Evidence X-Ray and same event switched to Analyst lens |
-| 0:52–1:15 | Foundry agent workflow creates draft; one unsupported factual claim gets rejected |
-| 1:15–1:40 | Producer revises shot, validates claims and approves version |
-| 1:40–1:55 | Open interactive result independently; show one real trace/test |
-| 1:55–1:59 | Company framing: interactive sports experiences for licensed media partners |
+| 0:12–0:32 | Real rigged-player 3D replay; follow an off-ball run and change camera |
+| 0:32–0:47 | Evidence X-Ray: source-backed separation calculation vs labeled tactical hypothesis |
+| 0:47–1:03 | **Same verified claim** appears as a synchronized on-screen overlay alongside an owned synthetic match feed; switch Fan/Analyst lens |
+| 1:03–1:23 | Real Microsoft Foundry job proposes director tracks and recap; verifier rejects unsupported number |
+| 1:23–1:42 | Producer actually edits a shot and overlay on a timeline; approves exact revision |
+| 1:42–1:55 | Open independently published Playable Moment; show genuine trace/manifest evidence |
+| 1:55–1:59 | Company thesis: compile auditable interactive sports experiences from one event stream |
 
 This is a **planned shot list**. Every item in final footage must be captured from functioning software. If unavailable, remove it rather than stage it.
 
@@ -73,7 +74,7 @@ This is a **planned shot list**. Every item in final footage must be captured fr
 - [ ] Architecture matches *deployed* infrastructure
 - [ ] Real Foundry trace and evaluated agent failure/revision
 - [ ] Seeded fixture and event-time correction test
-- [ ] Working 3D/2D viewer + synchronized overlays and lens personalization
+- [ ] Working 3D/2D viewer + transparent **broadcast-compatible** overlay on independently owned synthetic match feed + synchronized lens personalization
 - [ ] Approved release openable independently
 - [ ] Rights/licensing and synthetic data provenance documentation
 - [ ] Two-minute video published at an approved provider
