@@ -54,9 +54,13 @@ The same function must be exercised by fixtures for left/right and period direct
 
 **Elastic camera:** interpolate target and position via damped springs, clamp angular velocity, use collision/raycast checks, and preserve timeline position. In reduced-motion mode, shorten/snap transitions and disable ornamental travel.
 
-## Animation fidelity
+## Animation fidelity — realistic production, honest reconstruction
 
-Basic 10 Hz tracking does not reveal an athlete's true limb poses. Use simplified articulated characters with grounded procedural locomotion and heading interpolation, and **do not claim biomechanical motion reconstruction**. For ball, use physically plausible synthetic trajectories from fixture generator; do not fabricate an observed ball arc from discrete pass events.
+**The finished fan replay must use realistic rigged humanoid footballers, not circles or capsules.** Markers are only an initial development visualization or optional tactical overlay. The detailed, source-backed pipeline is in **[19 — Realistic Football Character Pipeline](19-realistic-character-pipeline.md)** and [issue #30](https://github.com/CosmasMandikonza/Kyneloom/issues/30): licensed model → Mixamo or valid motion library → Blender rig/uniform cleanup → GLB with named skinning animation clips → geometry/texture optimization → `GLTFLoader` → independent instances via `SkeletonUtils.clone` → blended `AnimationMixer` motion states.
+
+**Authoritative world-space root motion** still comes strictly from tracking/synthetic positions at `playheadMs`. Clip animation belongs in local skeleton pose; use in-place clips or strip root movement to avoid double movement. Speed and heading select idle/jog/sprint/turn; relevant fixture event may select shoot/pass animation where supported. Scrubbing must compute pose deterministically. Basic 10 Hz tracking does **not** reveal an athlete's exact real limb poses: characterize local animation as reconstructed/presentation, not observed biomechanics.
+
+Build two fictional team kits, goalkeeper variant, physically based lighting/textured ball and cinematic stadium, with LOD and 2D fallback. For ball use coherent source/synthetic trajectory, not arbitrary flourish from event-only input. **Issue #6 cannot be declared finished with anonymous circles; #30's rigged-player visual gate must pass.**
 
 Visual layers: physical objects, selection outline, evidence trajectory, source quality markers, event markers, captions. Each layer has explicit timing and scene-object references.
 
