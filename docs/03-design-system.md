@@ -1,6 +1,6 @@
 # 03 — Design system and visual quality bar
 
-> **Purpose:** prevent generic dashboards and inconsistent AI-generated interfaces. This is a specification for the **actual working product**, not a moodboard.
+> **Purpose:** prevent generic dashboards and inconsistent AI-generated interfaces. This is a specification for the **actual working product**, not a moodboard. For exact inspected component implementations and UI build acceptance, **read [the source-verified frontend blueprint](17-source-verified-frontend.md) first**.
 
 ## Creative direction
 
