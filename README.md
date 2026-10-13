@@ -120,6 +120,7 @@ Architecture decisions and trade-offs: **[System architecture](docs/04-system-ar
 | [Moment Manifest](docs/06-moment-manifest.md) | Versioned schema, validation, publication state |
 | [Agents & tools](docs/07-agent-orchestration.md) | Specialized roles, workflow gates, evaluation, tool security |
 | [3D replay engine](docs/08-3d-engine.md) | Camera rig, interpolation, motion truthfulness, rendering budget |
+| **[Realistic footballer asset pipeline](docs/19-realistic-character-pipeline.md)** | Licensed rigged players, mocap-style animation, stadium environment and source-anchored motion |
 | [Azure architecture](docs/09-azure-platform.md) | Service responsibilities, environments, IaC and observability |
 | [Security, rights & privacy](docs/10-security-and-rights.md) | Tenant isolation, publish authority, threat model |
 | [Quality & evaluation](docs/11-evaluation-and-reliability.md) | Replay fixtures, fault injection, product metrics, acceptance gates |
