@@ -1,6 +1,8 @@
 # 16 — Visual execution: reference → implementation → screenshot QA
 
 > **Scope:** actionable frontend engineering procedure. The linked libraries are *references to inspect*, not installed dependencies.
+>
+> **Required companion:** [17 — Source-verified frontend implementation](17-source-verified-frontend.md), including real inspected component paths, actual code mechanics, licenses, app surface mapping and explicit rejection rules.
 
 ## Experience-quality hierarchy
 
