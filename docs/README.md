@@ -21,9 +21,13 @@
 
 **Engineering:** [08 Spatial renderer](08-3d-engine.md) · [09 Azure](09-azure-platform.md) · [10 Security & rights](10-security-and-rights.md) · [11 Evaluation](11-evaluation-and-reliability.md)
 
-**Execution:** [12 Roadmap](12-delivery-roadmap.md) · [13 Competition](13-hackathon-submission.md) · [14 Market context](14-competitive-landscape.md) · [15 First build](15-first-vertical-slice.md) · [16 Visual QA](16-visual-reference-and-qa.md) · **[17 Source-verified UI implementation](17-source-verified-frontend.md)** · [References](REFERENCES.md)
+**Execution:** **[18 Issue board & agent handoff](18-execution-board.md)** · [12 Roadmap](12-delivery-roadmap.md) · [13 Competition](13-hackathon-submission.md) · [14 Market context](14-competitive-landscape.md) · [15 First build](15-first-vertical-slice.md) · [16 Visual QA](16-visual-reference-and-qa.md) · **[17 Source-verified UI implementation](17-source-verified-frontend.md)** · [References](REFERENCES.md)
 
 **Decision log:** [ADR-0001 Two execution paths](decisions/0001-dual-path-architecture.md) · [ADR-0002 Typed manifests](decisions/0002-typed-manifest.md) · [ADR-0003 Truthful reconstruction](decisions/0003-truthful-spatial-reconstruction.md)
+
+## GitHub implementation backlog
+
+**[START HERE: 29 issue execution control room](https://github.com/CosmasMandikonza/Kyneloom/issues/29)** organizes dependencies, founder lanes, core acceptance tests and agent-ready task prompts. Follow [the two-founder issue playbook](18-execution-board.md) when assigning work to Suzie Code, Codex or other coding agents.
 
 ## Quality check
 
