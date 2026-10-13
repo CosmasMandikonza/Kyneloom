@@ -2,6 +2,8 @@
 
 > **Working date:** October 12, 2026. Microsoft × Premier League submission cutoff: **October 27, 2026, 11:59 PM PT** (verify latest organizer communications). Dates are planning windows, not promises or proof of completion.
 
+**Implementation tracking:** [29 structured GitHub issues](https://github.com/CosmasMandikonza/Kyneloom/issues/29) and the [agent handoff guide](18-execution-board.md) supersede freeform prompting. Do not claim a milestone completed without its tested issue gates.
+
 ## The execution rule
 
 **One polished working vertical slice beats a dozen unintegrated features.** We do not shrink the ambition; we structure it so each milestone delivers a demonstrable, extensible subsystem.
