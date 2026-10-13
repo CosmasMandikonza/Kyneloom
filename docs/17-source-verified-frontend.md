@@ -109,6 +109,10 @@ Skiper video components suit embedded real footage *within* the production workf
 
 Focused full-canvas interactive scene with minimal controls, attribution/evidence, light-weight embed and privacy/rights gates. Works at different iframe dimensions; fallback media or 2D viewer if 3D unavailable.
 
+## Production character realism: do not stop at the coordinate prototype
+
+The scene's final visual actors must be **rigged football humans** with shared animation clips and coherent uniforms, not circles/capsules in a tilted field. Use the inspected [Mixamo rigging pipeline](https://helpx.adobe.com/creative-cloud/help/mixamo-rigging-animation.html), [Blender GLB animation exporter](https://docs.blender.org/manual/en/3.6/addons/import_export/scene_gltf2.html), [Three.js SkeletonUtils](https://threejs.org/docs/pages/module-SkeletonUtils.html), [AnimationMixer](https://threejs.org/docs/pages/AnimationMixer.html), and [glTF Transform optimization](https://gltf-transform.dev/). Every player's root follows shared positional source state; skeleton poses are *reconstructed* from selected licensed animation clips. A development circle marker is acceptable **only in dev/tactical fallback**. The entire pipeline, license gate, pose/replay tests, asset quality and visual acceptance are specified in **[Realistic player pipeline](19-realistic-character-pipeline.md)**.
+
 ## 2. Technically correct core implementation boundaries
 
 \`\`\`text
