@@ -1,6 +1,6 @@
 # 18 — Two-founder execution board and agent prompting playbook
 
-> **As of October 12, 2026.** This is an implementation coordination manual, not evidence the product is built. The full 30-issue backlog (KYN-00 through KYN-29) lives at **[Execution control room — issue #29](https://github.com/CosmasMandikonza/Kyneloom/issues/29)**. The official submission is due October 27, 2026, 11:59 PM Pacific, subject to organizer updates.
+> **As of October 12, 2026.** This is an implementation coordination manual, not evidence the product is built. The full 31-issue backlog (KYN-00 through KYN-30) lives at **[Execution control room — issue #29](https://github.com/CosmasMandikonza/Kyneloom/issues/29)**. The official submission is due October 27, 2026, 11:59 PM Pacific, subject to organizer updates.
 
 ## How to choose the next issue
 
@@ -16,6 +16,8 @@ The first parallel assignment:
 | [#12: Football metrics](https://github.com/CosmasMandikonza/Kyneloom/issues/12) | Integrate [#8: Evidence X-Ray](https://github.com/CosmasMandikonza/Kyneloom/issues/8) with A |
 | [#13: Live events](https://github.com/CosmasMandikonza/Kyneloom/issues/13), [#15: Foundry](https://github.com/CosmasMandikonza/Kyneloom/issues/15), [#16: Compiler](https://github.com/CosmasMandikonza/Kyneloom/issues/16) | [#11: Lens system](https://github.com/CosmasMandikonza/Kyneloom/issues/11), [#17: Studio](https://github.com/CosmasMandikonza/Kyneloom/issues/17) |
 | [#21: Tenant/rights](https://github.com/CosmasMandikonza/Kyneloom/issues/21) before [#18: Publish](https://github.com/CosmasMandikonza/Kyneloom/issues/18) | Hook Studio to actual compiled/approved manifest |
+
+**Critical new competition-compliance gate:** [#31 — timed broadcast overlay and recap](https://github.com/CosmasMandikonza/Kyneloom/issues/31). Produce the **same evidence/time-linked moment** in immersive 3D, transparent broadcast-compatible graphics and verified recap. The [13 October gallery radar](20-competitive-radar-2026-10-13.md) explains why fact-checked agents and producer approval alone no longer differentiate us.
 
 **Shared gating work:** [#24: golden end-to-end](https://github.com/CosmasMandikonza/Kyneloom/issues/24), [#27: independent visual direction](https://github.com/CosmasMandikonza/Kyneloom/issues/27), [#22: AI evaluation](https://github.com/CosmasMandikonza/Kyneloom/issues/22), [#25: judge-ready demo](https://github.com/CosmasMandikonza/Kyneloom/issues/25).
 
