@@ -8,6 +8,8 @@
 
 Do **not** split this into 15 unrelated mock pages. Design one golden fixture and use it through every system.
 
+**Competition-critical extra output:** the same manifest must render a **transparent, timestamped broadcast overlay** on a separately owned synthetic match feed, with a verified claim/recap and shared evidence IDs. This is [Issue #31](https://github.com/CosmasMandikonza/Kyneloom/issues/31), not a separate proof-of-concept disconnected from 3D.
+
 ## Required sequence and observable outcomes
 
 | # | Trigger | Backend contract | Visible outcome | Test |
