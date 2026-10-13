@@ -29,7 +29,7 @@ Therefore “AI + 3D + football + agents” is not a defensible claim. We must d
 
 ## Direct hackathon concept crowding
 
-In the user's attached October 2026 list of **84 publicly listed projects**, the following ideas are already proposed:
+**Updated snapshot (October 13, 2026):** the supplied gallery reports **128 results**, but the provided text exposes **126 numbered entries (1–126)**. See the [dated gallery competitive radar](20-competitive-radar-2026-10-13.md) for competitor-by-competitor overlap, methodology, uncertainty, and required changes. The older list of 84 was an earlier snapshot and is superseded. The following themes recur:
 
 - **MatchDirector, Virtual Studio Crew, MatchMind Studio** — AI broadcast agent teams, commentary and overlays.
 - **Pitch Ledger, MatchDesk, WhyLine** — audited or explainable football insights.
@@ -60,4 +60,6 @@ These are *descriptions*, not independently verified completed implementations. 
 4. Evaluate whether a sample company can integrate an interactive scene using a typed manifest/SDK without custom scene code.
 5. Keep a dated competitor matrix and note functionality verified firsthand versus public marketing.
 
-**Decision:** build and test one impressive compiler-to-viewer pipeline, then refine differentiation using evidence, not adjectives.
+**New competitor-driven product decision:** prove **multi-output compilation from the same canonical moment**: immersive time-faithful 3D scene + transparent synchronized broadcast overlays + source-linked recap + producer-approved embeddable release. See [#31 broadcast overlay](https://github.com/CosmasMandikonza/Kyneloom/issues/31). This is more robust differentiation than relying on 3D aesthetics or evidence verification alone.
+
+**Decision:** build and test one impressive compiler-to-viewer pipeline with a genuine broadcast output; refine differentiation using implemented evidence, not adjectives.
