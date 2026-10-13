@@ -13,6 +13,8 @@
 
 **Important now:** This repository was observed to be private on Oct 12. **A private repo does not satisfy the published public-repository submission rule**; plan a sanitized public release once secrets and licenses are reviewed. Do not flip visibility without owner authorization and a pre-public security scan.
 
+**Competition intelligence update:** [October 13, 2026 gallery radar](20-competitive-radar-2026-10-13.md). The supplied gallery states 128 results (126 entries captured). Several explicitly describe factual agent crews and producer approvals; these cannot be claimed as Kyneloom inventions. Our required differentiator is a **real, synced 3D replay + transparent broadcast overlay + verified recap + editable approved portable moment** all from one evidence-grounded manifest. Track [#31](https://github.com/CosmasMandikonza/Kyneloom/issues/31).
+
 ## The mandatory five-stage challenge
 
 | Organizer stage | Kyneloom target | Minimum real evidence |
