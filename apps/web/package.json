@@ -1,0 +1,29 @@
+{
+  "name": "@kyneloom/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kyneloom web application (Next.js App Router). Foundation shell with the fixture-loading seam; product surfaces arrive with later milestones.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kyneloom/contracts": "workspace:*",
+    "@kyneloom/scene-renderer": "workspace:*",
+    "geist": "^1.7.2",
+    "next": "^16.4.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
+  }
+}

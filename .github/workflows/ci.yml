@@ -1,0 +1,79 @@
+name: Application CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - '.github/workflows/ci.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig.base.json'
+      - 'eslint.config.mjs'
+      - 'vitest.config.ts'
+      - '.prettierrc.json'
+      - '.prettierignore'
+      - '.env.example'
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - '.github/workflows/ci.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig.base.json'
+      - 'eslint.config.mjs'
+      - 'vitest.config.ts'
+      - '.prettierrc.json'
+      - '.prettierignore'
+      - '.env.example'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Check documentation integrity
+        run: node scripts/check-docs.mjs
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Production build
+        run: pnpm build

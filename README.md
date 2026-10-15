@@ -19,7 +19,7 @@
 </div>
 
 > [!IMPORTANT]
-> **Build status — specification-first.** This repository was initialized as an architecture and product documentation foundation. The live event pipeline, AI agents, 3D renderer, production studio, and publishing service described below are **planned systems, not deployed or implemented features**. We will update the status with verified working capabilities as development progresses. No invented demos, performance claims, or customer logos.
+> **Build status — specification-first.** This repository contains a runnable engineering foundation (typed pnpm monorepo, web shell, application CI — [KYN-01](https://github.com/CosmasMandikonza/Kyneloom/issues/1)) alongside the product documentation. The live event pipeline, AI agents, 3D renderer, production studio, and publishing service described below are **planned systems, not deployed or implemented features**. We will update the status with verified working capabilities as development progresses. No invented demos, performance claims, or customer logos.
 
 > **Start building:** [29 ordered GitHub issues and parallel founder lanes](https://github.com/CosmasMandikonza/Kyneloom/issues/29) · [Agent handoff playbook](docs/18-execution-board.md). Each issue includes direct Suzie Code/Codex prompts, verified behavior requirements and PR acceptance criteria.
 
@@ -140,6 +140,7 @@ Architecture decisions and trade-offs: **[System architecture](docs/04-system-ar
 This is an intentionally **honest** tracker; checkboxes are updated only when evidence exists.
 
 - [x] Product positioning, roles, architecture proposal, data-contract drafts and design constraints documented
+- [x] Runnable TypeScript monorepo foundation: pnpm workspace, strict TS, lint/format/typecheck/test/build scripts, tested package-boundary rule, fixture seam and application CI ([KYN-01](https://github.com/CosmasMandikonza/Kyneloom/issues/1))
 - [ ] Real 3D replay with timestamp-correct scene playback
 - [ ] Deterministic synthetic stream ingestion and football-state processing
 - [ ] Working Foundry orchestration with verifiable trace and evaluation
@@ -156,12 +157,22 @@ The repo includes a zero-dependency [Markdown integrity checker](scripts/check-d
 
 ### Getting started
 
-At present, **there is no runnable application in this repository**. Do not infer setup commands, demo availability, deployment links, or environment variables.
+The repository foundation ([KYN-01](https://github.com/CosmasMandikonza/Kyneloom/issues/1)) is runnable from a clean clone. It requires Node.js 22 LTS (or 24) and pnpm 10.34+; the exact pnpm version is pinned in `package.json` via `packageManager`, and the lockfile is committed.
 
-1. Read [the vision](docs/01-product-vision.md), [the experience design](docs/02-experience-design.md) and [the architecture](docs/04-system-architecture.md).
-2. Review [AGENTS.md](AGENTS.md) and the canonical [Moment Manifest](docs/06-moment-manifest.md).
-3. Start with milestone **M1: truthful, interactive spatial replay**; subsequent milestone dependencies are explicit in [the roadmap](docs/12-delivery-roadmap.md).
-4. When an application scaffold lands, this section will include verified local run commands and environment setup.
+```bash
+pnpm install --frozen-lockfile   # install exact dependency versions
+pnpm lint                        # ESLint (flat config, typescript-eslint)
+pnpm typecheck                   # strict TypeScript across every workspace package
+pnpm test                        # Vitest unit tests, incl. the package-boundary rule
+pnpm build                       # production build of apps/web
+pnpm dev                         # develop the web app (Next.js, default port 3000)
+```
+
+The web app is an honest foundation shell: design tokens from [the design system](docs/03-design-system.md), an explicitly marked *Not implemented* scene placeholder with correct pitch proportions, and a live read of the fixture seam. `tests/fixtures/index.json` intentionally registers zero fixtures — the synthetic match generator does not exist yet, and nothing on the page fabricates match data, agent activity, or statistics.
+
+No environment variables are required for local checks; see `.env.example` for the optional `KYNELOOM_FIXTURES_DIR` override. CI runs the same checks on every push (`.github/workflows/ci.yml`) alongside the documentation integrity check. Production deployments pick up fixture-index changes on rebuild, because the home page is statically prerendered.
+
+Before contributing product features, read [the vision](docs/01-product-vision.md), [the experience design](docs/02-experience-design.md), [the architecture](docs/04-system-architecture.md), [AGENTS.md](AGENTS.md), and the canonical [Moment Manifest](docs/06-moment-manifest.md). Start with milestone **M1: truthful, interactive spatial replay**; subsequent milestone dependencies are explicit in [the roadmap](docs/12-delivery-roadmap.md).
 
 ---
 
