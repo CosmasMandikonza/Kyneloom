@@ -20,12 +20,13 @@ import { majorMinorVersion, TRACKING_SCHEMA_VERSION, unsupportedVersionError } f
  * TIME CONVENTION: `sampleTimeMs` is absolute match-relative milliseconds,
  * same axis as `MatchEvent.occurredAtMs`.
  *
- * MISSING-DATA SEMANTICS: `visibility` and `origin` are coupled. `tracked`
- * requires a factual origin (`source_observed` or `synthetic_ground_truth`).
- * `partial`/`untracked` require an explicitly disclosed reconstruction
- * (`interpolated` with a method, or `extrapolated` with a method plus an
- * uncertainty horizon). Absent data is represented by the *absence of
- * samples*, never by fabricated coordinates.
+ * VISIBILITY STATE MACHINE (strict bijection, see data-origin.ts):
+ * `tracked` ⇔ factual origin and no reconstruction disclosure;
+ * `partial` ⇔ reconstructed origin with a disclosed method (extrapolation
+ * additionally requires an uncertainty horizon). There is no
+ * coordinate-bearing "untracked" sample: absent data is the *absence of
+ * samples*; projection-level unknowns use MatchState's unavailable-ball
+ * variant. Contradictory pairings are rejected in both directions.
  */
 
 const boundedCoordinate = z.number().refine((n) => Math.abs(n) <= MAX_ABS_COORDINATE_M, {
@@ -51,14 +52,23 @@ export const trackingSampleSchema = z
   .superRefine((sample, ctx) => {
     const factual =
       sample.origin === 'source_observed' || sample.origin === 'synthetic_ground_truth';
-    if (sample.visibility === 'tracked' && !factual) {
+    const reconstructed = sample.origin === 'interpolated' || sample.origin === 'extrapolated';
+
+    if (sample.visibility === 'tracked' && reconstructed) {
       ctx.addIssue({
         code: 'custom',
         path: ['origin'],
         message: `visibility "tracked" requires a factual origin (source_observed or synthetic_ground_truth), got "${sample.origin}"`,
       });
     }
-    if (!factual) {
+    if (sample.visibility === 'partial' && factual) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['origin'],
+        message: `visibility "partial" means the position is reconstructed; factual origin "${sample.origin}" with concrete coordinates must be declared "tracked"`,
+      });
+    }
+    if (reconstructed) {
       if (!sample.reconstruction) {
         ctx.addIssue({
           code: 'custom',

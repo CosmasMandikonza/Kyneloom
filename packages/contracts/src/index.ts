@@ -98,14 +98,18 @@ export { trackingSampleSchema, parseTrackingSample, type TrackingSample } from '
 export {
   MATCH_PERIODS,
   PLAYER_STATUSES,
+  BALL_UNAVAILABLE_REASONS,
   playerState,
   ballState,
+  ballPosition,
   matchStateSchema,
   parseMatchState,
   type MatchPeriod,
   type PlayerStatus,
+  type BallUnavailableReason,
   type PlayerState,
   type BallState,
+  type BallPosition,
   type MatchState,
 } from './match-state';
 
@@ -136,6 +140,8 @@ export {
   parseReleaseRecord,
   canonicalJsonStringify,
   manifestInputFingerprint,
+  approvalContentPayload,
+  type ApprovalContentPayload,
   type CameraMode,
   type OverlayKind,
   type EvidenceKind,

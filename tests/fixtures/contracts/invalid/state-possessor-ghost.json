@@ -10,11 +10,14 @@
   },
   "ball": {
     "entityId": "ball",
-    "xM": 21.4,
-    "yM": -13.8,
-    "zM": 2.6,
-    "positionOrigin": "synthetic_ground_truth",
-    "confidence": 1,
+    "position": {
+      "kind": "positioned",
+      "xM": 21.4,
+      "yM": -13.8,
+      "zM": 2.6,
+      "positionOrigin": "synthetic_ground_truth",
+      "confidence": 1
+    },
     "possessorEntityId": "home-99"
   },
   "players": [

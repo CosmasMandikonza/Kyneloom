@@ -12,20 +12,28 @@ public package API — never parsed by ad-hoc code.
 - `match-events.json` — three canonical events including a correction chain
   (`evt-0042-r2` supersedes `evt-0042` at source revision 2).
 - `tracking-samples.json` — a tracked player, a tracked airborne ball, and a
-  disclosed interpolated sample (partial visibility, named method).
-- `match-state.json` — a coherent projection at 78:42 with possession.
+  disclosed interpolated sample (`partial` visibility, named method).
+- `match-state.json` — a coherent projection at 78:42 with a positioned ball
+  and possession.
+- `match-state-event-only.json` — the event-only fallback: the ball position
+  is explicitly `unavailable` (`no_tracking_source`) with no possessor and an
+  empty player list; nothing invents coordinates.
 
 ## invalid/
 
-Seventeen adversarial documents. Each must fail its parser with the exact
+Twenty-six adversarial documents. Each must fail its parser with the exact
 expectation recorded in `expectations.json` (field path, error code, and/or
 message fragment), covering: nonmonotonic and out-of-window camera keyframes,
-undeclared evidence references, script injection via unknown keys, out-of-range
-FOV, underground cameras, draft-status manifests carrying approvals, future
-schema versions, Infinity and negative event timestamps, unknown event kinds,
-tracked-visibility samples with reconstructed origins, extrapolation without
-an uncertainty horizon, infinite coordinates, ghost possessors, and duplicate
-players.
+keyframes outside their own camera track's interval, undeclared evidence
+references, duplicate camera-track/evidence ids, script injection via unknown
+keys, out-of-range FOV, underground and beyond-radius cameras, draft-status
+manifests carrying approvals, future schema versions, Infinity and negative
+event timestamps, unknown event kinds, observed events without a license
+reference, tracked-visibility samples with reconstructed origins,
+`partial`-visibility samples with factual origins, coordinate-bearing
+`untracked` samples, extrapolation without an uncertainty horizon, infinite
+coordinates, ghost possessors, unavailable balls that still claim a possessor,
+duplicate players, and players whose team contradicts their entity id.
 
 When you add a rejection case, add the file, record the expectation, and the
 corpus test picks it up automatically (and fails if file and expectation lists

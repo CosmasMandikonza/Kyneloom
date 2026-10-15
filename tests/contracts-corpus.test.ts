@@ -79,6 +79,15 @@ describe('valid corpus', () => {
   it('parses the coherent match-state projection', () => {
     expect(parseWith('parseMatchState', loadJson('valid/match-state.json')).ok).toBe(true);
   });
+
+  it('parses the event-only projection with an explicitly unavailable ball (review fix 1)', () => {
+    const result = parseWith('parseMatchState', loadJson('valid/match-state-event-only.json'));
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.data) return;
+    expect((result.data as { ball: { position: { kind: string } } }).ball.position.kind).toBe(
+      'unavailable',
+    );
+  });
 });
 
 describe('adversarial corpus (each file must fail with its documented expectation)', () => {

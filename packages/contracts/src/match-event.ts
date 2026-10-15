@@ -60,12 +60,38 @@ export const eventAttributes = z.record(
   z.union([z.string(), z.number(), z.boolean(), z.null()]),
 );
 
-export const eventProvenance = z.strictObject({
-  origin: z.enum(EVENT_ORIGINS),
-  generatorVersion: z.string().min(1).optional(),
-  licenseRef: z.string().min(1).optional(),
-  confidence: confidence,
-});
+/**
+ * Source-rights policy (docs/05 "source-rights metadata, recorded generator
+ * version"): licensed external data must name its license; synthetic data
+ * must name its generator. Both fields may be present; the required one
+ * depends on the origin.
+ */
+export const eventProvenance = z
+  .strictObject({
+    origin: z.enum(EVENT_ORIGINS),
+    generatorVersion: z.string().min(1).optional(),
+    licenseRef: z.string().min(1).optional(),
+    confidence: confidence,
+  })
+  .superRefine((provenance, ctx) => {
+    if (provenance.origin === 'source_observed' && provenance.licenseRef === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['licenseRef'],
+        message: 'origin "source_observed" requires the licensed source reference (licenseRef)',
+      });
+    }
+    if (
+      provenance.origin === 'synthetic_ground_truth' &&
+      provenance.generatorVersion === undefined
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['generatorVersion'],
+        message: 'origin "synthetic_ground_truth" requires the generator version',
+      });
+    }
+  });
 
 export type EventProvenance = z.infer<typeof eventProvenance>;
 

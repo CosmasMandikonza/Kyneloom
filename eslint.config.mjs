@@ -24,6 +24,17 @@ export default tseslint.config(
     },
   },
   {
+    // `_`-prefixed variables are intentional discards (e.g. omitting
+    // mutable fields when building the approval content payload).
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
+    },
+  },
+  {
     // Node-based tooling scripts (e.g., the pre-existing docs checker).
     files: ['scripts/**/*.mjs'],
     languageOptions: {

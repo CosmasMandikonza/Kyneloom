@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { CLAIM_STATUSES } from './data-origin';
 import { type ParseResult, toContractValidationErrors } from './errors';
 import { kebabId, languageTag, sourceHash } from './ids';
-import { PITCH_COORDINATE_SYSTEM, vec3TupleM } from './spatial';
+import { MAX_ABS_COORDINATE_M, PITCH_COORDINATE_SYSTEM, vec3TupleM } from './spatial';
 import { MANIFEST_SCHEMA_VERSION, semver, unsupportedVersionError } from './versioning';
 
 /**
@@ -106,6 +106,22 @@ export const cameraKeyframe = z
         message: 'target must not be below the pitch plane',
       });
     }
+    // Finite-but-huge coordinates are just as unusable as NaN for a camera;
+    // the same safe radius as tracking applies to positions and targets.
+    for (const [field, values] of [
+      ['position', kf.position],
+      ['target', kf.target],
+    ] as const) {
+      for (const [axis, value] of values.entries()) {
+        if (Math.abs(value) > MAX_ABS_COORDINATE_M) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [field, axis],
+            message: `camera ${field} axis ${axis} exceeds the ${MAX_ABS_COORDINATE_M} m safe radius around the pitch`,
+          });
+        }
+      }
+    }
   });
 
 export type CameraKeyframe = z.infer<typeof cameraKeyframe>;
@@ -132,6 +148,15 @@ export const cameraTrack = z
           code: 'custom',
           path: ['keyframes', index, 'tMs'],
           message: 'keyframe times must be strictly increasing',
+        });
+      }
+      // Keyframes must also fall inside THIS track's interval — a keyframe
+      // outside the track's own [startMs, endMs] would never be played.
+      if (kf.tMs < track.startMs || kf.tMs > track.endMs) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['keyframes', index, 'tMs'],
+          message: `keyframe at ${kf.tMs} ms is outside this camera track's interval [${track.startMs}, ${track.endMs}] ms`,
         });
       }
     }
@@ -332,6 +357,34 @@ export const momentManifestSchema = z
       }
     }
 
+    // Collection ids must be unique within their collection: repeated ids
+    // make producer edits, scene selection and provenance resolution
+    // ambiguous. The offending duplicate is reported at its own position.
+    assertUniqueIds(
+      ctx,
+      manifest.scene.cameraTracks.map((track) => track.id),
+      (index) => ['scene', 'cameraTracks', index, 'id'],
+      'camera track',
+    );
+    assertUniqueIds(
+      ctx,
+      manifest.scene.overlays.map((overlay) => overlay.id),
+      (index) => ['scene', 'overlays', index, 'id'],
+      'overlay',
+    );
+    assertUniqueIds(
+      ctx,
+      manifest.claims.map((c) => c.id),
+      (index) => ['claims', index, 'id'],
+      'claim',
+    );
+    assertUniqueIds(
+      ctx,
+      manifest.evidence.map((entry) => entry.id),
+      (index) => ['evidence', index, 'id'],
+      'evidence entry',
+    );
+
     // Internal referential integrity: everything cited must be declared in
     // this manifest. Whether evidence refs exist in the reducer revision,
     // metrics registry, or tenant rights is SEMANTIC verification (below).
@@ -462,4 +515,57 @@ export function manifestInputFingerprint(manifest: MomentManifest): string {
     trackingSampleRefs: [...manifest.input.trackingSampleRefs].sort(),
     sourceHash: manifest.input.sourceHash,
   });
+}
+
+/**
+ * The exact object hashed for approval (KYN-02 review): every immutable,
+ * content-bearing field of the manifest — **excluding `status`** (mutable
+ * workflow state: draft → validating → … → published) and **excluding
+ * `approval` itself** (it carries the resulting `manifestHash`; hashing it
+ * would be circular and would change the hash on every approval step).
+ *
+ * The publication service computes `sha256(canonicalJsonStringify(
+ * approvalContentPayload(manifest)))` server-side; both founders hash this
+ * same object, so `approved`, `published` and re-approved revisions of
+ * identical content share one hash, while any edit (a single claim, camera
+ * keyframe, evidence entry…) changes it.
+ */
+export interface ApprovalContentPayload {
+  readonly schemaVersion: string;
+  readonly manifestId: string;
+  readonly tenantId: string;
+  readonly matchId: string;
+  readonly revision: number;
+  readonly timeRangeMs: readonly [number, number];
+  readonly input: MomentManifest['input'];
+  readonly scene: MomentManifest['scene'];
+  readonly claims: readonly Claim[];
+  readonly evidence: readonly EvidenceEntry[];
+  readonly lenses: readonly Lens[];
+  readonly rightsPolicyRef: string;
+}
+
+export function approvalContentPayload(manifest: MomentManifest): ApprovalContentPayload {
+  const { status: _status, approval: _approval, ...content } = manifest;
+  return content;
+}
+
+/** Report duplicated collection ids at the position of each repetition. */
+function assertUniqueIds(
+  ctx: z.RefinementCtx,
+  ids: readonly string[],
+  pathFor: (index: number) => PropertyKey[],
+  label: string,
+): void {
+  const seen = new Set<string>();
+  for (const [index, id] of ids.entries()) {
+    if (seen.has(id)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: pathFor(index),
+        message: `duplicate ${label} id "${id}"; ids must be unique within their collection`,
+      });
+    }
+    seen.add(id);
+  }
 }

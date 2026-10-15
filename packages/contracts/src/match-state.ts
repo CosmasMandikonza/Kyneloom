@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { confidence, SAMPLE_ORIGINS } from './data-origin';
 import { type ParseResult, toContractValidationErrors } from './errors';
-import { entityId, kebabId, teamId } from './ids';
+import { entityTeam, entityId, kebabId, teamId } from './ids';
 import { majorMinorVersion, STATE_SCHEMA_VERSION, unsupportedVersionError } from './versioning';
 
 /**
@@ -12,6 +12,12 @@ import { majorMinorVersion, STATE_SCHEMA_VERSION, unsupportedVersionError } from
  * TIME CONVENTION: `matchTimeMs` is absolute match-relative milliseconds on
  * the same monotonic axis as events and samples; `period` is derived context,
  * not a clock reset.
+ *
+ * MISSING POSITIONS: players without a known position are simply absent from
+ * `players`; the ball carries an explicit discriminated position —
+ * `positioned`, or `unavailable` with a reason. The event-only /
+ * missing-tracking fallback (docs/05 failure modes) therefore never invents
+ * coordinates, and consumers can never silently substitute (0, 0, 0).
  */
 
 export const MATCH_PERIODS = [
@@ -31,6 +37,14 @@ export type MatchPeriod = (typeof MATCH_PERIODS)[number];
 export const PLAYER_STATUSES = ['on_pitch', 'substituted_off', 'sent_off'] as const;
 export type PlayerStatus = (typeof PLAYER_STATUSES)[number];
 
+/** Why a ball position is unknown; surfaced to lenses, never papered over. */
+export const BALL_UNAVAILABLE_REASONS = [
+  'no_tracking_source',
+  'frames_absent',
+  'identity_lost',
+] as const;
+export type BallUnavailableReason = (typeof BALL_UNAVAILABLE_REASONS)[number];
+
 export const playerState = z
   .strictObject({
     entityId: entityId,
@@ -43,20 +57,54 @@ export const playerState = z
     positionOrigin: z.enum(SAMPLE_ORIGINS),
     confidence: confidence,
   })
-  .describe('One player in the authoritative projection');
+  .superRefine((player, ctx) => {
+    // Entity identity and team must agree: "home-08" can never play for away.
+    if (entityTeam(player.entityId) !== player.teamId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['teamId'],
+        message: `player "${player.entityId}" belongs to ${String(entityTeam(player.entityId))}; teamId "${player.teamId}" contradicts the entity id`,
+      });
+    }
+  })
+  .describe('One player in the authoritative projection; unknown positions are absence');
 
 export type PlayerState = z.infer<typeof playerState>;
 
-export const ballState = z.strictObject({
-  entityId: z.literal('ball'),
-  xM: z.number(),
-  yM: z.number(),
-  zM: z.number(),
-  positionOrigin: z.enum(SAMPLE_ORIGINS),
-  confidence: confidence,
-  /** Current possessor if possession is supported by the source; never guessed. */
-  possessorEntityId: entityId.nullable(),
-});
+/** Known ball coordinates, or an explicit unavailable marker with a reason. */
+export const ballPosition = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('positioned'),
+    xM: z.number(),
+    yM: z.number(),
+    zM: z.number(),
+    positionOrigin: z.enum(SAMPLE_ORIGINS),
+    confidence: confidence,
+  }),
+  z.strictObject({
+    kind: z.literal('unavailable'),
+    reason: z.enum(BALL_UNAVAILABLE_REASONS),
+  }),
+]);
+
+export type BallPosition = z.infer<typeof ballPosition>;
+
+export const ballState = z
+  .strictObject({
+    entityId: z.literal('ball'),
+    position: ballPosition,
+    /** Current possessor if possession is supported by the source; never guessed. */
+    possessorEntityId: entityId.nullable(),
+  })
+  .superRefine((ball, ctx) => {
+    if (ball.position.kind === 'unavailable' && ball.possessorEntityId !== null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['possessorEntityId'],
+        message: 'an unavailable ball position cannot claim a possessor; use null',
+      });
+    }
+  });
 
 export type BallState = z.infer<typeof ballState>;
 

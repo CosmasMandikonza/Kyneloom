@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  approvalContentPayload,
   canonicalJsonStringify,
   manifestInputFingerprint,
   parseMomentManifest,
@@ -51,11 +52,13 @@ describe('parseMomentManifest — scene rejections', () => {
     const result = parseMomentManifest(bad);
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    const error = result.errors.find(
-      (e) => e.fieldPath === 'scene.cameraTracks[0].keyframes[1].tMs',
+    // Both guards fire: track-local interval and moment-window containment.
+    const windowError = result.errors.find(
+      (e) =>
+        e.fieldPath === 'scene.cameraTracks[0].keyframes[1].tMs' &&
+        e.message.includes('moment window'),
     );
-    expect(error).toBeDefined();
-    expect(error?.message).toContain('moment window');
+    expect(windowError).toBeDefined();
   });
 
   it('rejects camera tracks ending beyond the window', () => {
@@ -317,3 +320,152 @@ function parseManifestOf(input: unknown): MomentManifest {
   if (!result.ok) throw new Error(`fixture must parse: ${JSON.stringify(result.errors)}`);
   return result.data;
 }
+
+describe('camera track-local keyframe bounds (review fix 3)', () => {
+  it('rejects keyframes outside the track interval even when inside the moment window', () => {
+    const bad = structuredClone(validManifest);
+    const track = bad.scene.cameraTracks[0]!;
+    track.startMs = 6000;
+    track.endMs = 8000;
+    // keyframes remain at 0 and 14000 — inside the 14 s moment, outside the track.
+    const result = parseMomentManifest(bad);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const first = result.errors.find(
+      (e) => e.fieldPath === 'scene.cameraTracks[0].keyframes[0].tMs',
+    );
+    const last = result.errors.find(
+      (e) => e.fieldPath === 'scene.cameraTracks[0].keyframes[1].tMs',
+    );
+    expect(first?.message).toContain("track's interval");
+    expect(last?.message).toContain("track's interval");
+  });
+
+  it('rejects a keyframe before the track start and accepts keys spanning exactly the interval', () => {
+    const early = structuredClone(validManifest);
+    early.scene.cameraTracks[0]!.startMs = 2000; // keyframe at 0 is now early
+    expect(parseMomentManifest(early).ok).toBe(false);
+
+    const exact = structuredClone(validManifest);
+    exact.scene.cameraTracks[0]!.startMs = 0;
+    exact.scene.cameraTracks[0]!.endMs = 14000;
+    exact.scene.cameraTracks[0]!.keyframes = [
+      { tMs: 2000, position: [0, 46, 48], target: [0, 0, 0], fovDeg: 48 },
+      { tMs: 8000, position: [6, 40, 36], target: [10, 0, 1], fovDeg: 45 },
+    ];
+    expect(parseMomentManifest(exact).ok).toBe(true);
+  });
+});
+
+describe('collection id uniqueness (review fix 4)', () => {
+  it('rejects duplicate camera track ids at the repetition position', () => {
+    const bad = structuredClone(validManifest);
+    bad.scene.cameraTracks.push(structuredClone(bad.scene.cameraTracks[0]!));
+    const result = parseMomentManifest(bad);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(
+      result.errors.some(
+        (e) =>
+          e.fieldPath === 'scene.cameraTracks[1].id' &&
+          e.message.includes('duplicate camera track id'),
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects duplicate overlay, claim and evidence ids with collection-specific errors', () => {
+    const overlayDup = structuredClone(validManifest);
+    overlayDup.scene.overlays.push(structuredClone(overlayDup.scene.overlays[0]!));
+    let result = parseMomentManifest(overlayDup);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.fieldPath === 'scene.overlays[1].id')).toBe(true);
+    }
+
+    const claimDup = structuredClone(validManifest);
+    claimDup.claims.push(structuredClone(claimDup.claims[0]!)); // third entry duplicates claims[0]
+    result = parseMomentManifest(claimDup);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.fieldPath === 'claims[2].id')).toBe(true);
+    }
+
+    const evidenceDup = structuredClone(validManifest);
+    evidenceDup.evidence.push(structuredClone(evidenceDup.evidence[0]!));
+    result = parseMomentManifest(evidenceDup);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.fieldPath === 'evidence[1].id')).toBe(true);
+    }
+  });
+
+  it('the golden manifest keeps unique ids everywhere (positive control)', () => {
+    const result = parseManifestOf(validManifest);
+    expect(new Set(result.scene.cameraTracks.map((t) => t.id)).size).toBe(1);
+    expect(new Set(result.evidence.map((e) => e.id)).size).toBe(result.evidence.length);
+  });
+});
+
+describe('camera coordinate magnitude bounds (review fix 5)', () => {
+  it('rejects finite-but-huge camera positions and targets', () => {
+    const farPosition = structuredClone(validManifest);
+    farPosition.scene.cameraTracks[0]!.keyframes[0]!.position = [90_000, 46, 48];
+    const result = parseMomentManifest(farPosition);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(
+      result.errors.some((e) => e.fieldPath === 'scene.cameraTracks[0].keyframes[0].position[0]'),
+    ).toBe(true);
+
+    const farTarget = structuredClone(validManifest);
+    farTarget.scene.cameraTracks[0]!.keyframes[0]!.target = [0, -120_000, 0];
+    expect(parseMomentManifest(farTarget).ok).toBe(false);
+  });
+
+  it('accepts the golden camera geometry (positive control)', () => {
+    expect(parseMomentManifest(validManifest).ok).toBe(true);
+  });
+});
+
+describe('approvalContentPayload (review fix 6)', () => {
+  const serverApproval = {
+    approvedBy: 'producer-ada',
+    approvedAt: '2026-10-14T10:00:00Z',
+    manifestHash: 'sha256:c348d8c4d7739f6eaee701c5b641a635c5d7b829bbbf5579f67de5d6fd20c269',
+    policyVersion: 'demo-synthetic-policy-v1',
+  };
+
+  it('excludes mutable workflow status and the approval record itself', () => {
+    const payload = approvalContentPayload(parseManifestOf(validManifest));
+    expect(payload).not.toHaveProperty('status');
+    expect(payload).not.toHaveProperty('approval');
+    expect(payload).toHaveProperty('schemaVersion', '0.1.0');
+    expect(payload).toHaveProperty('manifestId', 'mom-synthetic-78m');
+    expect(payload).toHaveProperty('rightsPolicyRef');
+  });
+
+  it('is invariant under status transitions and approval attachment', () => {
+    const draft = parseManifestOf(validManifest);
+
+    const approved = structuredClone(validManifest) as { status: string; approval: unknown };
+    approved.status = 'approved';
+    approved.approval = serverApproval;
+    const approvedParsed = parseManifestOf(approved);
+
+    const published = structuredClone(approved) as { status: string };
+    published.status = 'published';
+
+    const a = canonicalJsonStringify(approvalContentPayload(draft));
+    const b = canonicalJsonStringify(approvalContentPayload(approvedParsed));
+    const c = canonicalJsonStringify(approvalContentPayload(parseManifestOf(published)));
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+  });
+
+  it('changes when any content-bearing field changes (one claim edit)', () => {
+    const base = canonicalJsonStringify(approvalContentPayload(parseManifestOf(validManifest)));
+    const edited = structuredClone(validManifest);
+    edited.claims[0]!.text = 'The defender separation increased sharply during the run.';
+    expect(canonicalJsonStringify(approvalContentPayload(parseManifestOf(edited)))).not.toBe(base);
+  });
+});

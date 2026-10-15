@@ -235,3 +235,52 @@ describe('typed consumption compile check', () => {
     expect(origin).toBe('synthetic_ground_truth');
   });
 });
+
+describe('event provenance source-rights policy (review optional finding)', () => {
+  it('rejects source_observed events without a license reference', () => {
+    const result = parseMatchEvent({
+      ...validEvent,
+      provenance: { origin: 'source_observed', confidence: 0.95 },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const error = result.errors.find((e) => e.fieldPath === 'provenance.licenseRef');
+    expect(error).toBeDefined();
+    expect(error?.message).toContain('licenseRef');
+  });
+
+  it('accepts source_observed events with a license reference', () => {
+    const result = parseMatchEvent({
+      ...validEvent,
+      provenance: {
+        origin: 'source_observed',
+        licenseRef: 'skillcorner-open-data-2025',
+        confidence: 0.95,
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects synthetic_ground_truth events without a generator version', () => {
+    const result = parseMatchEvent({
+      ...validEvent,
+      provenance: { origin: 'synthetic_ground_truth', confidence: 1 },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.some((e) => e.fieldPath === 'provenance.generatorVersion')).toBe(true);
+  });
+
+  it('accepts both fields present regardless of origin', () => {
+    const result = parseMatchEvent({
+      ...validEvent,
+      provenance: {
+        origin: 'synthetic_ground_truth',
+        generatorVersion: 'fixture-engine-v1',
+        licenseRef: 'synthetic-internal',
+        confidence: 1,
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
+});

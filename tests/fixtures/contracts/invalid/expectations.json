@@ -35,6 +35,26 @@
     "parser": "parseMomentManifest",
     "expectFieldPath": "scene.cameraTracks[0].keyframes[0].position[2]"
   },
+  "manifest-keyframes-outside-track.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[0].tMs",
+    "expectMessageContains": "track's interval"
+  },
+  "manifest-duplicate-camera-ids.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[1].id",
+    "expectMessageContains": "duplicate camera track id"
+  },
+  "manifest-duplicate-evidence-ids.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "evidence[1].id",
+    "expectMessageContains": "duplicate evidence entry id"
+  },
+  "manifest-camera-magnitude.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[0].position[0]",
+    "expectMessageContains": "safe radius"
+  },
   "event-infinity-timestamp.json": {
     "parser": "parseMatchEvent",
     "expectFieldPath": "occurredAtMs"
@@ -52,6 +72,11 @@
     "parser": "parseMatchEvent",
     "expectCode": "unrecognized_key"
   },
+  "event-observed-no-license.json": {
+    "parser": "parseMatchEvent",
+    "expectFieldPath": "provenance.licenseRef",
+    "expectMessageContains": "licenseRef"
+  },
   "tracking-tracked-interpolated.json": {
     "parser": "parseTrackingSample",
     "expectFieldPath": "origin",
@@ -65,6 +90,15 @@
     "parser": "parseTrackingSample",
     "expectFieldPath": "xM"
   },
+  "tracking-partial-factual.json": {
+    "parser": "parseTrackingSample",
+    "expectFieldPath": "origin",
+    "expectMessageContains": "must be declared \"tracked\""
+  },
+  "tracking-untracked-visibility.json": {
+    "parser": "parseTrackingSample",
+    "expectFieldPath": "visibility"
+  },
   "state-possessor-ghost.json": {
     "parser": "parseMatchState",
     "expectFieldPath": "ball.possessorEntityId"
@@ -73,5 +107,15 @@
     "parser": "parseMatchState",
     "expectFieldPath": "players[2].entityId",
     "expectMessageContains": "duplicate"
+  },
+  "state-team-mismatch.json": {
+    "parser": "parseMatchState",
+    "expectFieldPath": "players[0].teamId",
+    "expectMessageContains": "contradicts"
+  },
+  "state-unavailable-with-possessor.json": {
+    "parser": "parseMatchState",
+    "expectFieldPath": "ball.possessorEntityId",
+    "expectMessageContains": "possessor"
   }
 }

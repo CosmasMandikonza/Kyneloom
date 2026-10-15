@@ -16,7 +16,11 @@ const baseEvent = {
   actorId: 'home-08',
   teamId: 'home',
   position: { xM: 21.4, yM: -13.8 },
-  provenance: { origin: 'synthetic_ground_truth', confidence: 1 },
+  provenance: {
+    origin: 'synthetic_ground_truth',
+    generatorVersion: 'fixture-engine-v1',
+    confidence: 1,
+  },
   correctionOf: null,
 };
 

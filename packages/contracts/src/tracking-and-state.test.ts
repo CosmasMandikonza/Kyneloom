@@ -50,18 +50,36 @@ describe('parseTrackingSample', () => {
     const result = parseTrackingSample({
       ...validSample,
       origin: 'extrapolated',
-      visibility: 'untracked',
+      visibility: 'partial',
       confidence: 0.4,
       reconstruction: { method: 'constant-velocity', uncertaintyHorizonMs: 400 },
     });
     expect(result.ok).toBe(true);
   });
 
-  it('rejects "tracked" visibility with a non-factual origin', () => {
+  it('rejects "tracked" visibility with a reconstructed origin', () => {
     const result = parseTrackingSample({ ...validSample, origin: 'interpolated' });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.errors.some((e) => e.fieldPath === 'origin')).toBe(true);
+  });
+
+  it('rejects "partial" visibility with a factual origin (review fix 2)', () => {
+    const result = parseTrackingSample({
+      ...validSample,
+      visibility: 'partial',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const originError = result.errors.find((e) => e.fieldPath === 'origin');
+    expect(originError?.message).toContain('must be declared "tracked"');
+  });
+
+  it('rejects coordinate-bearing "untracked" samples outright (no such visibility)', () => {
+    const result = parseTrackingSample({ ...validSample, visibility: 'untracked' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.some((e) => e.fieldPath === 'visibility')).toBe(true);
   });
 
   it('rejects reconstructed origins without a disclosure', () => {
@@ -79,7 +97,7 @@ describe('parseTrackingSample', () => {
     const result = parseTrackingSample({
       ...validSample,
       origin: 'extrapolated',
-      visibility: 'untracked',
+      visibility: 'partial',
       reconstruction: { method: 'constant-velocity' },
     });
     expect(result.ok).toBe(false);
@@ -146,11 +164,14 @@ const validState = {
   score: { home: 1, away: 1 },
   ball: {
     entityId: 'ball',
-    xM: 12.2,
-    yM: -4.0,
-    zM: 0.3,
-    positionOrigin: 'synthetic_ground_truth',
-    confidence: 1,
+    position: {
+      kind: 'positioned',
+      xM: 12.2,
+      yM: -4.0,
+      zM: 0.3,
+      positionOrigin: 'synthetic_ground_truth',
+      confidence: 1,
+    },
     possessorEntityId: 'home-08',
   },
   players: [
@@ -186,7 +207,89 @@ describe('parseMatchState', () => {
     if (!result.ok) return;
     const state: MatchState = result.data;
     expect(state.reducerRevision).toBe(11);
+    expect(state.ball.position.kind).toBe('positioned');
     expect(state.ball.possessorEntityId).toBe('home-08');
+  });
+
+  it('accepts an event-only projection with an explicitly unavailable ball (review fix 1)', () => {
+    const eventOnly = {
+      ...validState,
+      ball: {
+        entityId: 'ball',
+        position: { kind: 'unavailable', reason: 'no_tracking_source' },
+        possessorEntityId: null,
+      },
+      players: [],
+      lastAcceptedEventId: 'evt-0043',
+    };
+    const result = parseMatchState(eventOnly);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.ball.position).toEqual({
+      kind: 'unavailable',
+      reason: 'no_tracking_source',
+    });
+  });
+
+  it('rejects an unavailable ball that still claims a possessor', () => {
+    const bad = {
+      ...validState,
+      ball: {
+        entityId: 'ball',
+        position: { kind: 'unavailable', reason: 'frames_absent' },
+        possessorEntityId: 'home-08',
+      },
+    };
+    const result = parseMatchState(bad);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.some((e) => e.fieldPath === 'ball.possessorEntityId')).toBe(true);
+  });
+
+  it('rejects unknown unavailable reasons and legacy flat ball coordinates', () => {
+    const badReason = {
+      ...validState,
+      ball: {
+        entityId: 'ball',
+        position: { kind: 'unavailable', reason: 'whatever' },
+        possessorEntityId: null,
+      },
+    };
+    expect(parseMatchState(badReason).ok).toBe(false);
+
+    // Pre-review flat ball shape: coordinates without the discriminated kind.
+    const flat = {
+      ...validState,
+      ball: { entityId: 'ball', xM: 1, yM: 2, zM: 3, possessorEntityId: null },
+    };
+    expect(parseMatchState(flat).ok).toBe(false);
+  });
+
+  it('rejects a player whose team contradicts the entity id (review fix 5)', () => {
+    const mismatch = {
+      ...validState,
+      players: [
+        { ...validState.players[0]!, entityId: 'home-08', teamId: 'away' },
+        validState.players[1]!,
+      ],
+    };
+    const result = parseMatchState(mismatch);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const error = result.errors.find((e) => e.fieldPath === 'players[0].teamId');
+    expect(error).toBeDefined();
+    expect(error?.message).toContain('contradicts');
+  });
+
+  it('accepts players whose teams match their entity ids', () => {
+    const result = parseMatchState({
+      ...validState,
+      players: [
+        { ...validState.players[0]!, teamId: 'home' },
+        { ...validState.players[1]!, teamId: 'away' },
+      ],
+    });
+    expect(result.ok).toBe(true);
   });
 
   it('rejects a possessor who is not in players', () => {

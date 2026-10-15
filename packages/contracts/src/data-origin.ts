@@ -59,11 +59,22 @@ export const reconstructionDisclosure = z
   );
 
 /**
- * Sample visibility semantics (docs/05 missing-data handling): `tracked`
- * samples come from a factual origin; `partial`/`untracked` samples must be
- * explicitly reconstructed or marked absent — never silently filled.
+ * Sample visibility state machine (docs/05 missing-data handling), enforced
+ * as a strict bijection in `tracking-sample.ts`:
+ *
+ * - `tracked`    ⇔ factual origin (`source_observed`/`synthetic_ground_truth`),
+ *                 no reconstruction disclosure.
+ * - `partial`    ⇔ reconstructed origin (`interpolated`/`extrapolated`) with a
+ *                 disclosed method (extrapolation additionally discloses an
+ *                 uncertainty horizon).
+ *
+ * There is deliberately **no `untracked` sample**: absent data is represented
+ * by the *absence of samples* (docs/05: "missing samples are explicitly
+ * absent — not filled with unlabeled fabrication"). A coordinate-bearing
+ * "untracked" record would be a contradiction; projection-level unknowns use
+ * MatchState's explicit unavailable-ball variant instead.
  */
-export const SAMPLE_VISIBILITIES = ['tracked', 'partial', 'untracked'] as const;
+export const SAMPLE_VISIBILITIES = ['tracked', 'partial'] as const;
 export type SampleVisibility = (typeof SAMPLE_VISIBILITIES)[number];
 
 export const sampleVisibility = z.enum(SAMPLE_VISIBILITIES);
