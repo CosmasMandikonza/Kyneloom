@@ -94,6 +94,25 @@ describe('describeFixtureStatus and fixtureDirectoryLabel (path-leak regression)
     expect(fixtureDirectoryLabel(status)).toBe('KYNELOOM_FIXTURES_DIR override (index.json)');
   });
 
+  it('never renders snippets embedded in a malformed JSON parse error', () => {
+    const outside = makeTempDir();
+    // Node JSON.parse errors can echo the first part of the rejected payload.
+    writeFileSync(path.join(outside, 'index.json'), 'C:/Users/private-owner/secret.json');
+    const status = runWithOverrideDir(outside, () => loadFixtureIndex());
+    expect(status.status).toBe('invalid');
+    if (status.status !== 'invalid') return;
+
+    expect(status.message).toBe('index.json is not valid JSON');
+    const summary = describeFixtureStatus(status);
+    expect(summary.detail).not.toContain('C:/Users');
+    expect(summary.detail).not.toContain(outside);
+    expect(() => assertSummaryIsPathFree(summary)).not.toThrow();
+
+    // Preserve full diagnostics in the server log only, not in rendered text.
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.join(' ')).toContain('parse error:');
+  });
+
   it('never leaks the directory for an invalid index loaded from outside the workspace', () => {
     const outside = makeTempDir();
     writeFileSync(path.join(outside, 'index.json'), '{broken');
