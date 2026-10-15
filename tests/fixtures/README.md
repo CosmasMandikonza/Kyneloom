@@ -39,9 +39,29 @@ schemas are jointly owned by KYN-02 and must not be invented here.
   Windows-style traversal (`folder\..\secret.json`), `..`/`.`/empty path
   segments, and control characters.
 
-The committed `index.json` currently registers **zero fixtures** on purpose:
-no synthetic match data exists yet, and the repository does not fabricate
-player trajectories or match statistics.
+## generated/ — canonical golden fixture (KYN-03)
+
+`generated/synthetic-derby-01/` holds the committed golden fixture produced by
+the seeded simulator (`pnpm fixture:generate --seed 24017`):
+
+- `events.json` — 11 canonical `MatchEvent` envelopes (kickoff, halves, an
+  away goal, the golden pass/shot/goal sequence, full time).
+- `tracking.jsonl` — 5,129 canonical `TrackingSample` lines: 23 entities per
+  frame, 10 Hz across the golden window [4717000, 4731000] and 1 Hz context
+  (±30 s / +10 s, plus windows around every emitted event).
+- `metadata.json` — seed, generator version, sampling plan, per-half attack
+  directions, score timeline, golden metrics **derived from the emitted
+  samples** (decoy-run separation 6.3 → 20.3 m), and sha256 integrity
+  checksums.
+- `README.md` — the human-readable golden timeline.
+
+The fixture is registered in `index.json` (id `synthetic-derby-01`), so the
+web app's fixture seam renders it. Regeneration is byte-identical (asserted
+by `tests/golden-fixture.test.ts`); a different seed produces a different but
+contract-valid scenario. The deterministic reducer (KYN-04) is NOT part of
+the generator: fault-injection variants (duplicates, out-of-order delivery,
+late corrections, dropped frames, identity swaps) are produced by
+`@kyneloom/match-core` variant functions as reducer test inputs.
 
 ## Overriding the location
 

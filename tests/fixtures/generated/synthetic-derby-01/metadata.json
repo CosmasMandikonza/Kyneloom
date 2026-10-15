@@ -1,0 +1,92 @@
+{
+  "matchId": "synthetic-derby-01",
+  "seed": 24017,
+  "generatorVersion": "fixture-engine-v1",
+  "narrative": "The Invisible Assist — decoy run, opened lane, threaded pass, equalizer (docs/15)",
+  "pitch": {
+    "lengthM": 105,
+    "widthM": 68,
+    "coordinateSystem": "pitch-meters-center-origin-v1"
+  },
+  "attackDirectionsPerHalf": {
+    "first": {
+      "home": "-x",
+      "away": "+x"
+    },
+    "second": {
+      "home": "+x",
+      "away": "-x"
+    }
+  },
+  "sampling": {
+    "goldenHz": 10,
+    "backgroundHz": 1,
+    "goldenWindowMs": [
+      4717000,
+      4731000
+    ],
+    "contextBeforeMs": 30000,
+    "contextAfterMs": 10000,
+    "emittedFromMs": 500,
+    "emittedToMs": 4741000,
+    "frameCount": 223,
+    "sampleCount": 5129
+  },
+  "eventCount": 11,
+  "goldenCheckpointMs": 4722100,
+  "scoreTimeline": [
+    {
+      "atMs": 0,
+      "score": "0-0"
+    },
+    {
+      "atMs": 2095400,
+      "score": "0-1"
+    },
+    {
+      "atMs": 4728300,
+      "score": "1-1"
+    }
+  ],
+  "golden": {
+    "checkpointMs": 4722100,
+    "decoyRun": {
+      "winger": "home-11",
+      "drawnDefender": "away-03",
+      "striker": "home-09",
+      "fromMs": 4720500,
+      "toMs": 4724000,
+      "separationBeforeM": 6.306,
+      "separationAfterM": 20.344,
+      "separationDeltaM": 14.037,
+      "wingerTopSpeedMps": 7.183
+    },
+    "pass": {
+      "from": "home-08",
+      "to": "home-09",
+      "attemptedMs": 4724000,
+      "completedMs": 4726200,
+      "distanceM": 16.913,
+      "speedMps": 7.688
+    },
+    "shot": {
+      "by": "home-09",
+      "atMs": 4727800,
+      "goalMs": 4728300,
+      "distanceM": 11.863,
+      "speedMps": 23.726
+    }
+  },
+  "notes": [
+    "Simplified football: bounded speed/acceleration steering, scripted narrative beats; not a physics-accurate simulation.",
+    "Background possession transitions are movement-coherent but not event-logged; only listed events are canonical.",
+    "Full-time event at 5400000 ms intentionally has no tracking frames: absent data is explicit absence.",
+    "Frame ids follow frame-<sampleTimeMs/100>; every event time is on the tick grid, so each event has an exact frame.",
+    "Two-pass derivation: the ball rides recorded player tracks, so ball/actor agreement at event timestamps is exact."
+  ],
+  "integrity": {
+    "events": "sha256:c18196de449df3a7098d69872512606403e5ed546a3544faedb95bf2bc3e6e97",
+    "tracking": "sha256:4276fb09ec030f6d9c974f524f27f35350b1176ffc7e11676e33fd52d01ee4bd",
+    "generatorVersion": "fixture-engine-v1"
+  }
+}

@@ -1,0 +1,310 @@
+[
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0001",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "kickoff",
+    "occurredAtMs": 500,
+    "ingestedAt": "2026-10-12T14:00:00.750Z",
+    "sequence": 1,
+    "actorId": "home-07",
+    "teamId": "home",
+    "position": {
+      "xM": 11.29,
+      "yM": -0.079
+    },
+    "attributes": {
+      "kicking_off": "home"
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  },
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0002",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "shot_attempted",
+    "occurredAtMs": 2095000,
+    "ingestedAt": "2026-10-12T14:34:55.250Z",
+    "sequence": 2,
+    "actorId": "away-10",
+    "teamId": "away",
+    "position": {
+      "xM": 42.953,
+      "yM": -5.173
+    },
+    "attributes": {
+      "range_m": 8.6
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  },
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0003",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "goal",
+    "occurredAtMs": 2095400,
+    "ingestedAt": "2026-10-12T14:34:55.650Z",
+    "sequence": 3,
+    "actorId": "away-10",
+    "teamId": "away",
+    "position": {
+      "xM": 43.842,
+      "yM": -4.845
+    },
+    "attributes": {
+      "score_after": "0-1"
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  },
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0004",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "period_end",
+    "occurredAtMs": 2700000,
+    "ingestedAt": "2026-10-12T14:45:00.250Z",
+    "sequence": 4,
+    "actorId": null,
+    "teamId": null,
+    "attributes": {
+      "period": "first_half"
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  },
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0005",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "period_start",
+    "occurredAtMs": 2700500,
+    "ingestedAt": "2026-10-12T14:45:00.750Z",
+    "sequence": 5,
+    "actorId": null,
+    "teamId": null,
+    "attributes": {
+      "period": "second_half"
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  },
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0006",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "kickoff",
+    "occurredAtMs": 2701000,
+    "ingestedAt": "2026-10-12T14:45:01.250Z",
+    "sequence": 6,
+    "actorId": "away-11",
+    "teamId": "away",
+    "position": {
+      "xM": -31.563,
+      "yM": 3.3
+    },
+    "attributes": {
+      "kicking_off": "away"
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  },
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0007",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "pass_attempted",
+    "occurredAtMs": 4724000,
+    "ingestedAt": "2026-10-12T15:18:44.250Z",
+    "sequence": 7,
+    "actorId": "home-08",
+    "teamId": "home",
+    "position": {
+      "xM": 23.783,
+      "yM": -2.014
+    },
+    "attributes": {
+      "target_player_id": "home-09"
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  },
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0042",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "pass_completed",
+    "occurredAtMs": 4726200,
+    "ingestedAt": "2026-10-12T15:18:46.450Z",
+    "sequence": 8,
+    "actorId": "home-08",
+    "teamId": "home",
+    "position": {
+      "xM": 24.815,
+      "yM": -2.185
+    },
+    "attributes": {
+      "target_player_id": "home-09"
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  },
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0009",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "shot_attempted",
+    "occurredAtMs": 4727800,
+    "ingestedAt": "2026-10-12T15:18:48.050Z",
+    "sequence": 9,
+    "actorId": "home-09",
+    "teamId": "home",
+    "position": {
+      "xM": 43.094,
+      "yM": -9.357
+    },
+    "attributes": {
+      "target_goal_x_m": 52.5
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  },
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0010",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "goal",
+    "occurredAtMs": 4728300,
+    "ingestedAt": "2026-10-12T15:18:48.550Z",
+    "sequence": 10,
+    "actorId": "home-09",
+    "teamId": "home",
+    "position": {
+      "xM": 43.782,
+      "yM": -8.143
+    },
+    "attributes": {
+      "score_after": "1-1"
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  },
+  {
+    "schemaVersion": "1.0",
+    "eventId": "evt-0011",
+    "providerId": "kyneloom-simulator",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "fixtureSeed": 24017,
+    "sourceRevision": 1,
+    "kind": "period_end",
+    "occurredAtMs": 5400000,
+    "ingestedAt": "2026-10-12T15:30:00.250Z",
+    "sequence": 11,
+    "actorId": null,
+    "teamId": null,
+    "attributes": {
+      "period": "full_time",
+      "score": "1-1"
+    },
+    "provenance": {
+      "origin": "synthetic_ground_truth",
+      "generatorVersion": "fixture-engine-v1",
+      "licenseRef": "synthetic-internal",
+      "confidence": 1
+    },
+    "correctionOf": null
+  }
+]

@@ -89,7 +89,7 @@ describe('resolveFixturesDirectory', () => {
 });
 
 describe('loadFixtureIndex', () => {
-  it('loads the committed empty index as a valid intentional state', () => {
+  it('loads the committed index with the registered golden fixture (KYN-03)', () => {
     const status = loadFixtureIndex();
     expect(status).toMatchObject({
       status: 'ok',
@@ -98,7 +98,14 @@ describe('loadFixtureIndex', () => {
     });
     if (status.status !== 'ok') return;
     expect(status.index.schemaVersion).toBe('0.1');
-    expect(status.index.fixtures).toEqual([]);
+    expect(status.index.fixtures).toHaveLength(1);
+    const entry = status.index.fixtures[0]!;
+    expect(entry).toMatchObject({
+      id: 'synthetic-derby-01',
+      generator: 'fixture-engine-v1',
+      seed: 24017,
+      file: 'generated/synthetic-derby-01/metadata.json',
+    });
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
