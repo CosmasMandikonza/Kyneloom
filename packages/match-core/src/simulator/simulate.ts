@@ -212,22 +212,26 @@ export function generateMatchFixture(options: SimOptions): FixtureBundle {
   const contextAfter = options.contextAfterMs ?? 10_000;
   const pitchLength = options.pitchLengthM ?? 105;
   const pitchWidth = options.pitchWidthM ?? 68;
-  // The integration tick is 100 ms (10 Hz). Sampling faster than the tick
-  // would emit repeated identical poses and round to duplicate frame ids —
-  // false spatial resolution — so such rates are rejected, not advertised.
-  const maxHz = 1000 / TICK_MS;
-  if (!Number.isInteger(goldenHz) || goldenHz <= 0 || 1000 % goldenHz !== 0) {
-    throw new RangeError(`goldenHz must divide 1000 (e.g. 1, 2, 5 or 10), got ${String(goldenHz)}`);
-  }
-  if (goldenHz > maxHz) {
-    throw new RangeError(
-      `goldenHz ${String(goldenHz)} exceeds the simulator's ${String(maxHz)} Hz integration tick; sampling faster would repeat poses and duplicate frame ids. Raise the integration rate first if higher resolution is needed.`,
-    );
-  }
-  if (!Number.isInteger(backgroundHz) || backgroundHz <= 0 || 1000 % backgroundHz !== 0) {
-    throw new RangeError(
-      `backgroundHz must divide 1000 (e.g. 1 or 2), got ${String(backgroundHz)}`,
-    );
+  // Sampling must align with the 100 ms integration tick: the step 1000/hz
+  // has to be a positive integer multiple of the tick. Faster steps would
+  // repeat poses and produce fractional/duplicate frame ids; misaligned
+  // steps (250 ms, 125 ms, …) put sample times between ticks where no pose
+  // exists. Supported rates are exactly 1, 2, 5 and 10 Hz.
+  const validateHz = (name: 'goldenHz' | 'backgroundHz', hz: number): void => {
+    if (!Number.isInteger(hz) || hz <= 0 || 1000 % hz !== 0) {
+      throw new RangeError(`${name} must divide 1000 (e.g. 1, 2, 5 or 10), got ${String(hz)}`);
+    }
+    const stepMs = 1000 / hz;
+    if (stepMs % TICK_MS !== 0) {
+      throw new RangeError(
+        `${name} ${String(hz)} gives a ${String(stepMs)} ms sample step, which is not aligned with the ${String(TICK_MS)} ms integration tick; supported rates are 1, 2, 5 and 10 Hz`,
+      );
+    }
+  };
+  validateHz('goldenHz', goldenHz);
+  validateHz('backgroundHz', backgroundHz);
+  if (backgroundHz > goldenHz) {
+    throw new RangeError('backgroundHz must not exceed goldenHz');
   }
   if (backgroundHz > goldenHz) {
     throw new RangeError('backgroundHz must not exceed goldenHz');
@@ -298,6 +302,13 @@ export function generateMatchFixture(options: SimOptions): FixtureBundle {
     for (let t = beat.atMs - 4000; t <= beat.atMs + 4000; t += bgStep) {
       if (t >= 0 && t <= simEnd) frames.add(t);
     }
+  }
+  // Invariant at every supported rate: each emitted event time inside the
+  // simulation window has an EXACT frame (event times sit on the tick grid,
+  // so the pose exists and the frame id is integral). Without this, a
+  // 5 Hz grid would miss goal@4728300 and a 1/2 Hz grid most golden beats.
+  for (const beat of beats) {
+    if (beat.atMs >= 0 && beat.atMs <= simEnd) frames.add(beat.atMs);
   }
   const frameTimes = [...frames].sort((a, b) => a - b);
 

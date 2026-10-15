@@ -15,7 +15,7 @@
  *   README.md       — human-readable golden timeline
  */
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { canonicalJsonStringify } from '@kyneloom/contracts';
 import {
@@ -47,23 +47,60 @@ export interface GenerationPlan {
   readonly isCanonical: boolean;
 }
 
+/**
+ * Path containment with symlink resolution (best effort): true when `child`
+ * is `parent` itself or lies inside it.
+ */
+function isInside(child: string, parent: string): boolean {
+  const normalize = (p: string): string => {
+    try {
+      return realPathBestEffort(p);
+    } catch {
+      return path.resolve(p);
+    }
+  };
+  const c = normalize(child);
+  const p = normalize(parent);
+  return c === p || c.startsWith(p + path.sep);
+}
+
+function realPathBestEffort(p: string): string {
+  const resolved = path.resolve(p);
+  try {
+    return realpathSync(resolved);
+  } catch {
+    // Target (or an ancestor) may not exist yet — resolve the deepest
+    // existing ancestor, then re-append the remainder.
+    const dirname = path.dirname(resolved);
+    if (dirname === resolved) return resolved;
+    try {
+      return path.join(realpathSync(dirname), path.basename(resolved));
+    } catch {
+      return resolved;
+    }
+  }
+}
+
+/** Committed fixture territory: nothing but the canonical seed may write here. */
+const COMMITTED_FIXTURES_ROOT = path.resolve('tests', 'fixtures');
+
 export function resolveGenerationPlan(options: CliOptions): GenerationPlan {
   const isCanonical = options.seed === CANONICAL_GOLDEN_SEED;
+  const canonicalDir = path.resolve('tests', 'fixtures', 'generated', 'synthetic-derby-01');
   if (options.out) {
-    return {
-      seed: options.seed,
-      outDir: path.resolve(options.out),
-      registerInIndex: false,
-      isCanonical,
-    };
+    const outDir = path.resolve(options.out);
+    // A custom --out must never let an alternate seed reach the committed
+    // fixtures (the canonical golden directory in particular) — resolved
+    // equivalents and symlinks included.
+    if (!isCanonical && isInside(outDir, COMMITTED_FIXTURES_ROOT)) {
+      throw new Error(
+        `refusing to write non-canonical seed ${String(options.seed)} into the committed fixtures tree (${outDir}); alternate seeds belong under .fixture-scratch/ or a --out outside tests/fixtures`,
+      );
+    }
+    return { seed: options.seed, outDir, registerInIndex: false, isCanonical };
   }
   if (isCanonical) {
-    return {
-      seed: options.seed,
-      outDir: path.resolve('tests', 'fixtures', 'generated', 'synthetic-derby-01'),
-      registerInIndex: true,
-      isCanonical,
-    };
+    return { seed: options.seed, outDir: canonicalDir, registerInIndex: true, isCanonical };
   }
   return {
     seed: options.seed,

@@ -45,10 +45,11 @@ describe('determinism (KYN-03 acceptance)', () => {
     );
   });
 
-  it('rejects sampling rates above the 10 Hz integration tick (review fix 1)', () => {
-    // 20 Hz would emit two samples per 100 ms tick: repeated identical poses
-    // and frame ids rounded to duplicates — false spatial resolution.
-    for (const goldenHz of [20, 25, 40, 100]) {
+  it('rejects sampling rates incompatible with the 100 ms tick (final review fix 2)', () => {
+    // Above the tick (20–100 Hz): repeated poses, duplicate frame ids.
+    // Below but misaligned (4 Hz → 250 ms, 8 Hz → 125 ms): sample times fall
+    // between ticks where no pose exists, and frame ids round fractionally.
+    for (const goldenHz of [4, 8, 20, 25, 40, 100]) {
       let error: RangeError | null = null;
       try {
         generateMatchFixture({ seed: 1, goldenHz });
@@ -57,9 +58,38 @@ describe('determinism (KYN-03 acceptance)', () => {
       }
       expect(error, `goldenHz ${goldenHz}`).toBeInstanceOf(RangeError);
       expect(error!.message).toContain('integration tick');
-      expect(error!.message).toContain('10');
+      expect(error!.message).toContain('1, 2, 5 and 10');
+    }
+    for (const backgroundHz of [4, 8]) {
+      expect(() => generateMatchFixture({ seed: 1, backgroundHz })).toThrow(/integration tick/);
     }
   });
+
+  it(
+    'at every supported lower rate, each emitted event has an exact frame (final review fix 2)',
+    { timeout: 90_000 },
+    () => {
+      for (const goldenHz of [1, 2, 5] as const) {
+        const bundle = generateMatchFixture({ seed: 24017, goldenHz, backgroundHz: 1 });
+        const frameTimes = new Set(bundle.tracking.map((s) => s.sampleTimeMs));
+        for (const event of bundle.events) {
+          // Full time is outside the emission window by design (documented).
+          if (event.attributes?.['period'] === 'full_time') continue;
+          expect(
+            frameTimes.has(event.occurredAtMs),
+            `goldenHz ${goldenHz}: ${event.eventId}@${event.occurredAtMs}`,
+          ).toBe(true);
+        }
+        // Frame ids stay truthful integral multiples of the tick at any rate.
+        for (const sample of bundle.tracking) {
+          expect(sample.sourceFrameId).toBe(`frame-${sample.sampleTimeMs / 100}`);
+        }
+        // Golden events (4724000…4728300) exist in the window even at 1 Hz.
+        const golden = bundle.events.filter((e) => e.occurredAtMs >= 4717000);
+        expect(golden.length).toBeGreaterThanOrEqual(4);
+      }
+    },
+  );
 
   it('still accepts rates up to the tick; default output unchanged', { timeout: 20_000 }, () => {
     const atTick = generateMatchFixture({ seed: 24017, goldenHz: 10 });

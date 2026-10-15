@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { rmSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   CANONICAL_GOLDEN_SEED,
@@ -9,15 +9,20 @@ import {
 } from '../scripts/generate-fixture';
 
 /**
- * Review fix 3: alternate-seed generation must never overwrite or re-register
- * the canonical seed-24017 golden fixture. Verified end to end — the golden
- * files and the fixture index are snapshotted, an alternate seed is actually
- * generated, and byte-identity is asserted afterwards.
+ * Review rounds 2+3: alternate-seed generation must never overwrite or
+ * re-register the canonical seed-24017 golden fixture — including via a
+ * custom --out — and test cleanup must only remove directories this test
+ * file owns, never other developers' scratch fixtures.
  */
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
 const goldenDir = path.join(repoRoot, 'tests', 'fixtures', 'generated', 'synthetic-derby-01');
 const indexPath = path.join(repoRoot, 'tests', 'fixtures', 'index.json');
+const scratchRoot = path.join(repoRoot, '.fixture-scratch');
+/** Owned exclusively by this test file; nothing else is ever deleted. */
+const testScratchDir = path.join(scratchRoot, 'seed-4242');
+/** Stands in for a developer's unrelated experiment; must survive the run. */
+const bystanderDir = path.join(scratchRoot, 'seed-98765-bystander');
 
 function readGolden(): Record<string, string> {
   const names = ['events.json', 'tracking.jsonl', 'metadata.json', 'README.md'];
@@ -25,7 +30,8 @@ function readGolden(): Record<string, string> {
 }
 
 afterAll(() => {
-  rmSync(path.join(repoRoot, '.fixture-scratch'), { recursive: true, force: true });
+  // Scoped cleanup: ONLY the directory this test file created.
+  rmSync(testScratchDir, { recursive: true, force: true });
 });
 
 describe('resolveGenerationPlan', () => {
@@ -45,16 +51,81 @@ describe('resolveGenerationPlan', () => {
     expect(plan.outDir).toBe(path.join(repoRoot, '.fixture-scratch', 'seed-4242'));
   });
 
-  it('honors --out for both, with registration still canonical-only', () => {
-    const custom = resolveGenerationPlan({ seed: CANONICAL_GOLDEN_SEED, out: 'somewhere/else' });
-    expect(custom.outDir).toBe(path.resolve(repoRoot, 'somewhere/else'));
-    expect(custom.registerInIndex).toBe(false); // index entry would point nowhere
-    const altCustom = resolveGenerationPlan({ seed: 99, out: 'tmp/x' });
-    expect(altCustom.registerInIndex).toBe(false);
+  it('rejects alternate-seed --out aimed at the canonical golden directory (final review: --out bypass)', () => {
+    const dangerous = [
+      'tests/fixtures/generated/synthetic-derby-01',
+      'tests/fixtures/generated/synthetic-derby-01/',
+      './tests/fixtures/generated/synthetic-derby-01',
+      'tests/fixtures/generated/synthetic-derby-01/.',
+      'tests\\fixtures\\generated\\synthetic-derby-01',
+    ];
+    for (const out of dangerous) {
+      expect(() => resolveGenerationPlan({ seed: 4242, out }), out).toThrow(
+        /committed fixtures tree/,
+      );
+    }
+  });
+
+  it('rejects alternate-seed --out anywhere inside the committed fixtures tree', () => {
+    expect(() => resolveGenerationPlan({ seed: 4242, out: 'tests/fixtures/contracts' })).toThrow(
+      /committed fixtures tree/,
+    );
+    expect(() => resolveGenerationPlan({ seed: 4242, out: 'tests/fixtures/index.json' })).toThrow(
+      /committed fixtures tree/,
+    );
+  });
+
+  it('still allows alternate-seed --out outside tests/fixtures, and canonical --out anywhere', () => {
+    expect(() => resolveGenerationPlan({ seed: 4242, out: 'tmp/experiment' })).not.toThrow();
+    expect(() =>
+      resolveGenerationPlan({ seed: CANONICAL_GOLDEN_SEED, out: 'tmp/golden-copy' }),
+    ).not.toThrow();
   });
 });
 
-describe('alternate-seed generation cannot touch the golden fixture (review fix 3)', () => {
+describe('dangerous path end to end (CLI subprocess)', () => {
+  it(
+    'the CLI refuses and leaves golden files and index byte-identical',
+    { timeout: 90_000 },
+    () => {
+      const goldenBefore = readGolden();
+      const indexBefore = readFileSync(indexPath, 'utf-8');
+
+      let failed = false;
+      let output = '';
+      try {
+        execFileSync(
+          'pnpm',
+          [
+            'exec',
+            'tsx',
+            'scripts/generate-fixture.ts',
+            '--seed',
+            '4242',
+            '--out',
+            'tests/fixtures/generated/synthetic-derby-01',
+          ],
+          { cwd: repoRoot, stdio: 'pipe', timeout: 60_000, shell: process.platform === 'win32' },
+        );
+      } catch (error) {
+        failed = true;
+        const err = error as { stderr?: Buffer; message?: string };
+        output = `${String(err.stderr ?? '')}\n${String(err.message ?? '')}`;
+      }
+      expect(failed, 'the CLI must exit non-zero on the dangerous path').toBe(true);
+      expect(output).toContain('committed fixtures tree');
+
+      for (const [name, content] of Object.entries(goldenBefore)) {
+        expect(readFileSync(path.join(goldenDir, name), 'utf-8'), `${name} must be untouched`).toBe(
+          content,
+        );
+      }
+      expect(readFileSync(indexPath, 'utf-8')).toBe(indexBefore);
+    },
+  );
+});
+
+describe('alternate-seed generation cannot touch the golden fixture', () => {
   it(
     'end to end: seed 4242 leaves golden files and the index byte-identical',
     { timeout: 30_000 },
@@ -65,11 +136,24 @@ describe('alternate-seed generation cannot touch the golden fixture (review fix 
       runGeneration(resolveGenerationPlan({ seed: 4242 }));
 
       const goldenAfter = readGolden();
-      const indexAfter = readFileSync(indexPath, 'utf-8');
       for (const [name, content] of Object.entries(goldenBefore)) {
         expect(goldenAfter[name], `${name} must be untouched`).toBe(content);
       }
-      expect(indexAfter).toBe(indexBefore);
+      expect(readFileSync(indexPath, 'utf-8')).toBe(indexBefore);
     },
   );
+
+  it('cleanup removes only this file-owned scratch directory, preserving bystanders (final review fix 3)', () => {
+    // A developer's unrelated experiment that must survive the whole run.
+    mkdirSync(bystanderDir, { recursive: true });
+    writeFileSync(path.join(bystanderDir, 'marker.txt'), 'do not delete');
+
+    expect(existsSync(testScratchDir)).toBe(true); // our own scratch exists
+    // Scoped removal — the exact operation afterAll performs.
+    rmSync(testScratchDir, { recursive: true, force: true });
+
+    expect(existsSync(testScratchDir)).toBe(false);
+    expect(existsSync(path.join(bystanderDir, 'marker.txt'))).toBe(true);
+    expect(readFileSync(path.join(bystanderDir, 'marker.txt'), 'utf-8')).toBe('do not delete');
+  });
 });
