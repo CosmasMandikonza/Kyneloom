@@ -1,0 +1,377 @@
+{
+  "generatedAt": "2026-10-15T22:42:56.265Z",
+  "viewports": [
+    "1440x900",
+    "1280x800",
+    "1024x768",
+    "390x844",
+    "375x812"
+  ],
+  "routes": [
+    "/",
+    "/explore",
+    "/studio",
+    "/m/mom-synthetic-78m"
+  ],
+  "captures": 25,
+  "failures": [],
+  "results": [
+    {
+      "route": "landing",
+      "viewport": "1440x900",
+      "reducedMotion": false,
+      "screenshot": "screenshots/landing-1440x900.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Kyneloom — Every moment has a world inside",
+        "focusables": 7,
+        "ctaHrefs": "/explore",
+        "fixtureSamplesShown": "5,129"
+      }
+    },
+    {
+      "route": "explore",
+      "viewport": "1440x900",
+      "reducedMotion": false,
+      "screenshot": "screenshots/explore-1440x900.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Explore — The Invisible Assist · Kyneloom",
+        "focusables": 10,
+        "playheadMoves": true,
+        "cameraDisabled": 4,
+        "lensSelectable": 3,
+        "lensAriaChecked": "Analyst"
+      }
+    },
+    {
+      "route": "studio",
+      "viewport": "1440x900",
+      "reducedMotion": false,
+      "screenshot": "screenshots/studio-1440x900.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Studio — production workspace · Kyneloom",
+        "focusables": 6,
+        "disabledPublish": 1,
+        "eventMarkers": 4
+      }
+    },
+    {
+      "route": "moment",
+      "viewport": "1440x900",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moment-1440x900.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Published Moment · Kyneloom",
+        "focusables": 6,
+        "unpublishedChip": 1
+      }
+    },
+    {
+      "route": "landing",
+      "viewport": "1440x900",
+      "reducedMotion": true,
+      "screenshot": "screenshots/landing-1440x900-rm.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Kyneloom — Every moment has a world inside",
+        "focusables": 7,
+        "ctaHrefs": "/explore",
+        "fixtureSamplesShown": "5,129"
+      }
+    },
+    {
+      "route": "explore",
+      "viewport": "1440x900",
+      "reducedMotion": true,
+      "screenshot": "screenshots/explore-1440x900-rm.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Explore — The Invisible Assist · Kyneloom",
+        "focusables": 10,
+        "playheadMoves": true,
+        "cameraDisabled": 4,
+        "lensSelectable": 3,
+        "lensAriaChecked": "Analyst"
+      }
+    },
+    {
+      "route": "landing",
+      "viewport": "1280x800",
+      "reducedMotion": false,
+      "screenshot": "screenshots/landing-1280x800.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Kyneloom — Every moment has a world inside",
+        "focusables": 7,
+        "ctaHrefs": "/explore",
+        "fixtureSamplesShown": "5,129"
+      }
+    },
+    {
+      "route": "explore",
+      "viewport": "1280x800",
+      "reducedMotion": false,
+      "screenshot": "screenshots/explore-1280x800.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Explore — The Invisible Assist · Kyneloom",
+        "focusables": 10,
+        "playheadMoves": true,
+        "cameraDisabled": 4,
+        "lensSelectable": 3,
+        "lensAriaChecked": "Analyst"
+      }
+    },
+    {
+      "route": "studio",
+      "viewport": "1280x800",
+      "reducedMotion": false,
+      "screenshot": "screenshots/studio-1280x800.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Studio — production workspace · Kyneloom",
+        "focusables": 6,
+        "disabledPublish": 1,
+        "eventMarkers": 4
+      }
+    },
+    {
+      "route": "moment",
+      "viewport": "1280x800",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moment-1280x800.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Published Moment · Kyneloom",
+        "focusables": 6,
+        "unpublishedChip": 1
+      }
+    },
+    {
+      "route": "landing",
+      "viewport": "1024x768",
+      "reducedMotion": false,
+      "screenshot": "screenshots/landing-1024x768.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Kyneloom — Every moment has a world inside",
+        "focusables": 7,
+        "ctaHrefs": "/explore",
+        "fixtureSamplesShown": "5,129"
+      }
+    },
+    {
+      "route": "explore",
+      "viewport": "1024x768",
+      "reducedMotion": false,
+      "screenshot": "screenshots/explore-1024x768.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Explore — The Invisible Assist · Kyneloom",
+        "focusables": 10,
+        "playheadMoves": true,
+        "cameraDisabled": 4,
+        "lensSelectable": 3,
+        "lensAriaChecked": "Analyst"
+      }
+    },
+    {
+      "route": "studio",
+      "viewport": "1024x768",
+      "reducedMotion": false,
+      "screenshot": "screenshots/studio-1024x768.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Studio — production workspace · Kyneloom",
+        "focusables": 6,
+        "disabledPublish": 1,
+        "eventMarkers": 4
+      }
+    },
+    {
+      "route": "moment",
+      "viewport": "1024x768",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moment-1024x768.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Published Moment · Kyneloom",
+        "focusables": 6,
+        "unpublishedChip": 1
+      }
+    },
+    {
+      "route": "landing",
+      "viewport": "390x844",
+      "reducedMotion": false,
+      "screenshot": "screenshots/landing-390x844.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Kyneloom — Every moment has a world inside",
+        "focusables": 7,
+        "ctaHrefs": "/explore",
+        "fixtureSamplesShown": "5,129"
+      }
+    },
+    {
+      "route": "explore",
+      "viewport": "390x844",
+      "reducedMotion": false,
+      "screenshot": "screenshots/explore-390x844.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Explore — The Invisible Assist · Kyneloom",
+        "focusables": 10,
+        "playheadMoves": true,
+        "cameraDisabled": 4,
+        "lensSelectable": 3,
+        "lensAriaChecked": "Analyst"
+      }
+    },
+    {
+      "route": "studio",
+      "viewport": "390x844",
+      "reducedMotion": false,
+      "screenshot": "screenshots/studio-390x844.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Studio — production workspace · Kyneloom",
+        "focusables": 6,
+        "disabledPublish": 1,
+        "eventMarkers": 4
+      }
+    },
+    {
+      "route": "moment",
+      "viewport": "390x844",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moment-390x844.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Published Moment · Kyneloom",
+        "focusables": 6,
+        "unpublishedChip": 1
+      }
+    },
+    {
+      "route": "landing",
+      "viewport": "390x844",
+      "reducedMotion": true,
+      "screenshot": "screenshots/landing-390x844-rm.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Kyneloom — Every moment has a world inside",
+        "focusables": 7,
+        "ctaHrefs": "/explore",
+        "fixtureSamplesShown": "5,129"
+      }
+    },
+    {
+      "route": "explore",
+      "viewport": "390x844",
+      "reducedMotion": true,
+      "screenshot": "screenshots/explore-390x844-rm.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Explore — The Invisible Assist · Kyneloom",
+        "focusables": 10,
+        "playheadMoves": true,
+        "cameraDisabled": 4,
+        "lensSelectable": 3,
+        "lensAriaChecked": "Analyst"
+      }
+    },
+    {
+      "route": "landing",
+      "viewport": "375x812",
+      "reducedMotion": false,
+      "screenshot": "screenshots/landing-375x812.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Kyneloom — Every moment has a world inside",
+        "focusables": 7,
+        "ctaHrefs": "/explore",
+        "fixtureSamplesShown": "5,129"
+      }
+    },
+    {
+      "route": "explore",
+      "viewport": "375x812",
+      "reducedMotion": false,
+      "screenshot": "screenshots/explore-375x812.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Explore — The Invisible Assist · Kyneloom",
+        "focusables": 10,
+        "playheadMoves": true,
+        "cameraDisabled": 4,
+        "lensSelectable": 3,
+        "lensAriaChecked": "Analyst"
+      }
+    },
+    {
+      "route": "studio",
+      "viewport": "375x812",
+      "reducedMotion": false,
+      "screenshot": "screenshots/studio-375x812.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Studio — production workspace · Kyneloom",
+        "focusables": 6,
+        "disabledPublish": 1,
+        "eventMarkers": 4
+      }
+    },
+    {
+      "route": "moment",
+      "viewport": "375x812",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moment-375x812.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Published Moment · Kyneloom",
+        "focusables": 6,
+        "unpublishedChip": 1
+      }
+    },
+    {
+      "route": "navigation",
+      "viewport": "1280x800",
+      "reducedMotion": false,
+      "screenshot": "screenshots/nav-flow-explore.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "landingToExplore": true,
+        "exploreToStudio": true
+      }
+    }
+  ]
+}

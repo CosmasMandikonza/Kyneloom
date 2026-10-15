@@ -31,6 +31,8 @@
 
 **Data visual encoding:** use stroke patterns, explicit labels and legend—not only hue. Observed: solid. Interpolated: fine dotted. Inferred: dashed with “inferred” chip. Unsupported: omitted from release, surfaced in Studio QA.
 
+**Implemented (KYN-05):** these tokens, the fluid type scale (`--step--1`…`--step-6`), spacing rhythm, glass surfaces and motion semantics live in `apps/web/src/app/globals.css` as CSS custom properties, transcribed verbatim from this table (`text-muted` is slightly lifted to `#B0C6CB` for in-context contrast; `line-soft #2A414B` and `mint-glow` added as derived values). All four surfaces consume only these variables.
+
 **Typography:** a disciplined geometric sans for product UI (e.g., Geist or similar licensed stack); numeric/tabular forms for timestamps and measurements; occasional editorial display typography only in marketing/scene headers. Avoid illegible hairline text over footage.
 
 ## Page anatomy

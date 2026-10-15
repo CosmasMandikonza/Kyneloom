@@ -38,6 +38,16 @@ A PR containing **Explore**, **Studio**, **Moment Gallery**, or **Published View
 - FPS/frame time and asset load measurements on a named device.
 - Known visual discrepancies and remediation.
 
+## Implemented visual QA procedure (KYN-05)
+
+The committed script `scripts/visual-qa.ts` (`pnpm qa:visual`) builds the web app, boots the production server, and drives Playwright Chromium through the four routes (`/`, `/explore`, `/studio`, `/m/mom-synthetic-78m`) at **1440×900, 1280×800, 1024×768, 390×844 and 375×812**, plus `prefers-reduced-motion` captures at 1440×900 and 390×844 for `/` and `/explore`.
+
+Per capture it asserts: no horizontal overflow, zero console errors, and route-specific behavior (landing CTA + real fixture facts, explore playhead keyboard/pointer scrubbing and lens selection, camera modes disabled with reasons, studio disabled publication controls + reducer-derived event markers, viewer truthful unpublished state). A nav-flow pass walks landing → explore → studio via real clicks.
+
+Artifacts land in `qa/screenshots/*.png` (25 captures) and `qa/report.json` (machine-written, excluded from Prettier). The run exits non-zero on any failure. The operator then **inspects the screenshots personally** and iterates the design — during KYN-05 this loop caught and fixed: a misspelled eyebrow (`SYNTHIC` → `SYNTHETIC`), imperceptible pitch-line art, a cramped scroll cue, a light scrollbar against the dark theme, indistinguishable camera/lens groups, a hidden tools rail in Studio, and faint timeline gridlines.
+
+Unit-level interaction coverage lives in `apps/web/src/app/explore/replay-stage.test.tsx` (jsdom + Testing Library: lens radiogroup, keyboard/pointer playhead arithmetic, truthfully disabled controls) and `apps/web/src/lib/match-fixture.test.ts` (the fixture→reducer seam).
+
 ## Screenshot review questions
 
 Does the viewer's eye land on the moment, not the controls? Are players selectable at all camera angles? Can the user locate time, selection and proof without scrolling? Are overlays readable against grass and dark stadium backgrounds? Can analysts see numbers with units and source statuses? Do mobile controls remain accessible without sacrificing the 3D scene? Can a keyboard user do everything meaningful?

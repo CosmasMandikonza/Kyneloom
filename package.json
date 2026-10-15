@@ -2,7 +2,7 @@
   "name": "kyneloom",
   "private": true,
   "version": "0.0.0",
-  "description": "Kyneloom \u2014 the evidence-native experience engine for interactive sports. Repository foundation (KYN-01).",
+  "description": "Kyneloom — the evidence-native experience engine for interactive sports. Repository foundation (KYN-01).",
   "type": "module",
   "packageManager": "pnpm@10.34.7",
   "engines": {
@@ -21,14 +21,19 @@
     "test:watch": "vitest",
     "docs:check": "node scripts/check-docs.mjs",
     "fixture:generate": "tsx scripts/generate-fixture.ts",
-    "replay:golden": "tsx scripts/replay-golden.ts"
+    "replay:golden": "tsx scripts/replay-golden.ts",
+    "qa:visual": "tsx scripts/visual-qa.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@kyneloom/contracts": "workspace:*",
     "@kyneloom/match-core": "workspace:*",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^22.18.0",
     "eslint": "^10.12.0",
+    "jsdom": "^26.1.0",
+    "playwright": "^1.64.1",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
