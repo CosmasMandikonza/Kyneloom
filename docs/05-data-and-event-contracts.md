@@ -123,16 +123,36 @@ these pure functions).
   contamination, unknown correction targets, invalid revision ordering,
   lateness and conflicting duplicate payloads are all captured with indexed,
   categorized reasons; nothing corrupts state. Conflicting duplicate TRACKING
-  samples reject both payloads — the position becomes explicitly absent, so a
-  corrupted frame can never become a verified spatial fact.
-- **History** — every accepted-identity revision (superseded included) stays
-  inspectable via `eventHistory()`; corrections append, never mutate.
+  samples tombstone the `(sampleTimeMs, entityId)` pair — every payload is
+  rejected and no later third sample can resurrect it, so a corrupted frame
+  can never become a verified spatial fact. Conflicting duplicate EVENT
+  payloads for one (identity, revision) poison that revision entirely (no
+  invented winner) until a legitimately higher valid revision resolves it.
+- **Invalid corrections never erase facts** — revisions are validated in
+  ascending order and only VALID ones are promoted; a rejected higher
+  revision quarantines itself while the previously accepted valid revision
+  remains authoritative (an unknown-target or forward-pointing "correction"
+  cannot rescind an accepted goal or erase a kickoff).
+- **History & as-of checkpoints** — every VALID envelope (superseded
+  revisions included) stays inspectable via `eventHistory()` in application
+  order (base events by event time, then corrections by source revision).
+  `revision N` in `matchStateAt(timeMs, revision)` = the state after the
+  first N envelopes were applied, so genuinely historical snapshots exist:
+  the score before and after a goal rescission are both addressable.
 - **API** — `projectMatch({matchId, events, tracking})` →
-  `matchStateAt(timeMs, revision?)` (canonical `MatchState`, immutable
-  revision checkpoints addressed by accepted-event count),
-  `timeline.sampleAt(timeMs)` and evidence metrics (below). Score is derived
-  ONLY from accepted goal/own-goal events (own-goal: `teamId` = benefiting
-  team); possession is a measured nearest-player-within-radius fact.
+  `matchStateAt(timeMs, revision?)` (canonical `MatchState`, as-of revision
+  checkpoints described above), `timeline.sampleAt(timeMs)` and evidence
+  metrics (below). Score is derived ONLY from accepted goal/own-goal events
+  (own-goal: `teamId` = benefiting team). The first half derives from an
+  accepted kickoff when no explicit first-half `period_start` exists.
+- **Possession is source-verified only** — `ball.possessorEntityId` is
+  populated exclusively when an accepted event explicitly identifies the
+  possessor (kickoff actor, `pass_completed` target, `shot_attempted`
+  actor), expires after `possessionValidityMs` (default 10 s) or at the next
+  possession-changing event (pass in flight → null, goal → null, period
+  boundary → null), and is never inferred from spatial proximity —
+  nearest-player estimation is a presentation-layer heuristic that stays
+  outside the canonical contract.
 
 ## Implemented generator (KYN-03)
 

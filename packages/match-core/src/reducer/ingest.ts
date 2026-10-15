@@ -9,27 +9,34 @@ import {
 /**
  * Authoritative stream ingestion (KYN-04).
  *
- * SUPERSESSION POLICY (the decision requested by Issue #4):
- * An event's identity is (providerId, eventId). Within an identity, the
- * envelope with the HIGHEST sourceRevision supersedes all lower revisions —
- * history is retained, never mutated. `correctionOf` may reference:
- *   - the SAME eventId at a lower revision: a revision bump of one logical
- *     event (exactly what the simulator's `lateCorrection()` emits). This is
- *     NOT a circular correction; no distinct revision-specific envelope id
- *     is required.
- *   - a DIFFERENT eventId: that id must be known in the stream, otherwise
- *     the envelope is quarantined (unknown-correction-target).
- * A correction whose `correctionOf` revision chain points forward (target
- * revision >= its own) is quarantined (invalid-revision).
+ * SUPERSESSION POLICY (review-hardened):
+ * An event's identity is (providerId, eventId). Within an identity, revisions
+ * are validated in ascending order and only VALID revisions are promoted —
+ * if a higher revision is rejected (unknown target, forward-pointing chain),
+ * the previously accepted valid revision REMAINS authoritative: an invalid
+ * update can never erase an accepted fact. `correctionOf` referencing the
+ * SAME eventId means a revision bump of one logical event (the simulator's
+ * `lateCorrection` pattern; NOT circular). A cross-id `correctionOf` must
+ * reference an event id present in the stream at a lower revision.
+ *
+ * CONFLICTING DUPLICATES: when one (identity, revision) carries multiple
+ * distinct payloads, there is no basis to trust any of them — every payload
+ * is quarantined and the revision is poisoned until a legitimately higher
+ * revision resolves the identity. The same rule tombstones conflicting
+ * tracking pairs permanently: no later third sample can resurrect the pair.
  *
  * ORDER INDEPENDENCE: acceptance is resolved per identity over the whole
- * batch (deterministic canonical-payload tie-break for conflicting
- * duplicates), so array order never changes the projection. LATENESS is
- * evaluated against each envelope's OWN `sequence` field (the generator's
- * emission order), not array position: a non-correction event is late when
- * its `occurredAtMs` trails the max `occurredAtMs` of all lower-sequence
- * events by more than the lateness window. Corrections are exempt —
- * corrections are accepted at any delay, as docs/04 requires.
+ * batch (no arrival-order tie-breaks anywhere), so duplicate, reordered or
+ * shuffled delivery produces the identical projection. LATENESS is keyed to
+ * each envelope's own `sequence` field, not array position; corrections are
+ * exempt at any delay.
+ *
+ * APPLICATION SEQUENCE (`allEventRevisions`): every VALID envelope — base
+ * revisions and superseded corrections — sorted by
+ * (sourceRevision, occurredAtMs, providerId, eventId). This is the reducer's
+ * checkpoint timeline: revision N = state after applying the first N
+ * envelopes, so historical as-of snapshots (score before/after a rescission)
+ * are genuine.
  */
 
 export type QuarantineReason =
@@ -54,10 +61,10 @@ export interface StreamIngestOptions {
 }
 
 export interface IngestedStream {
-  /** Surviving events in canonical order: (occurredAtMs, providerId, eventId, sourceRevision). */
+  /** Final effective events (highest VALID revision per identity), canonical order. */
   readonly acceptedEvents: readonly MatchEvent[];
-  /** Every accepted-identity envelope INCLUDING superseded revisions — the
-   *  original source history stays inspectable; corrections never mutate it. */
+  /** Every VALID envelope in application order (superseded included) — the
+   *  as-of checkpoint timeline and inspectable history. */
   readonly allEventRevisions: readonly MatchEvent[];
   /** Deduplicated tracking in canonical order: (sampleTimeMs, entityId). */
   readonly acceptedTracking: readonly TrackingSample[];
@@ -133,7 +140,7 @@ export function ingestMatchStream(
   }
   const alive = candidates.filter((c) => !c.quarantined);
 
-  // ---- identity resolution: (providerId, eventId) → highest revision ----
+  // ---- identity resolution: (providerId, eventId) → revisions ----
   const byIdentity = new Map<string, EventCandidate[]>();
   for (const candidate of alive) {
     const key = `${candidate.event.providerId}|${candidate.event.eventId}`;
@@ -142,111 +149,92 @@ export function ingestMatchStream(
     byIdentity.set(key, list);
   }
 
+  // Global id/revision knowledge for correction-target validation: every id
+  // seen in the stream (any revision, even a conflicted one) counts as
+  // "known"; cross-id corrections must beat the highest revision seen.
+  const knownIds = new Set<string>();
+  const knownRevisions = new Map<string, number>();
+  const revisionGroupsByIdentity = new Map<
+    string,
+    Map<number, { distinct: Map<string, EventCandidate>; conflicted: boolean }>
+  >();
   let duplicateCount = 0;
-  const effective: EventCandidate[] = [];
-  const allEventRevisions: MatchEvent[] = [];
-  for (const list of byIdentity.values()) {
-    // Exact duplicates (same revision + identical payload) collapse; the
-    // canonical-payload tie-break keeps conflict resolution order-independent.
-    const byRevision = new Map<number, EventCandidate[]>();
+  for (const [key, list] of byIdentity.entries()) {
+    const byRevision = new Map<
+      number,
+      { distinct: Map<string, EventCandidate>; conflicted: boolean }
+    >();
     for (const candidate of list) {
-      const group = byRevision.get(candidate.event.sourceRevision) ?? [];
-      group.push(candidate);
-      byRevision.set(candidate.event.sourceRevision, group);
-    }
-    const resolvedPerRevision: EventCandidate[] = [];
-    for (const [revision, group] of byRevision) {
-      void revision;
-      const distinct = new Map<string, EventCandidate>();
-      for (const candidate of group) {
-        const existing = distinct.get(candidate.canonical);
-        if (existing === undefined) {
-          distinct.set(candidate.canonical, candidate);
-        } else {
-          duplicateCount += 1; // exact duplicate envelope, idempotently ignored
-        }
+      knownIds.add(candidate.event.eventId);
+      knownRevisions.set(
+        candidate.event.eventId,
+        Math.max(knownRevisions.get(candidate.event.eventId) ?? 0, candidate.event.sourceRevision),
+      );
+      let group = byRevision.get(candidate.event.sourceRevision);
+      if (group === undefined) {
+        group = { distinct: new Map(), conflicted: false };
+        byRevision.set(candidate.event.sourceRevision, group);
       }
-      if (distinct.size === 1) {
-        resolvedPerRevision.push(distinct.values().next().value!);
-        continue;
-      }
-      // Conflicting payloads for one (identity, revision): keep the
-      // lexicographically smallest canonical payload (deterministic), and
-      // quarantine every conflicting sibling.
-      const ranked = [...distinct.values()].sort((a, b) => (a.canonical < b.canonical ? -1 : 1));
-      resolvedPerRevision.push(ranked[0]!);
-      for (const loser of ranked.slice(1)) {
-        quarantine.push({
-          index: loser.index,
-          kind: 'event',
-          reason: 'duplicate-conflict',
-          message: `conflicting payload for ${loser.event.providerId}/${loser.event.eventId} revision ${String(loser.event.sourceRevision)}; deterministic canonical tie-break kept a different payload`,
-        });
+      if (!group.distinct.has(candidate.canonical)) {
+        group.distinct.set(candidate.canonical, candidate);
+      } else {
+        duplicateCount += 1; // exact duplicate envelope, idempotently ignored
       }
     }
-    resolvedPerRevision.sort((a, b) => a.event.sourceRevision - b.event.sourceRevision);
-    const winner = resolvedPerRevision[resolvedPerRevision.length - 1]!;
-    effective.push(winner);
-    for (const superseded of resolvedPerRevision.slice(0, -1)) {
-      allEventRevisions.push(superseded.event); // history: superseded, still inspectable
-    }
+    revisionGroupsByIdentity.set(key, byRevision);
   }
 
-  // ---- correction-chain validation on the effective set ----
-  const knownIds = new Set(effective.map((c) => c.event.eventId));
-  const knownRevisions = new Map<string, number>();
-  for (const c of effective) {
-    knownRevisions.set(
-      c.event.eventId,
-      Math.max(knownRevisions.get(c.event.eventId) ?? 0, c.event.sourceRevision),
-    );
-  }
-  const validated: MatchEvent[] = [];
-  for (const candidate of effective) {
-    allEventRevisions.push(candidate.event);
-    const correctionOf = candidate.event.correctionOf;
-    if (correctionOf === null) {
-      validated.push(candidate.event);
-      continue;
-    }
-    if (correctionOf === candidate.event.eventId) {
-      // Self-reference = revision bump of the same logical event (documented
-      // supersession policy). A forward-pointing bump is invalid.
-      if (candidate.event.sourceRevision <= 1) {
+  // ---- per identity: validate revisions ascending; invalid never erases ----
+  const effective: MatchEvent[] = [];
+  const applicationOrder: MatchEvent[] = [];
+  for (const byRevision of revisionGroupsByIdentity.values()) {
+    const revisions = [...byRevision.entries()].sort((a, b) => a[0] - b[0]);
+    let currentValid: MatchEvent | null = null;
+    for (const [revision, group] of revisions) {
+      if (group.conflicted || group.distinct.size > 1) {
+        // Conflicting payloads for one (identity, revision): nothing here is
+        // trustworthy. Quarantine every distinct payload; the revision is
+        // skipped entirely (a higher valid revision may still resolve).
+        for (const candidate of group.distinct.values()) {
+          quarantine.push({
+            index: candidate.index,
+            kind: 'event',
+            reason: 'duplicate-conflict',
+            message: `conflicting payloads for ${candidate.event.providerId}/${candidate.event.eventId} revision ${String(revision)}; all payloads rejected — an authoritative revision is required to resolve this identity`,
+          });
+        }
+        continue;
+      }
+      const candidate = group.distinct.values().next().value!;
+      const problem = validateCorrection(candidate.event, knownIds, knownRevisions);
+      if (problem === null) {
+        // Valid: promote. A superseded valid revision stays in history.
+        if (currentValid !== null) {
+          applicationOrder.push(currentValid);
+        }
+        currentValid = candidate.event;
+      } else {
+        // Invalid higher revision: quarantined; the previously accepted
+        // valid revision REMAINS authoritative (never erased).
         quarantine.push({
           index: candidate.index,
           kind: 'event',
-          reason: 'invalid-revision',
-          message: `revision ${String(candidate.event.sourceRevision)} cannot correct itself; revision 1 has nothing to supersede`,
+          reason: problem.reason,
+          message: problem.message,
         });
-        continue;
       }
-      validated.push(candidate.event);
-      continue;
     }
-    if (!knownIds.has(correctionOf)) {
-      quarantine.push({
-        index: candidate.index,
-        kind: 'event',
-        reason: 'unknown-correction-target',
-        message: `correctionOf "${correctionOf}" references an event id that never appears in this stream`,
-      });
-      continue;
+    if (currentValid !== null) {
+      effective.push(currentValid);
+      applicationOrder.push(currentValid);
     }
-    if (candidate.event.sourceRevision <= (knownRevisions.get(correctionOf) ?? 0)) {
-      quarantine.push({
-        index: candidate.index,
-        kind: 'event',
-        reason: 'invalid-revision',
-        message: `correction revision ${String(candidate.event.sourceRevision)} does not supersede target "${correctionOf}" (target revision ${String(knownRevisions.get(correctionOf) ?? 0)})`,
-      });
-      continue;
-    }
-    validated.push(candidate.event);
   }
 
-  // ---- tracking: parse + match filter + duplicate policy ----
-  const trackingByPair = new Map<string, { sample: TrackingSample; canonical: string }>();
+  // ---- tracking: parse + match filter + tombstoned duplicate policy ----
+  const trackingDistinct = new Map<
+    string,
+    Map<string, { sample: TrackingSample; index: number }>
+  >();
   for (const [index, raw] of input.tracking.entries()) {
     const parsed = parseTrackingSample(raw);
     if (!parsed.ok) {
@@ -270,40 +258,94 @@ export function ingestMatchStream(
     }
     const key = `${sample.sampleTimeMs}|${sample.entityId}`;
     const canonical = canonicalJsonStringify(sample);
-    const existing = trackingByPair.get(key);
+    let group = trackingDistinct.get(key);
+    if (group === undefined) {
+      group = new Map();
+      trackingDistinct.set(key, group);
+    }
+    const existing = group.get(canonical);
     if (existing === undefined) {
-      trackingByPair.set(key, { sample, canonical });
-    } else if (existing.canonical === canonical) {
-      duplicateCount += 1;
+      group.set(canonical, { sample, index });
     } else {
-      // A conflicting duplicate sample can never become a verified spatial
-      // fact: both payloads are quarantined and the pair is absent.
-      trackingByPair.delete(key);
+      duplicateCount += 1;
+    }
+  }
+  const acceptedTracking: TrackingSample[] = [];
+  for (const [key, group] of trackingDistinct.entries()) {
+    if (group.size === 1) {
+      acceptedTracking.push(group.values().next().value!.sample);
+      continue;
+    }
+    // Conflicting payloads for one (entity, time): tombstone the pair — no
+    // payload becomes a verified spatial fact, and no later sample can
+    // resurrect it (the tombstone is the pair state, order-independent).
+    for (const { sample, index } of group.values()) {
       quarantine.push({
         index,
         kind: 'tracking',
         reason: 'tracking-duplicate-conflict',
-        message: `conflicting payloads for ${sample.entityId} at ${String(sample.sampleTimeMs)} ms; both rejected, the position is explicitly absent`,
+        message: `conflicting payloads for ${sample.entityId} at ${String(sample.sampleTimeMs)} ms; all rejected and the pair tombstoned — the position is explicitly absent`,
       });
     }
+    void key;
   }
-  const acceptedTracking = [...trackingByPair.values()]
-    .map((v) => v.sample)
-    .sort((a, b) => a.sampleTimeMs - b.sampleTimeMs || (a.entityId < b.entityId ? -1 : 1));
+  acceptedTracking.sort(
+    (a, b) => a.sampleTimeMs - b.sampleTimeMs || (a.entityId < b.entityId ? -1 : 1),
+  );
 
   const sortCanonically = (a: MatchEvent, b: MatchEvent): number =>
     a.occurredAtMs - b.occurredAtMs ||
     (a.providerId < b.providerId ? -1 : a.providerId > b.providerId ? 1 : 0) ||
     (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0) ||
     a.sourceRevision - b.sourceRevision;
-  validated.sort(sortCanonically);
-  allEventRevisions.sort(sortCanonically);
+  effective.sort(sortCanonically);
+  // Application order: base revisions first, corrections strictly after the
+  // revisions they supersede (sourceRevision major, then canonical order).
+  applicationOrder.sort(
+    (a, b) =>
+      a.sourceRevision - b.sourceRevision ||
+      a.occurredAtMs - b.occurredAtMs ||
+      (a.providerId < b.providerId ? -1 : a.providerId > b.providerId ? 1 : 0) ||
+      (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0),
+  );
+  quarantine.sort((a, b) => a.index - b.index);
 
   return {
-    acceptedEvents: validated,
-    allEventRevisions,
+    acceptedEvents: effective,
+    allEventRevisions: applicationOrder,
     acceptedTracking,
     quarantine,
     duplicateCount,
   };
+}
+
+function validateCorrection(
+  event: MatchEvent,
+  knownIds: Set<string>,
+  knownRevisions: Map<string, number>,
+): { reason: QuarantineReason; message: string } | null {
+  const correctionOf = event.correctionOf;
+  if (correctionOf === null) return null;
+  if (correctionOf === event.eventId) {
+    if (event.sourceRevision <= 1) {
+      return {
+        reason: 'invalid-revision',
+        message: `revision ${String(event.sourceRevision)} cannot correct itself; revision 1 has nothing to supersede`,
+      };
+    }
+    return null;
+  }
+  if (!knownIds.has(correctionOf)) {
+    return {
+      reason: 'unknown-correction-target',
+      message: `correctionOf "${correctionOf}" references an event id that never appears in this stream`,
+    };
+  }
+  if (event.sourceRevision <= (knownRevisions.get(correctionOf) ?? 0)) {
+    return {
+      reason: 'invalid-revision',
+      message: `correction revision ${String(event.sourceRevision)} does not supersede target "${correctionOf}" (target revision ${String(knownRevisions.get(correctionOf) ?? 0)})`,
+    };
+  }
+  return null;
 }

@@ -102,17 +102,43 @@ describe('matchStateAt on the golden stream', () => {
 
   it('period and possession evolve from accepted events and measured proximity', () => {
     expect(match.matchStateAt(0).period).toBe('pre_match');
-    // The golden stream has no explicit first_half period_start: the half
-    // is inferred pre_match→(half_time at period_end)→second_half.
-    expect(match.matchStateAt(1000).period).toBe('pre_match');
-    expect(match.matchStateAt(2_095_500).period).toBe('pre_match');
+    // Review fix 4: first_half derives from the accepted kickoff (the golden
+    // fixture has no explicit first-half period_start) — including at the
+    // first goal, mid-half.
+    expect(match.matchStateAt(1000).period).toBe('first_half');
+    expect(match.matchStateAt(2_095_400).period).toBe('first_half'); // at the away goal
+    expect(match.matchStateAt(2_699_999).period).toBe('first_half');
     expect(match.matchStateAt(2700200).period).toBe('half_time'); // before second-half start
     expect(match.matchStateAt(4722100).period).toBe('second_half');
     expect(match.matchStateAt(5_400_000).period).toBe('post_match');
-    // At the checkpoint the ball is at home-08's feet (measured fact).
-    expect(match.matchStateAt(4722100).ball.possessorEntityId).toBe('home-08');
-    // No player within radius => explicitly no possessor.
+    // Review fix 5: proximity never grants possession. At the checkpoint the
+    // ball sits at home-08's feet, but no accepted event identifies a
+    // possessor within the validity window => explicitly null.
+    expect(match.matchStateAt(4722100).ball.possessorEntityId).toBeNull();
+    // After pass_completed (evt-0042 at 4726200) the source identifies the
+    // receiver home-09 — that IS a source-verified possession.
+    expect(match.matchStateAt(4726300).ball.possessorEntityId).toBe('home-09');
+    // ...and it expires after the validity window (default 10 s).
+    expect(match.matchStateAt(4726300 + 10_001).ball.possessorEntityId).toBeNull();
+    // Unsupported possession is null, never guessed.
     expect(match.matchStateAt(5_400_000).ball.position.kind).toBe('unavailable');
+    expect(match.matchStateAt(5_400_000).ball.possessorEntityId).toBeNull();
+  });
+
+  it('ambiguous proximity can never mint a possessor (review fix 5)', () => {
+    // Two players placed symmetrically around the ball: possession stays
+    // null — proximity is not consulted at all; only explicit source
+    // identification grants it.
+    const t = 4722100;
+    const ballAt = GOLDEN.tracking.find((s) => s.entityId === 'ball' && s.sampleTimeMs === t)!;
+    const manipulated = GOLDEN.tracking.map((s) => {
+      if (s.sampleTimeMs !== t) return s;
+      if (s.entityId === 'home-09') return { ...s, xM: ballAt.xM + 1, yM: ballAt.yM };
+      if (s.entityId === 'home-11') return { ...s, xM: ballAt.xM - 1, yM: ballAt.yM };
+      return s;
+    });
+    const m = projectMatch({ matchId: MATCH, events: GOLDEN.events, tracking: manipulated });
+    expect(m.matchStateAt(t).ball.possessorEntityId).toBeNull();
   });
 
   it('missing tracking produces explicit unavailability, never (0,0,0)', () => {

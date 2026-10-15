@@ -9,38 +9,62 @@ import { ingestMatchStream, type QuarantinedItem, type StreamIngestOptions } fro
 import { createTimeline, type Timeline, type TimelineOptions } from './timeline';
 
 /**
- * Authoritative match projection (KYN-04). `projectMatch` ingests a stream
- * once and returns an immutable view: the fold over accepted events is
- * deterministic (canonical order), checkpoints are addressed by reducer
- * revision (= number of accepted events consumed), and `matchStateAt` is a
- * pure function of (accepted input, timeMs, revision).
+ * Authoritative match projection (KYN-04).
  *
- * Event-derived facts (clock context, period, score, last accepted event,
- * source metadata) come from the fold; positions come from the timeline
- * sampler over accepted tracking. Presentation state (camera, lenses) never
- * lives here — camera changes cannot touch match truth.
+ * AS-OF REVISION CHECKPOINTS: the reducer's revision timeline is the ingest
+ * application sequence — every VALID envelope (base events, then corrections
+ * ordered by sourceRevision). `revision N` = the state after the first N
+ * envelopes were applied, so genuinely historical snapshots exist: the score
+ * BEFORE a goal rescission (revision that includes the goal, not yet the
+ * correction) and AFTER it are both addressable, and the superseded goal
+ * stays inspectable in `eventHistory()`.
+ *
+ * POSSESSION is a source-verified fact only: it is populated exclusively
+ * when an accepted event explicitly identifies the possessor (kickoff actor,
+ * pass_completed target, shot_attempted actor), and that identification
+ * EXPIRES after `possessionValidityMs` (default 10 s) or at the next
+ * possession-changing event (pass in flight, goal, period boundary).
+ * Spatial proximity is NEVER used — closeness is not proof of possession,
+ * and nearest-player estimation stays a presentation-layer concern outside
+ * the canonical contract.
+ *
+ * PERIOD: first_half is derived from an accepted kickoff (a kickoff with no
+ * preceding period_start starts the first half — the committed fixture has
+ * no explicit first-half period_start); explicit period events still govern
+ * half_time/second_half/post_match.
  */
 
 export interface ProjectedMatch {
   readonly matchId: string;
+  /** Final effective events (highest VALID revision per identity). */
   readonly acceptedEvents: readonly MatchEvent[];
   readonly acceptedTracking: readonly TrackingSample[];
   readonly quarantine: readonly QuarantinedItem[];
   readonly duplicateCount: number;
   readonly timeline: Timeline;
-  /** Number of immutable checkpoints (= accepted events). */
+  /** Number of as-of checkpoints (= VALID envelopes in application order). */
   readonly revisionCount: number;
-  /** Full accepted event history (all revisions) stays inspectable — nothing is mutated. */
+  /** Full valid envelope history in application order — inspectable, never mutated. */
   eventHistory(): readonly MatchEvent[];
-  /** State projected at `timeMs` as of checkpoint `revision` (latest when omitted). */
+  /**
+   * State projected at `timeMs` as of checkpoint `revision` (the state after
+   * the first `revision` envelopes of the application sequence were applied;
+   * latest when omitted). Historical pre-correction snapshots included.
+   */
   matchStateAt(timeMs: number, revision?: number): MatchState;
-  /** The state after consuming every accepted event, projected at the last event time. is wrong— use maxTime. */
+  /** Latest-checkpoint state projected at `atMs` (default: last sample time). */
   latestState(atMs?: number): MatchState;
 }
 
 export interface ProjectOptions extends StreamIngestOptions, TimelineOptions {
-  /** Max distance for a player to be considered the ball possessor. */
-  readonly possessionRadiusM?: number;
+  /** How long an event-identified possession stays asserted without a new
+   *  source identification; beyond this the possessor is explicitly null. */
+  readonly possessionValidityMs?: number;
+}
+
+interface PossessionAssertion {
+  readonly entityId: string;
+  readonly sinceMs: number;
 }
 
 export function projectMatch(
@@ -51,16 +75,17 @@ export function projectMatch(
   },
   options: ProjectOptions = {},
 ): ProjectedMatch {
-  const possessionRadiusM = options.possessionRadiusM ?? 1.5;
+  const possessionValidityMs = options.possessionValidityMs ?? 10_000;
   const ingested = ingestMatchStream(input, options);
   const timeline = createTimeline(ingested.acceptedTracking, options);
-  const events = ingested.acceptedEvents;
+  const sequence = ingested.allEventRevisions;
+  const finalEffective = ingested.acceptedEvents;
 
   const clampRevision = (revision: number | undefined): number => {
-    if (revision === undefined) return events.length;
-    if (!Number.isInteger(revision) || revision < 0 || revision > events.length) {
+    if (revision === undefined) return sequence.length;
+    if (!Number.isInteger(revision) || revision < 0 || revision > sequence.length) {
       throw new RangeError(
-        `revision must be an integer in [0, ${String(events.length)}], got ${String(revision)}`,
+        `revision must be an integer in [0, ${String(sequence.length)}], got ${String(revision)}`,
       );
     }
     return revision;
@@ -71,11 +96,30 @@ export function projectMatch(
       throw new RangeError(`timeMs must be a non-negative finite number, got ${String(timeMs)}`);
     }
     const upTo = clampRevision(revision);
-    const applicable = events.slice(0, upTo).filter((e) => e.occurredAtMs <= timeMs);
+    const applied = sequence.slice(0, upTo);
+
+    // Effective per identity at this time: the highest applied revision of
+    // each identity whose occurredAtMs <= timeMs (a correction does not
+    // retroactively apply before its own event time).
+    const bestPerIdentity = new Map<string, MatchEvent>();
+    for (const event of applied) {
+      if (event.occurredAtMs > timeMs) continue;
+      const key = `${event.providerId}|${event.eventId}`;
+      const current = bestPerIdentity.get(key);
+      if (current === undefined || event.sourceRevision > current.sourceRevision) {
+        bestPerIdentity.set(key, event);
+      }
+    }
+    const effective = [...bestPerIdentity.values()].sort(
+      (a, b) =>
+        a.occurredAtMs - b.occurredAtMs ||
+        (a.providerId < b.providerId ? -1 : a.providerId > b.providerId ? 1 : 0) ||
+        (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0),
+    );
 
     // ---- event-derived facts ----
     const score = { home: 0, away: 0 };
-    for (const event of applicable) {
+    for (const event of effective) {
       if (event.kind === 'goal' || event.kind === 'own_goal') {
         // Own-goal semantics (docs/05): teamId is the BENEFITING team.
         const beneficiary = event.teamId ?? event.attributes?.['benefiting_team'];
@@ -85,22 +129,39 @@ export function projectMatch(
     }
 
     let period: MatchPeriod = 'pre_match';
-    for (const event of applicable) {
+    let possession: PossessionAssertion | null = null;
+    for (const event of effective) {
       const attrPeriod = event.attributes?.['period'];
       if (event.kind === 'period_start' && typeof attrPeriod === 'string') {
-        period = attrPeriod === 'first_half' ? 'first_half' : mapPeriod(attrPeriod);
+        period = attrPeriod === 'second_half' ? 'second_half' : 'first_half';
+        possession = null; // period boundary: previous identification void
       } else if (event.kind === 'period_end') {
         if (attrPeriod === 'first_half') period = 'half_time';
         else if (attrPeriod === 'full_time') period = 'post_match';
+        possession = null;
+      } else if (event.kind === 'kickoff') {
+        // A kickoff with no explicit period_start starts the first half.
+        if (period === 'pre_match') period = 'first_half';
+        possession =
+          event.actorId !== null ? { entityId: event.actorId, sinceMs: event.occurredAtMs } : null;
+      } else if (event.kind === 'pass_attempted') {
+        possession = null; // ball in flight: nobody possesses it
+      } else if (event.kind === 'pass_completed') {
+        const target = event.attributes?.['target_player_id'];
+        possession =
+          typeof target === 'string' ? { entityId: target, sinceMs: event.occurredAtMs } : null;
+      } else if (event.kind === 'shot_attempted') {
+        possession =
+          event.actorId !== null ? { entityId: event.actorId, sinceMs: event.occurredAtMs } : null;
+      } else if (event.kind === 'goal' || event.kind === 'own_goal') {
+        possession = null; // ball dead
       }
     }
 
-    const lastAccepted = applicable.length > 0 ? applicable[applicable.length - 1]! : null;
+    const lastAccepted = effective.length > 0 ? effective[effective.length - 1]! : null;
     const providerId = lastAccepted?.providerId ?? 'kyneloom-simulator';
     let latestSourceRevision = 0;
-    let acceptedCount = 0;
-    for (const event of applicable) {
-      acceptedCount += 1;
+    for (const event of effective) {
       latestSourceRevision = Math.max(latestSourceRevision, event.sourceRevision);
     }
 
@@ -112,12 +173,9 @@ export function projectMatch(
       position: { kind: 'unavailable', reason: 'no_tracking_source' },
       possessorEntityId: null,
     };
-    let ballSample = frame.entities.find((e) => e.entityId === 'ball') ?? null;
+    const ballSample = frame.entities.find((e) => e.entityId === 'ball') ?? null;
     for (const entity of frame.entities) {
-      if (entity.entityId === 'ball') {
-        ballSample = entity;
-        continue;
-      }
+      if (entity.entityId === 'ball') continue;
       const team = entityTeam(entity.entityId);
       if (team === null) continue; // only home-/away- players exist in this model
       players.push({
@@ -131,18 +189,20 @@ export function projectMatch(
         confidence: 1,
       });
     }
-    if (ballSample !== null) {
-      // Possession: the nearest player within the radius — a measured fact,
-      // not an inference; no candidate => explicitly no possessor.
-      let possessor: string | null = null;
-      let bestDistance = possessionRadiusM;
-      for (const player of players) {
-        const d = Math.hypot(player.xM - ballSample!.xM, player.yM - ballSample!.yM);
-        if (d <= bestDistance) {
-          bestDistance = d;
-          possessor = player.entityId;
-        }
+    // Possession: ONLY a fresh, explicit source identification — never
+    // proximity, never asserted on an unavailable ball.
+    let possessor: string | null = null;
+    if (
+      ballSample !== null &&
+      possession !== null &&
+      timeMs - possession.sinceMs <= possessionValidityMs
+    ) {
+      const identified = possession.entityId;
+      if (players.some((p) => p.entityId === identified)) {
+        possessor = identified;
       }
+    }
+    if (ballSample !== null) {
       ball = {
         entityId: 'ball',
         position: {
@@ -169,7 +229,7 @@ export function projectMatch(
       lastAcceptedEventId: lastAccepted?.eventId ?? null,
       source: {
         providerId,
-        acceptedEventCount: acceptedCount,
+        acceptedEventCount: effective.length,
         latestSourceRevision,
       },
     };
@@ -177,25 +237,14 @@ export function projectMatch(
 
   return {
     matchId: input.matchId,
-    acceptedEvents: events,
+    acceptedEvents: finalEffective,
     acceptedTracking: ingested.acceptedTracking,
     quarantine: ingested.quarantine,
     duplicateCount: ingested.duplicateCount,
     timeline,
-    revisionCount: events.length,
-    eventHistory: () => ingested.allEventRevisions.slice(),
+    revisionCount: sequence.length,
+    eventHistory: () => sequence.slice(),
     matchStateAt,
     latestState: (atMs?: number) => matchStateAt(atMs ?? timeline.maxTimeMs),
   };
-}
-
-function mapPeriod(raw: string): MatchPeriod {
-  switch (raw) {
-    case 'first_half':
-      return 'first_half';
-    case 'second_half':
-      return 'second_half';
-    default:
-      return 'first_half';
-  }
 }

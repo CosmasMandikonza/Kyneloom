@@ -101,9 +101,24 @@ describe('score derivation and corrections', () => {
 
   it('revision checkpoints are immutable: state at revision N never changes with later input', () => {
     const m = projected();
-    const beforeCorrection = m.matchStateAt(4728300, 9); // before the goal event is consumed
-    expect(beforeCorrection.score).toEqual({ home: 0, away: 1 });
-    expect(beforeCorrection.reducerRevision).toBe(9);
+    const beforeGoal = m.matchStateAt(4728300, 9); // before the goal event is consumed
+    expect(beforeGoal.score).toEqual({ home: 0, away: 1 });
+    expect(beforeGoal.reducerRevision).toBe(9);
+  });
+
+  it('as-of revision checkpoints are genuinely historical across the rescission (review fix 2)', () => {
+    const corrected = lateCorrection(GOLDEN.events, { asNoGoal: true });
+    const m = projected(corrected.events);
+    // Application order: 11 base envelopes, then the rev-2 rescission.
+    expect(m.revisionCount).toBe(12);
+    const goalApplied = m.matchStateAt(4728300, 11);
+    expect(goalApplied.score).toEqual({ home: 1, away: 1 }); // BEFORE the rescission
+    const rescissionApplied = m.matchStateAt(4728300, 12);
+    expect(rescissionApplied.score).toEqual({ home: 0, away: 1 }); // AFTER
+    // The original goal stays inspectable in the envelope history.
+    expect(m.eventHistory().some((e) => e.kind === 'goal' && e.eventId === 'evt-0010')).toBe(true);
+    // Re-querying the earlier revision is stable (immutability).
+    expect(m.matchStateAt(4728300, 11).score).toEqual({ home: 1, away: 1 });
   });
 });
 
@@ -128,16 +143,40 @@ describe('quarantine behaviors', () => {
     expect(m.quarantine.filter((q) => q.reason === 'match-mismatch')).toHaveLength(2);
   });
 
-  it('quarantines conflicting duplicate payloads with identical identity/revision', () => {
+  it('quarantines conflicting duplicate payloads — no winner, all permutations (review fix 3)', () => {
     const original = GOLDEN.events.find((e) => e.kind === 'goal' && e.teamId === 'home')!;
     const conflicting: MatchEvent = { ...original, position: { xM: 1, yM: 2 } };
-    const m = projected([...GOLDEN.events, conflicting]);
-    expect(m.quarantine.some((q) => q.reason === 'duplicate-conflict')).toBe(true);
-    // Deterministic canonical tie-break, independent of arrival order.
-    const reversed = projected([conflicting, ...GOLDEN.events]);
-    expect(canonicalJsonStringify(reversed.matchStateAt(4731000))).toBe(
-      canonicalJsonStringify(m.matchStateAt(4731000)),
-    );
+    const permutations = [
+      [...GOLDEN.events, conflicting, original],
+      [...GOLDEN.events, original, conflicting],
+      [conflicting, ...GOLDEN.events, original],
+    ];
+    for (const [i, events] of permutations.entries()) {
+      const m = projected(events);
+      expect(
+        m.quarantine.some((q) => q.reason === 'duplicate-conflict'),
+        `permutation ${i}`,
+      ).toBe(true);
+      // No payload from the conflicted (identity, revision) is authoritative:
+      // the golden goal grants NO verified score through either variant.
+      expect(m.matchStateAt(4728300).score, `permutation ${i}`).toEqual({ home: 0, away: 1 });
+      // The conflicted identity is entirely absent — no invented winner.
+      expect(
+        m.acceptedEvents.some((e) => e.eventId === original.eventId),
+        `permutation ${i}`,
+      ).toBe(false);
+      // Identical final state across permutations.
+      const reversed = projected([...events].reverse());
+      expect(canonicalJsonStringify(reversed.matchStateAt(4731000))).toBe(
+        canonicalJsonStringify(m.matchStateAt(4731000)),
+      );
+    }
+    // A legitimate higher revision resolves the conflicted identity.
+    const resolver: MatchEvent = { ...original, sourceRevision: 2, correctionOf: original.eventId };
+    const resolved = projected([...GOLDEN.events, conflicting, resolver]);
+    expect(
+      resolved.acceptedEvents.find((e) => e.eventId === original.eventId)?.sourceRevision,
+    ).toBe(2);
   });
 
   it('quarantines unknown correction targets and invalid revision ordering', () => {
@@ -152,26 +191,54 @@ describe('quarantine behaviors', () => {
       correctionOf: 'evt-0042',
       sourceRevision: 1,
     };
-    // unknownTarget supersedes events[0] (same identity, higher revision) and
-    // is itself quarantined — so the kickoff is superseded by a rejected
-    // envelope. Verified behavior: the kickoff is GONE from accepted state
-    // (a superseded revision is not resurrected), quarantine records why.
+    // Review fix 1: a rejected higher revision must NEVER erase the accepted
+    // valid revision below it — the kickoff stays authoritative.
     const m = projected([...GOLDEN.events, unknownTarget, forwardChain], GOLDEN.tracking);
     expect(m.quarantine.some((q) => q.reason === 'unknown-correction-target')).toBe(true);
     expect(m.quarantine.some((q) => q.reason === 'invalid-revision')).toBe(true);
-    expect(m.acceptedEvents).toHaveLength(GOLDEN.events.length - 1);
-    expect(m.acceptedEvents.some((e) => e.eventId === unknownTarget.eventId)).toBe(false);
+    expect(m.acceptedEvents).toHaveLength(GOLDEN.events.length);
+    const kickoff = m.acceptedEvents.find((e) => e.eventId === unknownTarget.eventId);
+    expect(kickoff?.sourceRevision).toBe(1);
+    expect(kickoff?.correctionOf).toBeNull();
+    // Score-relevant regression: an invalid correction of the golden goal
+    // cannot rescind it.
+    const goalAttack = {
+      ...GOLDEN.events.find((e) => e.kind === 'goal' && e.teamId === 'home')!,
+      correctionOf: 'ghost',
+      sourceRevision: 2,
+    };
+    const defended = projected([...GOLDEN.events, goalAttack], GOLDEN.tracking);
+    expect(defended.matchStateAt(4728300).score).toEqual({ home: 1, away: 1 });
+    expect(defended.quarantine.some((q) => q.reason === 'unknown-correction-target')).toBe(true);
   });
 
   it('rejects tracking duplicates with conflicting payloads — never a verified spatial fact', () => {
-    const forged = { ...GOLDEN.tracking[0]!, xM: 88 };
-    const m = projected(GOLDEN.events, [...GOLDEN.tracking, forged]);
-    expect(m.quarantine.some((q) => q.reason === 'tracking-duplicate-conflict')).toBe(true);
-    const time = GOLDEN.tracking[0]!.sampleTimeMs;
-    const entityId = GOLDEN.tracking[0]!.entityId;
-    const frame = m.timeline.sampleAt(time);
-    expect(frame.entities.some((e) => e.entityId === entityId)).toBe(false);
-    expect(frame.missingEntityIds).toContain(entityId);
+    const base = GOLDEN.tracking[0]!;
+    const forged = { ...base, xM: 88 };
+    const time = base.sampleTimeMs;
+    const entityId = base.entityId;
+    // All three arrival permutations PLUS the resurrection attempt: a third
+    // (even byte-identical) sample for the conflicted pair must NOT restore
+    // the position (review fix 3 — order-independent tombstone).
+    const permutations = [
+      [...GOLDEN.tracking, forged, base],
+      [...GOLDEN.tracking, base, forged],
+      [forged, ...GOLDEN.tracking, base],
+      [...GOLDEN.tracking, forged, base, base],
+    ];
+    for (const [i, tracking] of permutations.entries()) {
+      const m = projected(GOLDEN.events, tracking);
+      expect(
+        m.quarantine.some((q) => q.reason === 'tracking-duplicate-conflict'),
+        `permutation ${i}`,
+      ).toBe(true);
+      const frame = m.timeline.sampleAt(time);
+      expect(
+        frame.entities.some((e) => e.entityId === entityId),
+        `permutation ${i}`,
+      ).toBe(false);
+      expect(frame.missingEntityIds, `permutation ${i}`).toContain(entityId);
+    }
   });
 
   it('lateness window: within-window delay accepted, beyond-window quarantined', () => {

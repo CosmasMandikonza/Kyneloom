@@ -54,7 +54,9 @@ function main(): void {
   console.log(
     `  ball: ${state.ball.position.kind}${state.ball.position.kind === 'positioned' ? ` (${state.ball.position.xM}, ${state.ball.position.yM}, z ${state.ball.position.zM})` : ''}`,
   );
-  console.log(`  ball possessor: ${state.ball.possessorEntityId ?? '(none within 1.5 m)'}`);
+  console.log(
+    `  ball possessor: ${state.ball.possessorEntityId ?? '(not source-identified — proximity never grants possession)'}`,
+  );
   console.log(`  last accepted event: ${state.lastAcceptedEventId ?? '(none)'}`);
   console.log(`  state fingerprint: ${fnv1aHex(canonicalJsonStringify(state))}`);
 
@@ -87,6 +89,18 @@ function main(): void {
   console.log('\n[score-impacting correction: golden goal rescinded as offside]');
   console.log(
     `  before: ${match.matchStateAt(4728300).score.home}-${match.matchStateAt(4728300).score.away}  after: ${correctedMatch.matchStateAt(4728300).score.home}-${correctedMatch.matchStateAt(4728300).score.away}`,
+  );
+  console.log('\n[as-of revision checkpoints across the rescission (historical snapshots)]');
+  const goalRevision =
+    correctedMatch.eventHistory().findIndex((e) => e.kind === 'goal' && e.eventId === 'evt-0010') +
+    1;
+  const before = correctedMatch.matchStateAt(4728300, goalRevision);
+  const after = correctedMatch.matchStateAt(4728300, correctedMatch.revisionCount);
+  console.log(
+    `  revision ${String(before.reducerRevision)}/${String(correctedMatch.revisionCount)} (goal applied, rescission not yet): score ${before.score.home}-${before.score.away}`,
+  );
+  console.log(
+    `  revision ${String(after.reducerRevision)}/${String(correctedMatch.revisionCount)} (rescission applied):                    score ${after.score.home}-${after.score.away}`,
   );
   console.log(
     `  rescinding envelope: ${correctedMatch.acceptedEvents.find((e) => e.kind === 'offside_called')?.eventId} → correctionOf ${correctedMatch.acceptedEvents.find((e) => e.kind === 'offside_called')?.correctionOf}`,
