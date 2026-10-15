@@ -2,6 +2,9 @@
 node_modules/
 .pnpm-store/
 
+# Alternate-seed fixture experiments (pnpm fixture:generate --seed <other>)
+.fixture-scratch/
+
 # Build outputs
 dist/
 build/

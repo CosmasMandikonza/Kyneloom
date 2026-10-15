@@ -1,6 +1,6 @@
 # 15 — Build brief: the first complete Playable Moment
 
-> **Purpose:** provide two founders and coding agents one unambiguous, end-to-end implementation target. **Status:** planned, not working.
+> **Purpose:** provide two founders and coding agents one unambiguous, end-to-end implementation target. **Status:** the seeded golden fixture EXISTS (KYN-03: `tests/fixtures/generated/synthetic-derby-01`, seed 24017, `fixture-engine-v1`); streaming, reducer, scene and publishing remain planned.
 
 ## The slice
 

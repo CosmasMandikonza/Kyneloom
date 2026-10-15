@@ -95,6 +95,30 @@ const { tracks } = parseManifestCameras(manifestJson); // validated + Three-spac
 
 **Sampling:** authoritative timestamps, not frame index assumptions. Render at 60 Hz with interpolation from lower-rate samples. Interpolation is visual reconstruction and **is not source-observed evidence**. Large gaps trigger “no spatial data” handling, not invented teleport paths.
 
+## Implemented generator (KYN-03)
+
+The seeded deterministic simulator lives in `packages/match-core/src/simulator/`
+(`fixture-engine-v1`), producing contract-valid envelopes and samples for the
+golden fixture and, via CLI `pnpm fixture:generate --seed <int>`, any seed:
+
+- **Determinism** — fixed 100 ms ticks, mulberry32 PRNG only, no wall clock;
+  same seed + generator version ⇒ byte-identical canonical output (tested).
+- **Two-pass ball derivation** — pass 1 records player tracks; pass 2 derives
+  the ball from them, so a pass lands exactly where the recorded receiver
+  stands and ball/actor agreement at event timestamps is exact.
+- **Movement envelope** — role-based speed caps (5.2 GK … 8.6 winger),
+  braking-distance arrival, 3.4 m/s² acceleration, pitch bounds + 2 m;
+  passes ≈ 7–12 m/s, shots ≤ 30 m/s; no unexplained teleports (tested).
+- **Sampling** — 10 Hz inside the golden window, 1 Hz context; frame ids
+  `frame-<sampleTimeMs/100>`; every event time sits on the tick grid so each
+  event has an exact frame. Missing data stays missing (the full-time event
+  deliberately has no frames).
+- **Own-goal semantics** — actor = the player who scored into their own net;
+  teamId = the benefiting team (documented, no own goal in the golden data).
+- **Simplifications** — scripted narrative beats over emergent AI play;
+  background possession transitions are movement-coherent but not
+  event-logged; not a physics-accurate simulation and never claimed as one.
+
 ## Synthetic fixture requirements
 
 - Seeded deterministic fixture + versioned generator.
