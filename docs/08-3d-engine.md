@@ -29,6 +29,8 @@ flowchart LR
 
 World source uses meters, pitch center origin, `x` lengthwise, `y` widthwise, `z` up. Three.js commonly uses `y` up. **Implement exactly one tested transform** such as `(worldX, worldY, worldZ) = (srcX, srcZ, -srcY)`. Never independently swap axes in camera, players and overlays.
 
+> **Implemented (KYN-02):** the single transform is `pitchToThree`/`threeToPitch` in [`packages/contracts/src/spatial.ts`](../packages/contracts/src/spatial.ts) — hand-checked (corner flag `(52.5, 34, 0) → (52.5, 0, -34)`), round-trip tested, and consumed by `scene-renderer`'s `parseManifestCameras`, which converts manifest camera tracks (pitch meters, z up) into Three-space keyframes without touching time offsets.
+
 The same function must be exercised by fixtures for left/right and period direction switching.
 
 ## Time model

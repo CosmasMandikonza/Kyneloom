@@ -1,0 +1,77 @@
+{
+  "manifest-nonmonotonic-keyframes.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[1].tMs",
+    "expectMessageContains": "strictly increasing"
+  },
+  "manifest-keyframe-outside-window.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[1].tMs",
+    "expectMessageContains": "moment window"
+  },
+  "manifest-missing-evidence-ref.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "claims[0].evidenceIds[0]",
+    "expectMessageContains": "not declared in this manifest"
+  },
+  "manifest-script-injection.json": {
+    "parser": "parseMomentManifest",
+    "expectCode": "unrecognized_key"
+  },
+  "manifest-fov-out-of-range.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[0].fovDeg"
+  },
+  "manifest-draft-with-approval.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "approval",
+    "expectMessageContains": "client-editable"
+  },
+  "manifest-version-too-new.json": {
+    "parser": "parseMomentManifest",
+    "expectCode": "unsupported_version"
+  },
+  "manifest-camera-below-pitch.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[0].position[2]"
+  },
+  "event-infinity-timestamp.json": {
+    "parser": "parseMatchEvent",
+    "expectFieldPath": "occurredAtMs"
+  },
+  "event-negative-timestamp.json": {
+    "parser": "parseMatchEvent",
+    "expectFieldPath": "occurredAtMs"
+  },
+  "event-unknown-kind.json": {
+    "parser": "parseMatchEvent",
+    "expectFieldPath": "kind",
+    "expectCode": "invalid_value"
+  },
+  "event-unknown-field.json": {
+    "parser": "parseMatchEvent",
+    "expectCode": "unrecognized_key"
+  },
+  "tracking-tracked-interpolated.json": {
+    "parser": "parseTrackingSample",
+    "expectFieldPath": "origin",
+    "expectMessageContains": "factual origin"
+  },
+  "tracking-extrapolated-no-horizon.json": {
+    "parser": "parseTrackingSample",
+    "expectFieldPath": "reconstruction.uncertaintyHorizonMs"
+  },
+  "tracking-infinite-coordinate.json": {
+    "parser": "parseTrackingSample",
+    "expectFieldPath": "xM"
+  },
+  "state-possessor-ghost.json": {
+    "parser": "parseMatchState",
+    "expectFieldPath": "ball.possessorEntityId"
+  },
+  "state-duplicate-players.json": {
+    "parser": "parseMatchState",
+    "expectFieldPath": "players[2].entityId",
+    "expectMessageContains": "duplicate"
+  }
+}

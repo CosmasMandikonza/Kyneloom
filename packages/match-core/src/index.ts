@@ -7,3 +7,4 @@ export {
   type PitchDimensions,
   type PitchPoint,
 } from './pitch';
+export { locateEvent, type EventGeometryResult } from './event-geometry';

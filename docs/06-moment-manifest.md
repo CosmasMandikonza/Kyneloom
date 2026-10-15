@@ -1,6 +1,6 @@
 # 06 — Moment Manifest: the center of the platform
 
-> **Status:** v0.1 proposal. Must become versioned JSON Schema / runtime types, tests and sample fixtures before frontend/backend implementation. Current examples are **not executable code**.
+> **Status:** v0.1 proposal — **implemented as a runtime-validated Zod schema in [`packages/contracts/src/moment-manifest.ts`](../packages/contracts/src/moment-manifest.ts) (KYN-02)**, version `0.1.0`, with a validated corpus in [`tests/fixtures/contracts`](../tests/fixtures/contracts) and a shared example exported as `exampleMomentManifest()`.
 
 ## Why this exists
 
@@ -67,6 +67,18 @@ The model does not deliver a video, execute JavaScript or directly manipulate a 
 ```
 
 **Note:** the sample hash is intentionally a placeholder; compute real content hashes in the implementation. `approval` becomes a typed, server-issued record tied to a specific manifest hash, never a client-set boolean.
+
+## Implemented contract decisions (KYN-02)
+
+- **Version** — exactly `"0.1.0"` (semver). Unsupported versions fail with `unsupported_version`; the first breaking change registers a migration before acceptance.
+- **Two time axes, never conflated** — `timeRangeMs` is absolute match-relative ms; every `startMs`/`endMs`/`tMs` in `scene` is an *offset from `timeRangeMs[0]`*. Using an absolute timestamp as an offset is rejected as out-of-window.
+- **Scene space** — all manifest positions/targets are pitch meters (z up); `coordinateSystem` must be the literal `pitch-meters-center-origin-v1`. Three.js conversion happens once, via the shared `pitchToThree` transform (docs/08).
+- **Safe bounds** — moment window 500 ms–120 s; keyframes 2–64 per track, strictly increasing, inside the window; FOV 20°–120°; cameras at least 0.5 m above the pitch plane; overlay/claim/evidence array caps.
+- **Declarative only** — strict unknown-key rejection removes any unmodeled "script"/"command" field; there is no field that can carry executable content; asset URLs (future fields) validate against an https-only gate rejecting `javascript:`, `data:`, credentials and fragments.
+- **Evidence and claims** — internal referential integrity is enforced at schema level (every cited evidence id must be declared in the manifest). Data overlays must cite evidence (editorial captions excepted); `observed`/`calculated` claims must cite evidence; `hypothesis` claims must carry an `inferenceDisclosure` and can never be labeled observed.
+- **Approval semantics** — client-editable statuses (`draft`, `validating`, `needs_revision`, `awaiting_approval`) must have `approval: null`; authorized statuses (`approved`, `published`, `revoked`) must carry the server-issued `ApprovalRecord` (approvedBy, approvedAt, manifest hash, policy version). A `ReleaseRecord` type captures immutable, revocable releases (revocations must record when and why). Minting approvals stays a server workflow.
+- **Schema vs semantics** — schema parsing cannot prove external facts. `MANIFEST_SEMANTIC_CHECKS` documents the five verifier obligations (reference existence, numerical consistency, rights, server-issued approval, input-revision currency). `manifestInputFingerprint()` canonicalizes the input block so verifiers can detect changed source revisions; real sha256 hashing stays server-side (contracts ship no server-only APIs).
+- **Snapshot** — the parsed golden manifest is snapshot-tested; the on-disk corpus file must stay identical to `exampleMomentManifest()`.
 
 ## Required type families
 

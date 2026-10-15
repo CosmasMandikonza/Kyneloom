@@ -2,7 +2,7 @@
   "name": "@kyneloom/match-core",
   "version": "0.1.0",
   "private": true,
-  "description": "Deterministic match logic for Kyneloom (pitch conventions and future state reduction). Presentation-free by contract: this package must never depend on React, DOM, or renderer packages.",
+  "description": "Deterministic match logic for Kyneloom (pitch conventions and future state reduction). Presentation-free by contract: this package must never depend on React, DOM, or renderer packages. Consumes @kyneloom/contracts as its type/validation foundation.",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -11,6 +11,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kyneloom/contracts": "workspace:*"
   },
   "devDependencies": {
     "typescript": "~5.9.3"

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0",
+  "eventId": "evt-0042",
+  "providerId": "kyneloom-simulator",
+  "tenantId": "demo-org",
+  "matchId": "synthetic-derby-01",
+  "fixtureSeed": 24017,
+  "sourceRevision": 1,
+  "kind": "pass_completed",
+  "occurredAtMs": null,
+  "ingestedAt": "2026-10-12T14:30:05Z",
+  "sequence": 414,
+  "actorId": "home-08",
+  "teamId": "home",
+  "position": {
+    "xM": 21.4,
+    "yM": -13.8
+  },
+  "attributes": {
+    "target_player_id": "home-09"
+  },
+  "provenance": {
+    "origin": "synthetic_ground_truth",
+    "generatorVersion": "fixture-engine-v1",
+    "confidence": 1
+  },
+  "correctionOf": null
+}

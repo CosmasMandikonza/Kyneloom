@@ -1,0 +1,88 @@
+import type { MomentManifest } from './moment-manifest';
+
+/**
+ * The canonical *example* manifest — docs/06's illustrative document turned
+ * into a real, parsing fixture (real sha256 input hash, monotonic in-window
+ * keyframes, internally consistent references).
+ *
+ * This is shared example material for consumers and tests on BOTH sides of
+ * the handoff (fixture generator, renderer, compiler). It is not production
+ * data and must never be presented as a real match.
+ *
+ * Time axes, for readers: `timeRangeMs` is absolute match-relative time
+ * (78th minute); every `tMs`/`startMs`/`endMs` under `scene` is an offset
+ * from the start of that window. Positions are pitch meters, z up.
+ */
+export function exampleMomentManifest(): MomentManifest {
+  return {
+    schemaVersion: '0.1.0',
+    manifestId: 'mom-synthetic-78m',
+    tenantId: 'demo-org',
+    matchId: 'synthetic-derby-01',
+    revision: 1,
+    status: 'draft',
+    timeRangeMs: [4717000, 4731000],
+    input: {
+      reducerRevision: 11,
+      sourceEventIds: ['evt-0042'],
+      trackingSampleRefs: ['frame-47170', 'frame-47310'],
+      // sha256("kyneloom-manifest-input-synthetic-derby-01-rev-11")
+      sourceHash: 'sha256:fddc86ae353262a20cf0b843a4548a772f41dc1332f8421e65d945e4751a63f5',
+    },
+    scene: {
+      coordinateSystem: 'pitch-meters-center-origin-v1',
+      cameraTracks: [
+        {
+          id: 'cam-01',
+          mode: 'directed',
+          startMs: 0,
+          endMs: 14000,
+          keyframes: [
+            { tMs: 0, position: [0, 46, 48], target: [0, 0, 0], fovDeg: 48 },
+            { tMs: 14000, position: [12, 35, 25], target: [21, 0, 2], fovDeg: 43 },
+          ],
+        },
+      ],
+      overlays: [
+        {
+          id: 'ov-01',
+          kind: 'distance',
+          startMs: 6000,
+          endMs: 11000,
+          metricRef: 'metric-defender-separation-01',
+          evidenceIds: ['evidence-01'],
+        },
+      ],
+    },
+    claims: [
+      {
+        id: 'claim-01',
+        text: 'The defender separation increased during the run.',
+        status: 'calculated',
+        evidenceIds: ['evidence-01'],
+        language: 'en',
+      },
+      {
+        id: 'claim-02',
+        text: "The winger's movement likely contributed to opening a passing lane.",
+        status: 'hypothesis',
+        evidenceIds: ['evidence-01'],
+        language: 'en',
+        inferenceDisclosure:
+          'Tactical interpretation from spatial proximity; not a causal measurement.',
+      },
+    ],
+    evidence: [
+      {
+        id: 'evidence-01',
+        kind: 'derived_metric',
+        ref: 'metric-defender-separation-01',
+        algorithmVersion: 'separation-v1',
+        inputRefs: ['frame-47170', 'frame-47310'],
+      },
+    ],
+    lenses: ['fan', 'analyst', 'accessible'],
+    rightsPolicyRef: 'demo-synthetic-policy-v1',
+    approval: null,
+  };
+}

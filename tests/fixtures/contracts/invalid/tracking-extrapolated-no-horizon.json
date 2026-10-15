@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0",
+  "matchId": "synthetic-derby-01",
+  "sampleTimeMs": 4722150,
+  "entityId": "home-11",
+  "xM": 30.1,
+  "yM": 12.4,
+  "zM": 0,
+  "origin": "extrapolated",
+  "confidence": 0.82,
+  "visibility": "partial",
+  "sourceFrameId": "frame-47221",
+  "reconstruction": {
+    "method": "constant-velocity"
+  }
+}
