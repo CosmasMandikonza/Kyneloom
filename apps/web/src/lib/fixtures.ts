@@ -132,13 +132,15 @@ export function loadFixtureIndex(): FixtureIndexStatus {
   try {
     parsedJson = JSON.parse(readFileSync(indexPath, 'utf-8')) as unknown;
   } catch (error) {
+    // JSON.parse error messages may quote snippets from the malformed input.
+    // Never pass those snippets into UI-facing status strings.
     const status: FixtureIndexStatus = {
       status: 'invalid',
-      message: `index.json is not valid JSON: ${(error as Error).message}`,
+      message: 'index.json is not valid JSON',
       directory: resolved.directory,
       source: resolved.source,
     };
-    logServerDiagnostic(status);
+    logServerDiagnostic(status, error);
     return status;
   }
 
@@ -161,12 +163,18 @@ export function loadFixtureIndex(): FixtureIndexStatus {
   };
 }
 
-function logServerDiagnostic(status: Exclude<FixtureIndexStatus, { status: 'ok' }>): void {
+function logServerDiagnostic(
+  status: Exclude<FixtureIndexStatus, { status: 'ok' }>,
+  cause?: unknown,
+): void {
   const where =
     status.directory === null
       ? '(no directory resolved)'
       : `${status.directory} via ${status.source === 'override' ? 'KYNELOOM_FIXTURES_DIR' : 'workspace walk-up'}`;
   const why =
     status.status === 'unavailable' ? `reason=${status.reason}` : `message=${status.message}`;
-  console.warn(`[kyneloom:fixtures] fixture index degraded: ${why}; looked in ${where}`);
+  const internalDetail =
+    cause === undefined ? '' : `; parse error: ${cause instanceof Error ? cause.message : String(cause)}`;
+  // The diagnostic goes to the server log only; the UI receives the sanitized status.message.
+  console.warn(`[kyneloom:fixtures] fixture index degraded: ${why}; looked in ${where}${internalDetail}`);
 }
