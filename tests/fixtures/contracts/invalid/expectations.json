@@ -1,0 +1,121 @@
+{
+  "manifest-nonmonotonic-keyframes.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[1].tMs",
+    "expectMessageContains": "strictly increasing"
+  },
+  "manifest-keyframe-outside-window.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[1].tMs",
+    "expectMessageContains": "moment window"
+  },
+  "manifest-missing-evidence-ref.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "claims[0].evidenceIds[0]",
+    "expectMessageContains": "not declared in this manifest"
+  },
+  "manifest-script-injection.json": {
+    "parser": "parseMomentManifest",
+    "expectCode": "unrecognized_key"
+  },
+  "manifest-fov-out-of-range.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[0].fovDeg"
+  },
+  "manifest-draft-with-approval.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "approval",
+    "expectMessageContains": "client-editable"
+  },
+  "manifest-version-too-new.json": {
+    "parser": "parseMomentManifest",
+    "expectCode": "unsupported_version"
+  },
+  "manifest-camera-below-pitch.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[0].position[2]"
+  },
+  "manifest-keyframes-outside-track.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[0].tMs",
+    "expectMessageContains": "track's interval"
+  },
+  "manifest-duplicate-camera-ids.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[1].id",
+    "expectMessageContains": "duplicate camera track id"
+  },
+  "manifest-duplicate-evidence-ids.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "evidence[1].id",
+    "expectMessageContains": "duplicate evidence entry id"
+  },
+  "manifest-camera-magnitude.json": {
+    "parser": "parseMomentManifest",
+    "expectFieldPath": "scene.cameraTracks[0].keyframes[0].position[0]",
+    "expectMessageContains": "safe radius"
+  },
+  "event-infinity-timestamp.json": {
+    "parser": "parseMatchEvent",
+    "expectFieldPath": "occurredAtMs"
+  },
+  "event-negative-timestamp.json": {
+    "parser": "parseMatchEvent",
+    "expectFieldPath": "occurredAtMs"
+  },
+  "event-unknown-kind.json": {
+    "parser": "parseMatchEvent",
+    "expectFieldPath": "kind",
+    "expectCode": "invalid_value"
+  },
+  "event-unknown-field.json": {
+    "parser": "parseMatchEvent",
+    "expectCode": "unrecognized_key"
+  },
+  "event-observed-no-license.json": {
+    "parser": "parseMatchEvent",
+    "expectFieldPath": "provenance.licenseRef",
+    "expectMessageContains": "licenseRef"
+  },
+  "tracking-tracked-interpolated.json": {
+    "parser": "parseTrackingSample",
+    "expectFieldPath": "origin",
+    "expectMessageContains": "factual origin"
+  },
+  "tracking-extrapolated-no-horizon.json": {
+    "parser": "parseTrackingSample",
+    "expectFieldPath": "reconstruction.uncertaintyHorizonMs"
+  },
+  "tracking-infinite-coordinate.json": {
+    "parser": "parseTrackingSample",
+    "expectFieldPath": "xM"
+  },
+  "tracking-partial-factual.json": {
+    "parser": "parseTrackingSample",
+    "expectFieldPath": "origin",
+    "expectMessageContains": "must be declared \"tracked\""
+  },
+  "tracking-untracked-visibility.json": {
+    "parser": "parseTrackingSample",
+    "expectFieldPath": "visibility"
+  },
+  "state-possessor-ghost.json": {
+    "parser": "parseMatchState",
+    "expectFieldPath": "ball.possessorEntityId"
+  },
+  "state-duplicate-players.json": {
+    "parser": "parseMatchState",
+    "expectFieldPath": "players[2].entityId",
+    "expectMessageContains": "duplicate"
+  },
+  "state-team-mismatch.json": {
+    "parser": "parseMatchState",
+    "expectFieldPath": "players[0].teamId",
+    "expectMessageContains": "contradicts"
+  },
+  "state-unavailable-with-possessor.json": {
+    "parser": "parseMatchState",
+    "expectFieldPath": "ball.possessorEntityId",
+    "expectMessageContains": "possessor"
+  }
+}

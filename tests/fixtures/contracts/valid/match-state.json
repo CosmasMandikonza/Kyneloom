@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "1.0",
+  "matchId": "synthetic-derby-01",
+  "reducerRevision": 11,
+  "matchTimeMs": 4722100,
+  "period": "second_half",
+  "score": { "home": 1, "away": 1 },
+  "ball": {
+    "entityId": "ball",
+    "position": {
+      "kind": "positioned",
+      "xM": 21.4,
+      "yM": -13.8,
+      "zM": 2.6,
+      "positionOrigin": "synthetic_ground_truth",
+      "confidence": 1
+    },
+    "possessorEntityId": "home-08"
+  },
+  "players": [
+    {
+      "entityId": "home-08",
+      "teamId": "home",
+      "xM": 10.1,
+      "yM": -3.4,
+      "zM": 0,
+      "status": "on_pitch",
+      "positionOrigin": "synthetic_ground_truth",
+      "confidence": 1
+    },
+    {
+      "entityId": "away-04",
+      "teamId": "away",
+      "xM": 4.35,
+      "yM": -8.2,
+      "zM": 0,
+      "status": "on_pitch",
+      "positionOrigin": "synthetic_ground_truth",
+      "confidence": 1
+    }
+  ],
+  "lastAcceptedEventId": "evt-0042",
+  "source": {
+    "providerId": "kyneloom-simulator",
+    "acceptedEventCount": 414,
+    "latestSourceRevision": 1
+  }
+}

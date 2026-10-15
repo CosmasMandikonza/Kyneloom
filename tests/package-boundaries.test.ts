@@ -4,10 +4,10 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * KYN-01 acceptance: the workspace dependency direction is a tested rule,
- * not a convention. Allowed edges:
+ * not a convention. Allowed edges (KYN-02 added match-core -> contracts):
  *
  *   contracts      -> (no workspace dependencies)
- *   match-core     -> (no workspace dependencies)
+ *   match-core     -> contracts
  *   scene-renderer -> contracts, match-core
  *   apps/*         -> any workspace package
  *
@@ -21,7 +21,7 @@ const appsDir = path.join(repoRoot, 'apps');
 
 const ALLOWED_PACKAGE_EDGES: Record<string, readonly string[]> = {
   '@kyneloom/contracts': [],
-  '@kyneloom/match-core': [],
+  '@kyneloom/match-core': ['@kyneloom/contracts'],
   '@kyneloom/scene-renderer': ['@kyneloom/contracts', '@kyneloom/match-core'],
 };
 

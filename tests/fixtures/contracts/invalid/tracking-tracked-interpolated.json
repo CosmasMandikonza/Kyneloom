@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0",
+  "matchId": "synthetic-derby-01",
+  "sampleTimeMs": 4722100,
+  "entityId": "away-04",
+  "xM": 4.35,
+  "yM": -8.2,
+  "zM": 0,
+  "origin": "interpolated",
+  "confidence": 1,
+  "visibility": "tracked",
+  "sourceFrameId": "frame-47221"
+}

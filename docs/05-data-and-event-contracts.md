@@ -1,6 +1,6 @@
 # 05 — Synthetic data, event contracts and match-state truth
 
-> **Status:** Canonical contract proposal; no event producer or schema code exists yet.
+> **Status:** Canonical contract proposal — **implemented as runtime-validated Zod schemas in [`packages/contracts`](../packages/contracts) (KYN-02)**. The JSON examples below are illustrative; the executable source of truth is the code, with a validated fixture corpus in [`tests/fixtures/contracts`](../tests/fixtures/contracts).
 
 ## Non-negotiable truth model
 
@@ -45,6 +45,34 @@ The schema below is an **illustrative target**, not a checked-in runtime validat
 ```
 
 **Validation requirements:** identifier formats, monotonic revision for one `event_id`, finite numbers, legal `kind`, allowed teams and actors, event time inside fixture bounds, source-rights metadata, recorded generator version, and no NaN/Infinity.
+
+## Implemented contract decisions (KYN-02)
+
+Runtime validators live in `packages/contracts` (Zod 4, strict mode). Decisions locked by the implementation, with tests as proof:
+
+- **Versions** — events, tracking and state carry `"1.0"` (`major.minor`); unsupported versions fail with a typed `unsupported_version` error naming expected/found. The migration registry is empty until the first breaking change.
+- **Unknown fields are rejected** everywhere (strict objects). Extension payloads ride the documented `attributes` map (primitive values only) or a new versioned field.
+- **Time convention** — `occurredAtMs`, `sampleTimeMs` and `matchTimeMs` are *absolute match-relative milliseconds*, monotonic from first kickoff, never reset between periods. `ingestedAt` is an ISO-8601 UTC wall-clock instant for arrival ordering only. Moment-manifest camera/overlay times are a different axis (offsets from the moment start; see docs/06).
+- **Identifier grammar** — kebab-case ids (`^[a-z0-9][a-z0-9-]*$`) for events, matches, providers, tenants and manifest entities; tracking entities are `"ball"` or `"home-XX"`/`"away-XX"` players (`isBallEntity`/`entityTeam` distinguish them explicitly — ball samples are never assumed to be players).
+- **Event kinds** — an allowlist of 26 football kinds (`EVENT_KINDS`); unknown kinds are rejected. Extending the list is a joint founder decision.
+- **Origin restrictions** — the five origins remain distinct; events may only carry `source_observed`/`synthetic_ground_truth`; samples may additionally carry `interpolated`/`extrapolated` *with a mandatory disclosure* (method; plus uncertainty horizon for extrapolation). `hypothesis` exists only for manifest claims.
+- **Source-rights policy** — `source_observed` events require `provenance.licenseRef`; `synthetic_ground_truth` events require `provenance.generatorVersion`. Licensed data names its license; synthetic data names its generator.
+- **Sample visibility is a strict bijection** — `tracked` ⇔ factual origin without a reconstruction disclosure; `partial` ⇔ reconstructed origin with disclosure. There is **no `untracked` sample**: a coordinate-bearing "untracked" record is a contradiction, so the value is rejected; absent data is the absence of samples.
+- **Missing data** — absent samples mean absent data; `MatchState.ball.position` carries an explicit `positioned | unavailable` variant (`unavailable` states a reason: `no_tracking_source`, `frames_absent`, `identity_lost`) so event-only projections never invent coordinates, and an unavailable ball can never claim a possessor.
+- **MatchState** — reducer revisions are monotonic integers; ball possession is nullable and must reference a present player; duplicate players and the ball-as-player are rejected; a player's `teamId` must agree with its entity id (`home-08` cannot play for `away`).
+- **Coordinates** — pitch meters, center origin, `+z` up, values bounded to ±500 m. The single Three.js transform `(x, y, z) → (x, z, -y)` is implemented and tested in `packages/contracts/src/spatial.ts` (hand-checked against the corner flag and goal mouth).
+
+**Consuming the contracts — both founders use the same code:**
+
+```ts
+// Fixture generator / reducer side (packages/match-core):
+import { locateEvent } from '@kyneloom/match-core';
+const located = locateEvent(rawEnvelope, pitch); // validates + applies pitch geometry
+
+// Renderer side (packages/scene-renderer):
+import { parseManifestCameras } from '@kyneloom/scene-renderer';
+const { tracks } = parseManifestCameras(manifestJson); // validated + Three-space keyframes
+```
 
 ## Position tracking sample
 

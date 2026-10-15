@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0",
+  "matchId": "synthetic-derby-01",
+  "reducerRevision": 3,
+  "matchTimeMs": 4730000,
+  "period": "second_half",
+  "score": { "home": 1, "away": 1 },
+  "ball": {
+    "entityId": "ball",
+    "position": { "kind": "unavailable", "reason": "no_tracking_source" },
+    "possessorEntityId": null
+  },
+  "players": [],
+  "lastAcceptedEventId": "evt-0043",
+  "source": {
+    "providerId": "events-only-feed",
+    "acceptedEventCount": 416,
+    "latestSourceRevision": 1
+  }
+}
