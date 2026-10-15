@@ -95,6 +95,65 @@ const { tracks } = parseManifestCameras(manifestJson); // validated + Three-spac
 
 **Sampling:** authoritative timestamps, not frame index assumptions. Render at 60 Hz with interpolation from lower-rate samples. Interpolation is visual reconstruction and **is not source-observed evidence**. Large gaps trigger “no spatial data” handling, not invented teleport paths.
 
+## Implemented reducer (KYN-04)
+
+The authoritative event-time reducer lives in `packages/match-core/src/reducer/`
+and runs locally with no cloud dependencies (the future stream adapter wraps
+these pure functions).
+
+- **Supersession policy** — an event's identity is `(providerId, eventId)`;
+  within an identity the highest `sourceRevision` supersedes lower revisions.
+  `correctionOf` referencing the SAME eventId means "revision bump of one
+  logical event" (exactly what the simulator's `lateCorrection` emits) and is
+  explicitly NOT a circular correction — no distinct revision-specific
+  envelope id is required. A cross-id `correctionOf` must reference a known
+  event id with a lower revision, otherwise the envelope is quarantined.
+- **Order independence** — acceptance is resolved per identity over the whole
+  batch with a deterministic canonical-payload tie-break, so duplicate,
+  reordered or shuffled delivery produces the identical projection and
+  checksum. Exact duplicates collapse (counted, never re-applied);
+  conflicting payloads for one (identity, revision) quarantine every sibling.
+- **Lateness** — evaluated against each envelope's own `sequence` field (the
+  generator's emission order), not array position: non-correction events
+  trailing the sequence watermark by more than the window (default 30 s) are
+  quarantined as late; corrections are exempt at any delay. UI expectations:
+  a late-but-within-window event updates state on arrival; beyond-window
+  input lands in quarantine for operator review.
+- **Quarantine** — malformed envelopes, cross-match/cross-provider
+  contamination, unknown correction targets, invalid revision ordering,
+  lateness and conflicting duplicate payloads are all captured with indexed,
+  categorized reasons; nothing corrupts state. Conflicting duplicate TRACKING
+  samples tombstone the `(sampleTimeMs, entityId)` pair — every payload is
+  rejected and no later third sample can resurrect it, so a corrupted frame
+  can never become a verified spatial fact. Conflicting duplicate EVENT
+  payloads for one (identity, revision) poison that revision entirely (no
+  invented winner) until a legitimately higher valid revision resolves it.
+- **Invalid corrections never erase facts** — revisions are validated in
+  ascending order and only VALID ones are promoted; a rejected higher
+  revision quarantines itself while the previously accepted valid revision
+  remains authoritative (an unknown-target or forward-pointing "correction"
+  cannot rescind an accepted goal or erase a kickoff).
+- **History & as-of checkpoints** — every VALID envelope (superseded
+  revisions included) stays inspectable via `eventHistory()` in application
+  order (base events by event time, then corrections by source revision).
+  `revision N` in `matchStateAt(timeMs, revision)` = the state after the
+  first N envelopes were applied, so genuinely historical snapshots exist:
+  the score before and after a goal rescission are both addressable.
+- **API** — `projectMatch({matchId, events, tracking})` →
+  `matchStateAt(timeMs, revision?)` (canonical `MatchState`, as-of revision
+  checkpoints described above), `timeline.sampleAt(timeMs)` and evidence
+  metrics (below). Score is derived ONLY from accepted goal/own-goal events
+  (own-goal: `teamId` = benefiting team). The first half derives from an
+  accepted kickoff when no explicit first-half `period_start` exists.
+- **Possession is source-verified only** — `ball.possessorEntityId` is
+  populated exclusively when an accepted event explicitly identifies the
+  possessor (kickoff actor, `pass_completed` target, `shot_attempted`
+  actor), expires after `possessionValidityMs` (default 10 s) or at the next
+  possession-changing event (pass in flight → null, goal → null, period
+  boundary → null), and is never inferred from spatial proximity —
+  nearest-player estimation is a presentation-layer heuristic that stays
+  outside the canonical contract.
+
 ## Implemented generator (KYN-03)
 
 The seeded deterministic simulator lives in `packages/match-core/src/simulator/`

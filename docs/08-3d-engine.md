@@ -35,6 +35,8 @@ The same function must be exercised by fixtures for left/right and period direct
 
 ## Time model
 
+> **Implemented (KYN-04):** `createTimeline(tracking)` → `timeline.sampleAt(timeMs)` in `packages/match-core/src/reducer/timeline.ts`. Rules: exact samples return verbatim (original frame ids and origin); between same-entity samples ≤ 400 ms apart, a linear interpolation is returned disclosed as `interpolated` with both frame ids and method; before the first sample, after the last, or across larger gaps the position is MISSING (explicitly absent — no stale poses, no extrapolation, full time beyond the emitted window is missing by construction). Every query is recomputed from samples, so repeated seek/rewind/pause/out-of-order queries cannot drift. Positions stay in canonical pitch meters; `pitchToThree` remains the only renderer conversion; camera state never touches this layer.
+
 `playheadMs` is the single source of truth. Sampling is `sampleAt(matchState, playheadMs)`. Animation time is **not** network wall-clock time, React render time or GSAP elapsed time.
 
 - Use timestamp-based interpolation between valid samples. Start with linear positions; use Hermite only when velocities and constraints are validated.
