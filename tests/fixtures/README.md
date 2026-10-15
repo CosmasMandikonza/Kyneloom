@@ -57,8 +57,16 @@ the seeded simulator (`pnpm fixture:generate --seed 24017`):
 
 The fixture is registered in `index.json` (id `synthetic-derby-01`), so the
 web app's fixture seam renders it. Regeneration is byte-identical (asserted
-by `tests/golden-fixture.test.ts`); a different seed produces a different but
-contract-valid scenario. The deterministic reducer (KYN-04) is NOT part of
+by `tests/golden-fixture.test.ts`).
+
+**Seed policy (KYN-03 review):** seed 24017 is the canonical golden seed —
+the only one allowed to write into `tests/fixtures/generated/` and register
+the index. Any other seed is experiment output: it defaults to the
+git-ignored `.fixture-scratch/seed-<seed>/` directory and is never
+registered, so experimenting can never overwrite or re-register the
+committed golden fixture (asserted end to end by `tests/fixture-cli.test.ts`).
+Sampling rates above the simulator's 10 Hz integration tick are rejected
+rather than advertised as higher resolution. The deterministic reducer (KYN-04) is NOT part of
 the generator: fault-injection variants (duplicates, out-of-order delivery,
 late corrections, dropped frames, identity swaps) are produced by
 `@kyneloom/match-core` variant functions as reducer test inputs.

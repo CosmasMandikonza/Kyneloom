@@ -45,6 +45,29 @@ describe('determinism (KYN-03 acceptance)', () => {
     );
   });
 
+  it('rejects sampling rates above the 10 Hz integration tick (review fix 1)', () => {
+    // 20 Hz would emit two samples per 100 ms tick: repeated identical poses
+    // and frame ids rounded to duplicates — false spatial resolution.
+    for (const goldenHz of [20, 25, 40, 100]) {
+      let error: RangeError | null = null;
+      try {
+        generateMatchFixture({ seed: 1, goldenHz });
+      } catch (e) {
+        error = e as RangeError;
+      }
+      expect(error, `goldenHz ${goldenHz}`).toBeInstanceOf(RangeError);
+      expect(error!.message).toContain('integration tick');
+      expect(error!.message).toContain('10');
+    }
+  });
+
+  it('still accepts rates up to the tick; default output unchanged', { timeout: 20_000 }, () => {
+    const atTick = generateMatchFixture({ seed: 24017, goldenHz: 10 });
+    const defaults = generateMatchFixture({ seed: 24017 });
+    expect(canonicalJsonStringify(atTick.tracking)).toBe(canonicalJsonStringify(defaults.tracking));
+    expect(atTick.tracking).toHaveLength(5129);
+  });
+
   it('rejects invalid seeds loudly', () => {
     expect(() => generateMatchFixture({ seed: -1 })).toThrow(RangeError);
     expect(() => generateMatchFixture({ seed: Number.NaN })).toThrow(RangeError);

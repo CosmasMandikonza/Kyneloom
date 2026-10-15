@@ -212,8 +212,17 @@ export function generateMatchFixture(options: SimOptions): FixtureBundle {
   const contextAfter = options.contextAfterMs ?? 10_000;
   const pitchLength = options.pitchLengthM ?? 105;
   const pitchWidth = options.pitchWidthM ?? 68;
+  // The integration tick is 100 ms (10 Hz). Sampling faster than the tick
+  // would emit repeated identical poses and round to duplicate frame ids —
+  // false spatial resolution — so such rates are rejected, not advertised.
+  const maxHz = 1000 / TICK_MS;
   if (!Number.isInteger(goldenHz) || goldenHz <= 0 || 1000 % goldenHz !== 0) {
-    throw new RangeError(`goldenHz must divide 1000 (e.g. 10 or 20), got ${String(goldenHz)}`);
+    throw new RangeError(`goldenHz must divide 1000 (e.g. 1, 2, 5 or 10), got ${String(goldenHz)}`);
+  }
+  if (goldenHz > maxHz) {
+    throw new RangeError(
+      `goldenHz ${String(goldenHz)} exceeds the simulator's ${String(maxHz)} Hz integration tick; sampling faster would repeat poses and duplicate frame ids. Raise the integration rate first if higher resolution is needed.`,
+    );
   }
   if (!Number.isInteger(backgroundHz) || backgroundHz <= 0 || 1000 % backgroundHz !== 0) {
     throw new RangeError(
@@ -772,7 +781,7 @@ export function generateMatchFixture(options: SimOptions): FixtureBundle {
       'Simplified football: bounded speed/acceleration steering, scripted narrative beats; not a physics-accurate simulation.',
       'Background possession transitions are movement-coherent but not event-logged; only listed events are canonical.',
       `Full-time event at ${FULL_TIME_BEAT.atMs} ms intentionally has no tracking frames: absent data is explicit absence.`,
-      'Frame ids follow frame-<sampleTimeMs/100>; every event time is on the tick grid, so each event has an exact frame.',
+      'Frame ids follow frame-<sampleTimeMs/100>; every event time is on the tick grid, so each emitted event has an exact tracking frame — except full time at 5400000 ms, which deliberately has none (absence is explicit).',
       'Two-pass derivation: the ball rides recorded player tracks, so ball/actor agreement at event timestamps is exact.',
     ],
   };

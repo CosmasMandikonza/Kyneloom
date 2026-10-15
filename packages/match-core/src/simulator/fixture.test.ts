@@ -55,3 +55,89 @@ describe('assembleFixtureBundle (renderer-side loading interface)', () => {
     expect(eventError.message).toContain('eventId');
   });
 });
+
+describe('assembleFixtureBundle internal-consistency rejection (review fix 2)', () => {
+  const generated = generateMatchFixture({ seed: 24017 });
+
+  it('rejects envelopes whose matchId contradicts the metadata matchId', () => {
+    const stranger = generated.events.map((e, i) =>
+      i === 0 ? { ...e, matchId: 'another-match' } : e,
+    );
+    const result = assembleFixtureBundle({
+      events: stranger,
+      tracking: generated.tracking,
+      metadata: generated.metadata,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const error = result.errors.find((e) => e.kind === 'event');
+    expect(error?.index).toBe(0);
+    expect(error?.message).toContain('another-match');
+    expect(error?.message).toContain(generated.metadata.matchId);
+  });
+
+  it('rejects tracking samples with a foreign matchId', () => {
+    const stranger = generated.tracking.map((s, i) =>
+      i === 0 ? { ...s, matchId: 'another-match' } : s,
+    );
+    const result = assembleFixtureBundle({
+      events: generated.events,
+      tracking: stranger,
+      metadata: generated.metadata,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(
+      result.errors.some((e) => e.kind === 'tracking' && e.message.includes('another-match')),
+    ).toBe(true);
+  });
+
+  it('rejects duplicate (sampleTimeMs, entityId) pairs — frameAt must never silently overwrite', () => {
+    // The exact corruption the review demonstrated: a duplicated sample used
+    // to overwrite the first in the byTime map, making frameAt() return the
+    // last-written fact as apparently legitimate data.
+    const first = generated.tracking[0]!;
+    const forged = {
+      ...first,
+      xM: first.xM + 42, // corrupted position for the same entity+time
+    };
+    const result = assembleFixtureBundle({
+      events: generated.events,
+      tracking: [forged, ...generated.tracking],
+      metadata: generated.metadata,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const dup = result.errors.find(
+      (e) => e.kind === 'tracking' && e.message.includes('duplicate sample'),
+    );
+    expect(dup?.index).toBe(1);
+    expect(dup?.message).toContain(first.entityId);
+    expect(dup?.message).toContain(String(first.sampleTimeMs));
+  });
+
+  it('rejects metadata counts that disagree with the actual data', () => {
+    const wrongCounts = {
+      ...generated.metadata,
+      sampling: { ...generated.metadata.sampling, frameCount: 999 },
+      eventCount: 999,
+    };
+    const result = assembleFixtureBundle({
+      events: generated.events,
+      tracking: generated.tracking,
+      metadata: wrongCounts,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(
+      result.errors.some((e) => e.kind === 'metadata' && e.message.includes('frameCount')),
+    ).toBe(true);
+    expect(
+      result.errors.some((e) => e.kind === 'metadata' && e.message.includes('eventCount')),
+    ).toBe(true);
+  });
+
+  it('still accepts the untouched generated bundle (no false positives)', () => {
+    expect(assembleFixtureBundle(generated).ok).toBe(true);
+  });
+});

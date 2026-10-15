@@ -30,6 +30,49 @@ interface CliOptions {
   out?: string;
 }
 
+/**
+ * The canonical golden seed (docs/15): the only seed that may write into
+ * tests/fixtures/generated/<matchId> and register the fixture index. Any
+ * other seed is experiment output — isolated to a git-ignored scratch
+ * directory and never registered — so experimenting can never overwrite or
+ * re-register the committed golden fixture.
+ */
+export const CANONICAL_GOLDEN_SEED = 24017;
+
+export interface GenerationPlan {
+  readonly seed: number;
+  readonly outDir: string;
+  /** True only for the canonical seed at its default committed location. */
+  readonly registerInIndex: boolean;
+  readonly isCanonical: boolean;
+}
+
+export function resolveGenerationPlan(options: CliOptions): GenerationPlan {
+  const isCanonical = options.seed === CANONICAL_GOLDEN_SEED;
+  if (options.out) {
+    return {
+      seed: options.seed,
+      outDir: path.resolve(options.out),
+      registerInIndex: false,
+      isCanonical,
+    };
+  }
+  if (isCanonical) {
+    return {
+      seed: options.seed,
+      outDir: path.resolve('tests', 'fixtures', 'generated', 'synthetic-derby-01'),
+      registerInIndex: true,
+      isCanonical,
+    };
+  }
+  return {
+    seed: options.seed,
+    outDir: path.resolve('.fixture-scratch', `seed-${options.seed}`),
+    registerInIndex: false,
+    isCanonical,
+  };
+}
+
 function parseArgs(argv: readonly string[]): CliOptions {
   const options: CliOptions = { seed: 24017 };
   for (let i = 0; i < argv.length; i++) {
@@ -105,9 +148,9 @@ ${goals.length ? '' : ''}
 `;
 }
 
-function main(): void {
-  const options = parseArgs(process.argv.slice(2));
-  const bundle = generateMatchFixture({ seed: options.seed });
+/** Executes a generation plan. Exported for the isolation tests. */
+export function runGeneration(plan: GenerationPlan): void {
+  const bundle = generateMatchFixture({ seed: plan.seed });
 
   // Validate everything through the canonical contracts before writing.
   const assembled = assembleFixtureBundle({
@@ -125,9 +168,7 @@ function main(): void {
   }
 
   const matchId = bundle.metadata.matchId;
-  const outDir = options.out
-    ? path.resolve(options.out)
-    : path.resolve('tests', 'fixtures', 'generated', matchId);
+  const outDir = plan.outDir;
   mkdirSync(outDir, { recursive: true });
 
   const checksums = {
@@ -145,28 +186,37 @@ function main(): void {
   writeFileSync(path.join(outDir, 'metadata.json'), `${JSON.stringify(metadataOut, null, 2)}\n`);
   writeFileSync(path.join(outDir, 'README.md'), fixtureReadme(bundle.metadata, checksums));
 
-  // Register in the test-harness fixture index (server-side seam).
-  const indexPath = path.resolve('tests', 'fixtures', 'index.json');
-  const index = JSON.parse(readFileSync(indexPath, 'utf-8')) as {
-    schemaVersion: string;
-    fixtures: { id: string; label: string; generator: string; seed: number; file: string }[];
-  };
-  const entry = {
-    id: matchId,
-    label: `Synthetic derby — the invisible assist (seed ${options.seed})`,
-    generator: SIMULATOR_VERSION,
-    seed: options.seed,
-    file: `generated/${matchId}/metadata.json`,
-  };
-  const withoutDuplicate = index.fixtures.filter((f) => f.id !== matchId);
-  index.fixtures = [...withoutDuplicate, entry].sort((a, b) => a.id.localeCompare(b.id));
-  writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+  // Register in the test-harness fixture index (server-side seam) — only the
+  // canonical golden seed at its default committed location may do this, so
+  // alternate-seed experiments can never overwrite or re-register it.
+  if (plan.registerInIndex) {
+    const indexPath = path.resolve('tests', 'fixtures', 'index.json');
+    const index = JSON.parse(readFileSync(indexPath, 'utf-8')) as {
+      schemaVersion: string;
+      fixtures: { id: string; label: string; generator: string; seed: number; file: string }[];
+    };
+    const entry = {
+      id: matchId,
+      label: `Synthetic derby — the invisible assist (seed ${plan.seed})`,
+      generator: SIMULATOR_VERSION,
+      seed: plan.seed,
+      file: `generated/${matchId}/metadata.json`,
+    };
+    const withoutDuplicate = index.fixtures.filter((f) => f.id !== matchId);
+    index.fixtures = [...withoutDuplicate, entry].sort((a, b) => a.id.localeCompare(b.id));
+    writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+  }
 
   const m = bundle.metadata;
   const g = m.golden;
   console.log(`fixture ${matchId} written to ${path.relative(process.cwd(), outDir)}`);
+  if (!plan.registerInIndex) {
+    console.log(
+      `  note: seed ${plan.seed} is not the canonical golden seed (${CANONICAL_GOLDEN_SEED}); output is NOT registered in the fixture index${plan.isCanonical ? ' (custom --out location)' : ''}`,
+    );
+  }
   console.log(
-    `  seed=${options.seed} frames=${m.sampling.frameCount} samples=${m.sampling.sampleCount} events=${m.eventCount}`,
+    `  seed=${plan.seed} frames=${m.sampling.frameCount} samples=${m.sampling.sampleCount} events=${m.eventCount}`,
   );
   console.log(
     `  golden: separation ${g.decoyRun.separationBeforeM}m -> ${g.decoyRun.separationAfterM}m (d=${g.decoyRun.separationDeltaM}m), pass ${g.pass.distanceM}m @ ${g.pass.speedMps}m/s, shot ${g.shot.distanceM}m @ ${g.shot.speedMps}m/s`,
@@ -176,4 +226,12 @@ function main(): void {
   );
 }
 
-main();
+function main(): void {
+  runGeneration(resolveGenerationPlan(parseArgs(process.argv.slice(2))));
+}
+
+// Run only when executed directly (tsx / node), not when imported by tests.
+const invokedScript = process.argv[1]?.replaceAll('\\', '/');
+if (invokedScript != null && invokedScript.endsWith('scripts/generate-fixture.ts')) {
+  main();
+}

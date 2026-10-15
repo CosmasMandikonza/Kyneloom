@@ -81,7 +81,7 @@
     "Simplified football: bounded speed/acceleration steering, scripted narrative beats; not a physics-accurate simulation.",
     "Background possession transitions are movement-coherent but not event-logged; only listed events are canonical.",
     "Full-time event at 5400000 ms intentionally has no tracking frames: absent data is explicit absence.",
-    "Frame ids follow frame-<sampleTimeMs/100>; every event time is on the tick grid, so each event has an exact frame.",
+    "Frame ids follow frame-<sampleTimeMs/100>; every event time is on the tick grid, so each emitted event has an exact tracking frame — except full time at 5400000 ms, which deliberately has none (absence is explicit).",
     "Two-pass derivation: the ball rides recorded player tracks, so ball/actor agreement at event timestamps is exact."
   ],
   "integrity": {
