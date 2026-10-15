@@ -9,6 +9,12 @@ pnpm-lock.yaml
 # fights the generator and breaks format:check after every build.
 apps/web/next-env.d.ts
 
+# Machine-written by `pnpm fixture:generate` (JSON.stringify style); like any
+# build artifact, formatting fights the generator. Hand-curated fixture JSONs
+# (tests/fixtures/contracts/**) stay prettier-checked.
+tests/fixtures/generated/**
+tests/fixtures/index.json
+
 # Documentation is intentionally excluded from formatting to avoid
 # repository-wide diffs and merge conflicts with parallel feature work.
 **/*.md
