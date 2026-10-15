@@ -81,6 +81,9 @@ function realPathBestEffort(p: string): string {
   }
 }
 
+/** Windows directory separator, normalized before resolving --out paths. */
+const WINDOWS_SEPARATOR = String.fromCharCode(92);
+
 /** Committed fixture territory: nothing but the canonical seed may write here. */
 const COMMITTED_FIXTURES_ROOT = path.resolve('tests', 'fixtures');
 
@@ -88,7 +91,10 @@ export function resolveGenerationPlan(options: CliOptions): GenerationPlan {
   const isCanonical = options.seed === CANONICAL_GOLDEN_SEED;
   const canonicalDir = path.resolve('tests', 'fixtures', 'generated', 'synthetic-derby-01');
   if (options.out) {
-    const outDir = path.resolve(options.out);
+    // Normalize Windows-style separators so a backslash path is recognized
+    // as the same destination on every platform (a POSIX resolve would
+    // otherwise treat it as one opaque filename and bypass the guard).
+    const outDir = path.resolve(options.out.split(WINDOWS_SEPARATOR).join('/'));
     // A custom --out must never let an alternate seed reach the committed
     // fixtures (the canonical golden directory in particular) — resolved
     // equivalents and symlinks included.
