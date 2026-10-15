@@ -143,7 +143,7 @@ This is an intentionally **honest** tracker; checkboxes are updated only when ev
 - [x] Runnable TypeScript monorepo foundation: pnpm workspace, strict TS, lint/format/typecheck/test/build scripts, tested package-boundary rule, fixture seam and application CI ([KYN-01](https://github.com/CosmasMandikonza/Kyneloom/issues/1))
 - [ ] Real 3D replay with timestamp-correct scene playback
 - [x] Seeded deterministic synthetic match generator with contract-valid golden fixture and fault-injection variants ([KYN-03](https://github.com/CosmasMandikonza/Kyneloom/issues/3))
-- [ ] Deterministic synthetic stream ingestion and football-state processing (reducer)
+- [x] Authoritative event-time reducer: supersession/corrections, deterministic match state, truthful timeline sampling, separation evidence metric ([KYN-04](https://github.com/CosmasMandikonza/Kyneloom/issues/4))
 - [ ] Working Foundry orchestration with verifiable trace and evaluation
 - [ ] Scene manifest compiler with actual source-linked evidence
 - [ ] Producer approval, authorized publication and replayable embed
@@ -168,6 +168,7 @@ pnpm test                        # Vitest unit tests, incl. the package-boundary
 pnpm build                       # production build of apps/web
 pnpm dev                         # develop the web app (Next.js, default port 3000)
 pnpm fixture:generate --seed 24017  # regenerate the synthetic golden fixture (deterministic)
+pnpm replay:golden                 # project the committed fixture: state, checkpoint, metric, correction
 ```
 
 The web app is an honest foundation shell: design tokens from [the design system](docs/03-design-system.md), an explicitly marked *Not implemented* scene placeholder with correct pitch proportions, and a live read of the fixture seam. `tests/fixtures/index.json` intentionally registers zero fixtures — the synthetic match generator does not exist yet, and nothing on the page fabricates match data, agent activity, or statistics.

@@ -95,6 +95,45 @@ const { tracks } = parseManifestCameras(manifestJson); // validated + Three-spac
 
 **Sampling:** authoritative timestamps, not frame index assumptions. Render at 60 Hz with interpolation from lower-rate samples. Interpolation is visual reconstruction and **is not source-observed evidence**. Large gaps trigger “no spatial data” handling, not invented teleport paths.
 
+## Implemented reducer (KYN-04)
+
+The authoritative event-time reducer lives in `packages/match-core/src/reducer/`
+and runs locally with no cloud dependencies (the future stream adapter wraps
+these pure functions).
+
+- **Supersession policy** — an event's identity is `(providerId, eventId)`;
+  within an identity the highest `sourceRevision` supersedes lower revisions.
+  `correctionOf` referencing the SAME eventId means "revision bump of one
+  logical event" (exactly what the simulator's `lateCorrection` emits) and is
+  explicitly NOT a circular correction — no distinct revision-specific
+  envelope id is required. A cross-id `correctionOf` must reference a known
+  event id with a lower revision, otherwise the envelope is quarantined.
+- **Order independence** — acceptance is resolved per identity over the whole
+  batch with a deterministic canonical-payload tie-break, so duplicate,
+  reordered or shuffled delivery produces the identical projection and
+  checksum. Exact duplicates collapse (counted, never re-applied);
+  conflicting payloads for one (identity, revision) quarantine every sibling.
+- **Lateness** — evaluated against each envelope's own `sequence` field (the
+  generator's emission order), not array position: non-correction events
+  trailing the sequence watermark by more than the window (default 30 s) are
+  quarantined as late; corrections are exempt at any delay. UI expectations:
+  a late-but-within-window event updates state on arrival; beyond-window
+  input lands in quarantine for operator review.
+- **Quarantine** — malformed envelopes, cross-match/cross-provider
+  contamination, unknown correction targets, invalid revision ordering,
+  lateness and conflicting duplicate payloads are all captured with indexed,
+  categorized reasons; nothing corrupts state. Conflicting duplicate TRACKING
+  samples reject both payloads — the position becomes explicitly absent, so a
+  corrupted frame can never become a verified spatial fact.
+- **History** — every accepted-identity revision (superseded included) stays
+  inspectable via `eventHistory()`; corrections append, never mutate.
+- **API** — `projectMatch({matchId, events, tracking})` →
+  `matchStateAt(timeMs, revision?)` (canonical `MatchState`, immutable
+  revision checkpoints addressed by accepted-event count),
+  `timeline.sampleAt(timeMs)` and evidence metrics (below). Score is derived
+  ONLY from accepted goal/own-goal events (own-goal: `teamId` = benefiting
+  team); possession is a measured nearest-player-within-radius fact.
+
 ## Implemented generator (KYN-03)
 
 The seeded deterministic simulator lives in `packages/match-core/src/simulator/`
