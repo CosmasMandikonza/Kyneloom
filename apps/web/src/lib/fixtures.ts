@@ -174,7 +174,11 @@ function logServerDiagnostic(
   const why =
     status.status === 'unavailable' ? `reason=${status.reason}` : `message=${status.message}`;
   const internalDetail =
-    cause === undefined ? '' : `; parse error: ${cause instanceof Error ? cause.message : String(cause)}`;
+    cause === undefined
+      ? ''
+      : `; parse error: ${cause instanceof Error ? cause.message : String(cause)}`;
   // The diagnostic goes to the server log only; the UI receives the sanitized status.message.
-  console.warn(`[kyneloom:fixtures] fixture index degraded: ${why}; looked in ${where}${internalDetail}`);
+  console.warn(
+    `[kyneloom:fixtures] fixture index degraded: ${why}; looked in ${where}${internalDetail}`,
+  );
 }
