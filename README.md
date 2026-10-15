@@ -21,7 +21,7 @@
 > [!IMPORTANT]
 > **Build status — specification-first.** This repository contains a runnable engineering foundation (typed pnpm monorepo, web shell, application CI — [KYN-01](https://github.com/CosmasMandikonza/Kyneloom/issues/1)) alongside the product documentation. The live event pipeline, AI agents, 3D renderer, production studio, and publishing service described below are **planned systems, not deployed or implemented features**. We will update the status with verified working capabilities as development progresses. No invented demos, performance claims, or customer logos.
 
-> **Start building:** [29 ordered GitHub issues and parallel founder lanes](https://github.com/CosmasMandikonza/Kyneloom/issues/29) · [Agent handoff playbook](docs/18-execution-board.md). Each issue includes direct Suzie Code/Codex prompts, verified behavior requirements and PR acceptance criteria.
+> **Start building:** [31 ordered GitHub issues and parallel founder lanes](https://github.com/CosmasMandikonza/Kyneloom/issues/29) · [Agent handoff playbook](docs/18-execution-board.md). Each issue includes direct Suzie Code/Codex prompts, verified behavior requirements and PR acceptance criteria.
 
 ## ✦ The idea
 

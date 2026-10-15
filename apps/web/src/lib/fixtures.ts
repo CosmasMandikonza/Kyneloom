@@ -17,20 +17,41 @@ import {
  * Every failure mode returns a typed status — this loader never throws and
  * never fabricates fixture data, so a missing or malformed index renders an
  * intentional state instead of crashing the page.
+ *
+ * Absolute paths (the resolved `directory`) are diagnostics for server logs
+ * only; UI text must come from `fixture-status.ts`, which renders safe
+ * labels without filesystem locations.
  */
 
+/** Where the fixtures directory came from — drives safe UI labels. */
+export type FixtureDirectorySource = 'workspace' | 'override';
+
+export type FixtureUnavailableReason =
+  'env-dir-missing' | 'workspace-root-not-found' | 'fixtures-dir-missing' | 'index-missing';
+
 export type FixtureIndexStatus =
-  | { readonly status: 'ok'; readonly index: FixtureIndex; readonly directory: string }
+  | {
+      readonly status: 'ok';
+      readonly index: FixtureIndex;
+      readonly directory: string;
+      readonly source: FixtureDirectorySource;
+    }
   | {
       readonly status: 'unavailable';
-      readonly reason:
-        'env-dir-missing' | 'workspace-root-not-found' | 'fixtures-dir-missing' | 'index-missing';
+      readonly reason: FixtureUnavailableReason;
       readonly directory: string | null;
+      readonly source: FixtureDirectorySource;
     }
-  | { readonly status: 'invalid'; readonly message: string; readonly directory: string };
+  | {
+      readonly status: 'invalid';
+      readonly message: string;
+      readonly directory: string;
+      readonly source: FixtureDirectorySource;
+    };
 
 interface ResolvedDirectory {
   readonly directory: string | null;
+  readonly source: FixtureDirectorySource;
   readonly reason?: 'env-dir-missing' | 'workspace-root-not-found' | 'fixtures-dir-missing';
 }
 
@@ -47,7 +68,9 @@ export function resolveFixturesDirectory(startDir: string = process.cwd()): Reso
   const envDir = process.env['KYNELOOM_FIXTURES_DIR'];
   if (envDir !== undefined && envDir.trim() !== '') {
     const directory = path.resolve(envDir.trim());
-    return existsSync(directory) ? { directory } : { directory: null, reason: 'env-dir-missing' };
+    return existsSync(directory)
+      ? { directory, source: 'override' }
+      : { directory: null, reason: 'env-dir-missing', source: 'override' };
   }
 
   // The walk-up resolves the workspace root at runtime; the turbopackIgnore
@@ -58,12 +81,12 @@ export function resolveFixturesDirectory(startDir: string = process.cwd()): Reso
     if (existsSync(path.join(dir, 'pnpm-workspace.yaml'))) {
       const fixtures = path.join(dir, 'tests', 'fixtures');
       return existsSync(fixtures)
-        ? { directory: fixtures }
-        : { directory: null, reason: 'fixtures-dir-missing' };
+        ? { directory: fixtures, source: 'workspace' }
+        : { directory: null, reason: 'fixtures-dir-missing', source: 'workspace' };
     }
     const parent = path.dirname(dir);
     if (parent === dir) {
-      return { directory: null, reason: 'workspace-root-not-found' };
+      return { directory: null, reason: 'workspace-root-not-found', source: 'workspace' };
     }
     dir = parent;
   }
@@ -75,40 +98,75 @@ export function resolveFixturesDirectory(startDir: string = process.cwd()): Reso
  * The result is stable for a given directory contents, so the home page can
  * be statically prerendered at build time; production deployments pick up
  * fixture changes on rebuild (documented in the repository README).
+ *
+ * Degraded results are logged with their full absolute directory here —
+ * server-side only — so operators keep useful diagnostics while the rendered
+ * page never exposes filesystem locations.
  */
 export function loadFixtureIndex(): FixtureIndexStatus {
   const resolved = resolveFixturesDirectory();
   if (resolved.directory === null) {
-    return {
+    const status: FixtureIndexStatus = {
       status: 'unavailable',
       reason: resolved.reason ?? 'fixtures-dir-missing',
       directory: null,
+      source: resolved.source,
     };
+    logServerDiagnostic(status);
+    return status;
   }
 
   const indexPath = path.join(resolved.directory, 'index.json');
   if (!existsSync(indexPath)) {
-    return { status: 'unavailable', reason: 'index-missing', directory: resolved.directory };
+    const status: FixtureIndexStatus = {
+      status: 'unavailable',
+      reason: 'index-missing',
+      directory: resolved.directory,
+      source: resolved.source,
+    };
+    logServerDiagnostic(status);
+    return status;
   }
 
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(readFileSync(indexPath, 'utf-8')) as unknown;
   } catch (error) {
-    return {
+    const status: FixtureIndexStatus = {
       status: 'invalid',
       message: `index.json is not valid JSON: ${(error as Error).message}`,
       directory: resolved.directory,
+      source: resolved.source,
     };
+    logServerDiagnostic(status);
+    return status;
   }
 
   const result = parseFixtureIndex(parsedJson);
   if (!result.ok) {
-    return {
+    const status: FixtureIndexStatus = {
       status: 'invalid',
       message: describeFixtureIndexError(result.error),
       directory: resolved.directory,
+      source: resolved.source,
     };
+    logServerDiagnostic(status);
+    return status;
   }
-  return { status: 'ok', index: result.index, directory: resolved.directory };
+  return {
+    status: 'ok',
+    index: result.index,
+    directory: resolved.directory,
+    source: resolved.source,
+  };
+}
+
+function logServerDiagnostic(status: Exclude<FixtureIndexStatus, { status: 'ok' }>): void {
+  const where =
+    status.directory === null
+      ? '(no directory resolved)'
+      : `${status.directory} via ${status.source === 'override' ? 'KYNELOOM_FIXTURES_DIR' : 'workspace walk-up'}`;
+  const why =
+    status.status === 'unavailable' ? `reason=${status.reason}` : `message=${status.message}`;
+  console.warn(`[kyneloom:fixtures] fixture index degraded: ${why}; looked in ${where}`);
 }

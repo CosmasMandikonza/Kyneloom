@@ -56,10 +56,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Fixture files must be canonical, portable relative paths: forward-slash
+ * separators only, no absolute form (POSIX root, UNC root, or drive letter),
+ * no `..`/`.`/empty segments, and no control characters. Backslashes are
+ * rejected outright so that Windows-style traversal such as
+ * `folder\..\secret.json` can never smuggle a `..` segment past a
+ * forward-slash-only split.
+ */
 function isUnsafeRelativePath(p: string): boolean {
-  return (
-    p.startsWith('/') || p.startsWith('\\') || /^[a-zA-Z]:/.test(p) || p.split('/').includes('..')
-  );
+  if (p.length === 0) return true;
+  if (p.includes('\\')) return true;
+  if (p.startsWith('/')) return true;
+  if (/^[a-zA-Z]:/.test(p)) return true;
+  // Control characters are invalid in fixture paths; checked by code point
+  // instead of a control-character regex so no lint suppression is needed.
+  if (
+    [...p].some((ch) => {
+      const code = ch.codePointAt(0) ?? 0;
+      return code < 0x20 || code === 0x7f;
+    })
+  ) {
+    return true;
+  }
+  const segments = p.split('/');
+  return segments.some((segment) => segment === '' || segment === '.' || segment === '..');
 }
 
 function parseEntry(value: unknown, position: number): FixtureEntry | FixtureIndexError {
@@ -104,7 +125,8 @@ function parseEntry(value: unknown, position: number): FixtureEntry | FixtureInd
     return {
       kind: 'invalid-field',
       field: `fixtures[${position}].file`,
-      reason: 'must be a relative path inside the fixtures directory without ".."',
+      reason:
+        'must be a relative forward-slash path inside the fixtures directory without absolute prefixes or ".."/"."/empty segments',
     };
   }
 

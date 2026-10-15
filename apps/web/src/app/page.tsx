@@ -1,5 +1,6 @@
 import { pitchAspectRatio } from '@kyneloom/scene-renderer';
-import { loadFixtureIndex, type FixtureIndexStatus } from '@/lib/fixtures';
+import { loadFixtureIndex } from '@/lib/fixtures';
+import { describeFixtureStatus, fixtureDirectoryLabel } from '@/lib/fixture-status';
 
 const REPO_DOCS_URL = 'https://github.com/CosmasMandikonza/Kyneloom/tree/main/docs';
 const FIXTURES_README_URL = 'https://github.com/CosmasMandikonza/Kyneloom/tree/main/tests/fixtures';
@@ -36,44 +37,6 @@ const NOT_IMPLEMENTED = [
     detail: 'Same validated manifest, additional output surfaces — issues KYN-19 and KYN-31.',
   },
 ];
-
-function describeFixtureStatus(status: FixtureIndexStatus): {
-  tone: 'ok' | 'warn';
-  title: string;
-  detail: string;
-} {
-  switch (status.status) {
-    case 'ok':
-      return {
-        tone: 'ok',
-        title: `Valid index · schema ${status.index.schemaVersion} · ${status.index.fixtures.length} fixture${status.index.fixtures.length === 1 ? '' : 's'} registered`,
-        detail:
-          status.index.fixtures.length === 0
-            ? 'No synthetic match data exists yet. This is the intentional empty state — the seeded fixture generator (KYN-03) will register payloads here.'
-            : 'Registered test-harness fixtures are listed below.',
-      };
-    case 'unavailable':
-      return {
-        tone: 'warn',
-        title: 'Fixture index unavailable',
-        detail: `Reason: ${status.reason}. ${status.directory ? `Looked in ${status.directory}.` : 'No fixtures directory was resolved.'} The page continues without fixture data; nothing is fabricated.`,
-      };
-    case 'invalid':
-      return {
-        tone: 'warn',
-        title: 'Fixture index invalid',
-        detail: `${status.message} (${status.directory}). The page continues without fixture data; nothing is fabricated.`,
-      };
-  }
-}
-
-/** Show the workspace-relative path when we can, so the page does not bake in a local filesystem path. */
-function displayDirectory(directory: string): string {
-  const normalized = directory.replaceAll('\\', '/');
-  const marker = '/tests/fixtures';
-  const at = normalized.lastIndexOf(marker);
-  return at === -1 ? normalized : normalized.slice(at + 1);
-}
 
 export default function HomePage() {
   const fixtureStatus = loadFixtureIndex();
@@ -180,7 +143,7 @@ export default function HomePage() {
             <p
               className={`chip ${fixtureSummary.tone === 'ok' ? 'chip--ok' : 'chip--not-implemented'}`}
             >
-              {fixtureSummary.tone === 'ok' ? 'Live read' : 'Degraded'}
+              {fixtureSummary.tone === 'ok' ? 'Validated index' : 'Degraded'}
             </p>
           </div>
           <div className="fixture-panel" data-testid="fixture-seam">
@@ -204,11 +167,11 @@ export default function HomePage() {
             <dl className="fixture-meta">
               <div>
                 <dt>Index source</dt>
-                <dd>
-                  {fixtureStatus.directory
-                    ? `${displayDirectory(fixtureStatus.directory)} (index.json)`
-                    : '—'}
-                </dd>
+                <dd>{fixtureDirectoryLabel(fixtureStatus)}</dd>
+              </div>
+              <div>
+                <dt>Validation timing</dt>
+                <dd>at build in production · per request in development</dd>
               </div>
               <div>
                 <dt>Contract</dt>

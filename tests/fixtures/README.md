@@ -33,8 +33,11 @@ schemas are jointly owned by KYN-02 and must not be invented here.
 - `fixtures` — may be empty. An empty index is the intentional
   "no fixture data" state; the web app renders an explicit empty state
   rather than fabricating data.
-- `file` — relative path inside this directory. Absolute paths and `..`
-  traversal are rejected by the parser.
+- `file` — relative path inside this directory, using forward slashes only.
+  The parser rejects absolute paths (POSIX root, UNC root, drive letters,
+  including forward-slash drive forms like `C:/x`), backslash separators and
+  Windows-style traversal (`folder\..\secret.json`), `..`/`.`/empty path
+  segments, and control characters.
 
 The committed `index.json` currently registers **zero fixtures** on purpose:
 no synthetic match data exists yet, and the repository does not fabricate

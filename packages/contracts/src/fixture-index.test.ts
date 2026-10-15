@@ -127,6 +127,55 @@ describe('parseFixtureIndex', () => {
     }
   });
 
+  it('rejects Windows backslash traversal and backslash separators', () => {
+    for (const file of [
+      'folder\\..\\secret.json',
+      '..\\secret.json',
+      'legit\\subfolder\\fixture.json',
+      'trailing\\',
+    ]) {
+      const result = parseFixtureIndex({
+        schemaVersion: FIXTURE_INDEX_SCHEMA_VERSION,
+        fixtures: [{ ...validIndex.fixtures[0], file }],
+      });
+      expect(result.ok, `file "${file}" should be rejected`).toBe(false);
+    }
+  });
+
+  it('rejects forward-slash drive prefixes, dot segments, empty segments, and control characters', () => {
+    for (const file of [
+      'C:/fixtures/escape.json',
+      'c:/x.json',
+      './relative.json',
+      'a/./b.json',
+      'a//b.json',
+      'nested/ok/../secret.json',
+      'nested/',
+      'bad\u0000name.json',
+      'bad\u001fname.json',
+    ]) {
+      const result = parseFixtureIndex({
+        schemaVersion: FIXTURE_INDEX_SCHEMA_VERSION,
+        fixtures: [{ ...validIndex.fixtures[0], file }],
+      });
+      expect(result.ok, `file "${JSON.stringify(file)}" should be rejected`).toBe(false);
+    }
+  });
+
+  it('accepts canonical nested forward-slash relative paths', () => {
+    const result = parseFixtureIndex({
+      schemaVersion: FIXTURE_INDEX_SCHEMA_VERSION,
+      fixtures: [
+        { ...validIndex.fixtures[0], file: 'nested/folders/fixture-01.json' },
+        { ...validIndex.fixtures[0], id: 'another-fixture', file: 'fixture-02.v2.json' },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.index.fixtures[0]?.file).toBe('nested/folders/fixture-01.json');
+    expect(result.index.fixtures[1]?.file).toBe('fixture-02.v2.json');
+  });
+
   it('rejects duplicate fixture ids', () => {
     const result = parseFixtureIndex({
       schemaVersion: FIXTURE_INDEX_SCHEMA_VERSION,

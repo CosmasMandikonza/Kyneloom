@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadFixtureIndex, resolveFixturesDirectory } from './fixtures';
 
 const originalEnv = process.env['KYNELOOM_FIXTURES_DIR'];
@@ -13,11 +13,16 @@ function makeTempDir(): string {
   return dir;
 }
 
+let warnSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   delete process.env['KYNELOOM_FIXTURES_DIR'];
+  // Degraded statuses log diagnostics server-side; keep test output clean.
+  warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
+  warnSpy.mockRestore();
   if (originalEnv === undefined) {
     delete process.env['KYNELOOM_FIXTURES_DIR'];
   } else {
@@ -35,18 +40,22 @@ describe('resolveFixturesDirectory', () => {
     // prove the walk-up works from any depth.
     const resolved = resolveFixturesDirectory(path.join(process.cwd(), 'apps', 'web', 'src'));
     expect(resolved.directory).toBe(path.join(process.cwd(), 'tests', 'fixtures'));
+    expect(resolved.source).toBe('workspace');
     expect(resolved.reason).toBeUndefined();
   });
 
   it('reports a missing workspace root instead of looping forever', () => {
-    const resolved = resolveFixturesDirectory(tmpdir());
-    expect(resolved).toEqual({ directory: null, reason: 'workspace-root-not-found' });
+    expect(resolveFixturesDirectory(tmpdir())).toEqual({
+      directory: null,
+      reason: 'workspace-root-not-found',
+      source: 'workspace',
+    });
   });
 
-  it('honors KYNELOOM_FIXTURES_DIR when it exists', () => {
+  it('honors KYNELOOM_FIXTURES_DIR when it exists and marks the source as an override', () => {
     const dir = makeTempDir();
     process.env['KYNELOOM_FIXTURES_DIR'] = dir;
-    expect(resolveFixturesDirectory()).toEqual({ directory: dir });
+    expect(resolveFixturesDirectory()).toEqual({ directory: dir, source: 'override' });
   });
 
   it('reports env-dir-missing when KYNELOOM_FIXTURES_DIR points nowhere', () => {
@@ -54,6 +63,7 @@ describe('resolveFixturesDirectory', () => {
     expect(resolveFixturesDirectory()).toEqual({
       directory: null,
       reason: 'env-dir-missing',
+      source: 'override',
     });
   });
 
@@ -63,6 +73,7 @@ describe('resolveFixturesDirectory', () => {
     expect(resolveFixturesDirectory(fakeRoot)).toEqual({
       directory: null,
       reason: 'fixtures-dir-missing',
+      source: 'workspace',
     });
   });
 
@@ -73,7 +84,7 @@ describe('resolveFixturesDirectory', () => {
     mkdirSync(nested, { recursive: true });
     const fixtures = path.join(root, 'tests', 'fixtures');
     mkdirSync(fixtures, { recursive: true });
-    expect(resolveFixturesDirectory(nested)).toEqual({ directory: fixtures });
+    expect(resolveFixturesDirectory(nested)).toEqual({ directory: fixtures, source: 'workspace' });
   });
 });
 
@@ -83,10 +94,12 @@ describe('loadFixtureIndex', () => {
     expect(status).toMatchObject({
       status: 'ok',
       directory: path.join(process.cwd(), 'tests', 'fixtures'),
+      source: 'workspace',
     });
     if (status.status !== 'ok') return;
     expect(status.index.schemaVersion).toBe('0.1');
     expect(status.index.fixtures).toEqual([]);
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it('loads a populated index from an override directory', () => {
@@ -108,7 +121,7 @@ describe('loadFixtureIndex', () => {
     );
     process.env['KYNELOOM_FIXTURES_DIR'] = dir;
     const status = loadFixtureIndex();
-    expect(status.status).toBe('ok');
+    expect(status).toMatchObject({ status: 'ok', source: 'override' });
     if (status.status !== 'ok') return;
     expect(status.index.fixtures).toHaveLength(1);
     expect(status.index.fixtures[0]?.id).toBe('synthetic-derby-01');
@@ -149,5 +162,16 @@ describe('loadFixtureIndex', () => {
       reason: 'env-dir-missing',
       directory: null,
     });
+  });
+
+  it('logs degraded statuses with the absolute directory server-side, exactly once per load', () => {
+    const dir = makeTempDir();
+    process.env['KYNELOOM_FIXTURES_DIR'] = dir; // exists, but has no index.json
+    loadFixtureIndex();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const logged = warnSpy.mock.calls[0]?.join(' ') ?? '';
+    expect(logged).toContain('[kyneloom:fixtures]');
+    expect(logged).toContain(dir); // full diagnostic stays server-side
+    expect(logged).toContain('KYNELOOM_FIXTURES_DIR');
   });
 });
