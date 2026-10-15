@@ -1,0 +1,576 @@
+/*
+ * Kyneloom foundation styles.
+ * Tokens transcribed from docs/03-design-system.md. Evidence semantics:
+ * mint = trusted/observed, amber = caution/hypothesis (used here for
+ * "not implemented" markers), violet = AI proposals (reserved, unused today).
+ */
+
+:root {
+  --ink-950: #071319;
+  --ink-900: #101e27;
+  --ink-800: #1b3039;
+  --line: #37515a;
+  --mint-500: #51d7bd;
+  --mint-200: #c6f9e7;
+  --amber-400: #f6ba77;
+  --violet-400: #ae98f7;
+  --text-primary: #f2f8f6;
+  --text-muted: #a8c0c5;
+
+  --font-sans: var(--font-geist-sans), 'Segoe UI', system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), 'Cascadia Mono', ui-monospace, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-full: 999px;
+  --space-gutter: clamp(1.25rem, 4vw, 2.5rem);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1100px 500px at 85% -10%, rgba(81, 215, 189, 0.07), transparent 65%),
+    radial-gradient(900px 420px at -10% 0%, rgba(174, 152, 247, 0.05), transparent 60%),
+    var(--ink-900);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100dvh;
+}
+
+a {
+  color: var(--mint-500);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--mint-200);
+}
+
+:focus-visible {
+  outline: 2px solid var(--mint-500);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.container {
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: var(--space-gutter);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 100;
+  padding: 0.6rem 1rem;
+  background: var(--ink-950);
+  border: 1px solid var(--mint-500);
+  border-radius: var(--radius-sm);
+  color: var(--mint-200);
+  font-weight: 600;
+  transform: translateY(-300%);
+  transition: transform 150ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* Header */
+
+.site-header {
+  border-bottom: 1px solid var(--line);
+  background: rgba(7, 19, 25, 0.6);
+  backdrop-filter: blur(8px);
+}
+
+.site-header__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 4rem;
+}
+
+.wordmark {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.9375rem;
+  letter-spacing: 0.42em;
+  color: var(--text-primary);
+}
+
+.site-header__link {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.site-header__link:hover {
+  color: var(--mint-200);
+  border-color: var(--mint-500);
+}
+
+/* Hero */
+
+.hero {
+  padding-block: clamp(3.5rem, 9vw, 6.5rem) clamp(2.5rem, 6vw, 4rem);
+  max-width: 51rem;
+}
+
+.hero__eyebrow {
+  margin: 0 0 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--mint-500);
+}
+
+.hero__title {
+  margin: 0 0 1.25rem;
+  font-size: clamp(2.375rem, 6vw, 3.75rem);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  font-weight: 650;
+}
+
+.hero__lede {
+  margin: 0;
+  font-size: clamp(1rem, 1.6vw, 1.125rem);
+  color: var(--text-muted);
+  max-width: 44rem;
+}
+
+.hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+  margin: 1.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hero__meta li {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.hero__meta li::before {
+  content: '·';
+  margin-right: 0.6rem;
+  color: var(--mint-500);
+}
+
+/* Section scaffolding */
+
+main {
+  padding-bottom: clamp(4rem, 8vw, 6rem);
+}
+
+section {
+  margin-block-start: clamp(2.75rem, 6vw, 4.5rem);
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: 1.375rem;
+  letter-spacing: -0.01em;
+  font-weight: 620;
+}
+
+.chip {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.28rem 0.7rem;
+  border-radius: var(--radius-full);
+  border: 1px solid;
+}
+
+.chip--not-implemented {
+  color: var(--amber-400);
+  border-color: color-mix(in srgb, var(--amber-400) 55%, transparent);
+  background: color-mix(in srgb, var(--amber-400) 10%, transparent);
+}
+
+.chip--ok {
+  color: var(--mint-500);
+  border-color: color-mix(in srgb, var(--mint-500) 55%, transparent);
+  background: color-mix(in srgb, var(--mint-500) 10%, transparent);
+}
+
+/* Scene stage placeholder */
+
+.scene-stage {
+  position: relative;
+  width: 100%;
+  /* True pitch proportions (105 m × 68 m) at every viewport, matching the
+   * future 3D canvas. The value arrives as a CSS variable because the inline
+   * style must stay overridable by the narrow-mobile media query below. */
+  aspect-ratio: var(--pitch-ratio, 1.544);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(closest-side at 50% 50%, rgba(81, 215, 189, 0.1), transparent 75%),
+    var(--ink-950);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Abstract pitch markings: touchlines, halfway line, center circle, penalty areas. */
+.scene-stage__lines {
+  position: absolute;
+  inset: 4.5%;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 4px;
+}
+
+.scene-stage__lines::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      to right,
+      transparent calc(50% - 1px),
+      color-mix(in srgb, var(--line) 80%, transparent) calc(50% - 1px),
+      color-mix(in srgb, var(--line) 80%, transparent) calc(50% + 1px),
+      transparent calc(50% + 1px)
+    ),
+    linear-gradient(
+      to right,
+      transparent calc(16.5% - 0.5px),
+      color-mix(in srgb, var(--line) 60%, transparent) calc(16.5% - 0.5px),
+      color-mix(in srgb, var(--line) 60%, transparent) calc(16.5% + 0.5px),
+      transparent calc(16.5% + 0.5px)
+    ),
+    linear-gradient(
+      to right,
+      transparent calc(83.5% - 0.5px),
+      color-mix(in srgb, var(--line) 60%, transparent) calc(83.5% - 0.5px),
+      color-mix(in srgb, var(--line) 60%, transparent) calc(83.5% + 0.5px),
+      transparent calc(83.5% + 0.5px)
+    );
+  background-size:
+    100% 100%,
+    1px 18%,
+    1px 18%;
+  background-position:
+    center,
+    16.5% center,
+    83.5% center;
+  background-repeat: no-repeat;
+}
+
+.scene-stage__lines::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 26%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mint-500) 45%, transparent) inset;
+}
+
+.scene-stage__note {
+  position: relative;
+  max-width: 34rem;
+  margin: 1.5rem;
+  padding: clamp(1.1rem, 3vw, 1.6rem);
+  background: rgba(16, 30, 39, 0.88);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.scene-stage__note-title {
+  margin: 0 0 0.6rem;
+  font-weight: 620;
+  font-size: 1.0625rem;
+}
+
+.scene-stage__note-body {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+}
+
+.scene-stage__note-planned {
+  margin: 0.9rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--mint-500);
+}
+
+/* Status section */
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.status-panel {
+  background: var(--ink-800);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 1.4rem 1.5rem 1.5rem;
+}
+
+.status-panel h3 {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  font-weight: 620;
+}
+
+.status-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.status-list li {
+  position: relative;
+  padding-left: 1.4rem;
+  font-size: 0.9375rem;
+}
+
+.status-list--working li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--mint-500);
+}
+
+.status-list--planned li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--amber-400);
+  background: transparent;
+}
+
+.status-list__name {
+  display: block;
+  font-weight: 560;
+}
+
+.status-list__detail {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* Fixture seam */
+
+.fixture-panel {
+  background: var(--ink-800);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 1.4rem 1.5rem 1.5rem;
+}
+
+.fixture-summary {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.fixture-summary--ok {
+  color: var(--mint-500);
+}
+
+.fixture-summary--warn {
+  color: var(--amber-400);
+}
+
+.fixture-detail {
+  margin: 0 0 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  max-width: 46rem;
+}
+
+.fixture-list {
+  margin: 0 0 1.1rem;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.fixture-list li {
+  padding: 0.7rem 0.9rem;
+  background: var(--ink-950);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.fixture-list__id {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--mint-200);
+}
+
+.fixture-list__label {
+  display: block;
+  font-size: 0.9375rem;
+}
+
+.fixture-list__meta {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.fixture-meta {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+.fixture-meta div {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 11rem) 1fr;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+}
+
+.fixture-meta dt {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.fixture-meta dd {
+  margin: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+/* Footer */
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  background: rgba(7, 19, 25, 0.55);
+}
+
+.site-footer__inner {
+  padding-block: 1.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.site-footer p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.site-footer__muted {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+/* Narrow mobile refinements */
+
+@media (max-width: 35rem) {
+  .fixture-meta div {
+    grid-template-columns: 1fr;
+  }
+
+  .site-header__inner {
+    min-height: 3.5rem;
+  }
+
+  /* Below ~560px the note card is taller than the pitch-ratio height and
+     would be clipped; let the stage grow with its content instead. */
+  .scene-stage {
+    aspect-ratio: auto;
+    display: block;
+    padding: 1rem;
+  }
+
+  .scene-stage__note {
+    margin-inline: auto;
+  }
+}
+
+/* Reduced motion: nothing animates by default; keep it that way explicitly. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
