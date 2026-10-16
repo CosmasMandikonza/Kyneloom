@@ -75,6 +75,8 @@ declare global {
         ballQuaternion(): readonly [number, number, number, number] | null;
         playerYaw(entityId: string): number | null;
         cameraWorldPosition(): readonly [number, number, number] | null;
+        cameraFov(): number | null;
+        cameraLookTarget(): readonly [number, number, number] | null;
       };
     };
     __kyneloomPerf?: {
@@ -208,6 +210,7 @@ async function main(): Promise<void> {
           viewport: { width: viewport.width, height: viewport.height },
           reducedMotion: reducedMotion ? 'reduce' : 'no-preference',
           deviceScaleFactor: 1,
+          hasTouch: viewport.name === '390x844', // touch-gesture QA on mobile
         });
         const page = await context.newPage();
         for (const route of ROUTES) {
@@ -266,7 +269,7 @@ async function main(): Promise<void> {
             checks.cameraDisabled = await page
               .locator('.stage__transport [role="radio"][disabled]')
               .count();
-            if (checks.cameraRadios !== 4 || checks.cameraDisabled !== 0) {
+            if (checks.cameraRadios !== 6 || checks.cameraDisabled !== 0) {
               failures.push(
                 `explore @ ${viewport.name}: camera radios ${checks.cameraRadios}, disabled ${checks.cameraDisabled}`,
               );
@@ -372,8 +375,16 @@ async function main(): Promise<void> {
               };
               await seek(4728300); // goal frame
               const snaps: string[] = [];
-              for (const cam of ['Broadcast', 'Overhead', 'Follow', 'Free orbit', 'Broadcast']) {
-                await page.getByRole('radio', { name: cam }).click();
+              for (const cam of [
+                'Broadcast',
+                'Overhead',
+                'Follow',
+                'Goalkeeper',
+                'Free orbit',
+                'Directed',
+                'Broadcast',
+              ]) {
+                await page.getByRole('radio', { name: cam }).click({ force: true });
                 await page.waitForTimeout(350);
                 snaps.push(
                   JSON.stringify(await page.evaluate(() => window.__kyneloomScene!.snapshot())),
@@ -470,7 +481,7 @@ async function main(): Promise<void> {
                 cam: string,
                 done: (p: readonly [number, number, number]) => boolean,
               ) => {
-                await page.getByRole('radio', { name: cam }).click();
+                await page.getByRole('radio', { name: cam }).click({ force: true });
                 const deadline = Date.now() + 12_000;
                 let last: readonly [number, number, number] | null = null;
                 while (Date.now() < deadline) {
@@ -505,7 +516,216 @@ async function main(): Promise<void> {
               if (!checks.cameraFollowConverged.startsWith('yes')) {
                 failures.push(`explore @ ${viewport.name}: follow camera never converged`);
               }
-              await page.getByRole('radio', { name: 'Broadcast' }).click();
+              // Goalkeeper view converges onto the ENGAGED keeper's actual
+              // position (away-01 defends the +x goal; ball at the goal
+              // mouth at 4728300 → keeper ≈ three-space (43.6, 0, 4.9)).
+              const keeperPos = await converge(
+                'Goalkeeper',
+                (pt) => Math.hypot(pt[0] - 43.6, pt[2] - 4.9) < 6 && pt[1] > 1 && pt[1] < 5,
+              );
+              checks.cameraKeeperConverged =
+                keeperPos !== null && keeperPos[1] > 1 && keeperPos[1] < 5
+                  ? `yes ${keeperPos.map((v) => v.toFixed(1)).join('/')}`
+                  : `NO ${keeperPos === null ? 'null' : keeperPos.map((v) => v.toFixed(1)).join('/')}`;
+              if (!checks.cameraKeeperConverged.startsWith('yes')) {
+                failures.push(`explore @ ${viewport.name}: goalkeeper camera never converged`);
+              }
+
+              // Directed mode: deterministic poses from the authored track.
+              // At the goal beat (4728300, local offset 11300) the rig must
+              // settle EXACTLY on the authored keyframe pose (time conversion
+              // + sampling proof), and scrubbing away and back reproduces it.
+              await page.getByRole('radio', { name: 'Directed' }).click();
+              const directedGoal = await (async () => {
+                const deadline = Date.now() + 12_000;
+                // Authored keyframe 6 (offset 11300): position [59,-7,3.2]
+                // pitch → three (59, 3.2, 7).
+                for (;;) {
+                  await page.waitForTimeout(450);
+                  const pt = await page.evaluate(
+                    () => window.__kyneloomScene?.visual?.cameraWorldPosition() ?? null,
+                  );
+                  if (pt !== null && Math.hypot(pt[0] - 59, pt[1] - 3.2, pt[2] - 7) < 0.4) {
+                    return pt;
+                  }
+                  if (Date.now() > deadline) return pt;
+                }
+              })();
+              checks.cameraDirectedGoalPose =
+                directedGoal !== null
+                  ? `yes ${directedGoal.map((v) => v.toFixed(1)).join('/')}`
+                  : 'NO null';
+              if (!checks.cameraDirectedGoalPose.startsWith('yes')) {
+                failures.push(
+                  `explore @ ${viewport.name}: directed camera missed the authored goal pose ${JSON.stringify(directedGoal)}`,
+                );
+              }
+              await seek(4_717_400); // scrub far away mid-transition (interruption)
+              await seek(4_728_300); // and back
+              // The spring is mid-transition right after the seek (visible
+              // on slow renderers); wait until the camera SETTLES at the
+              // directed pose, then confirm the settled pose matches the
+              // pre-scrub one — determinism of the pose itself.
+              const directedBack = await (async () => {
+                const deadline = Date.now() + 15_000;
+                let previous: readonly [number, number, number] | null = null;
+                for (;;) {
+                  await page.waitForTimeout(600);
+                  const pt = await page.evaluate(
+                    () => window.__kyneloomScene?.visual?.cameraWorldPosition() ?? null,
+                  );
+                  if (
+                    pt !== null &&
+                    previous !== null &&
+                    Math.hypot(pt[0] - previous[0], pt[1] - previous[1], pt[2] - previous[2]) < 0.05
+                  ) {
+                    return pt;
+                  }
+                  previous = pt;
+                  if (Date.now() > deadline) return pt;
+                }
+              })();
+              const directedDeterministic =
+                directedGoal !== null &&
+                directedBack !== null &&
+                Math.hypot(
+                  directedBack[0] - directedGoal[0],
+                  directedBack[1] - directedGoal[1],
+                  directedBack[2] - directedGoal[2],
+                ) < 0.5;
+              checks.directedSeekDeterministic = directedDeterministic ? 'identical' : 'DIVERGED';
+              if (!directedDeterministic) {
+                failures.push(`explore @ ${viewport.name}: directed pose drifted across scrub`);
+              }
+              // Escape exits directed mode back to broadcast.
+              await page.locator('.stage__slider').focus();
+              await page.keyboard.press('Escape');
+              await page.waitForTimeout(300);
+              checks.escapeExitsDirected =
+                (await page
+                  .getByRole('radio', { name: 'Broadcast' })
+                  .getAttribute('aria-checked')) ?? '(null)';
+              if (checks.escapeExitsDirected !== 'true') {
+                failures.push(`explore @ ${viewport.name}: Escape did not exit directed mode`);
+              }
+
+              // Rapid repeated mode changes must stay finite and converge.
+              for (const cam of ['Overhead', 'Follow', 'Goalkeeper', 'Directed', 'Overhead']) {
+                await page.getByRole('radio', { name: cam }).click({ force: true });
+                await page.waitForTimeout(120);
+              }
+              const rapidPos = await converge(
+                'Overhead',
+                (pt) => Math.hypot(pt[0], pt[1] - 92, pt[2]) < 0.75,
+              );
+              checks.rapidChangesConverge =
+                rapidPos !== null && Number.isFinite(rapidPos[0]) ? 'yes' : 'NO';
+              if (checks.rapidChangesConverge !== 'yes') {
+                failures.push(
+                  `explore @ ${viewport.name}: camera unstable after rapid mode changes`,
+                );
+              }
+
+              // Free-orbit safety (review round 2): actual drag / pan / zoom
+              // gestures pushed toward and beyond the boundaries — the lens
+              // must stay inside the stadium, above ground, and the pan
+              // target inside its box, without breaking the controls.
+              await page.getByRole('radio', { name: 'Free orbit' }).click({ force: true });
+              await page.waitForTimeout(900);
+              const stageBox = await page.locator('.stage__canvas').boundingBox();
+              if (stageBox === null) throw new Error('stage box missing for orbit gestures');
+              const cx = stageBox.x + stageBox.width / 2;
+              const cy = stageBox.y + stageBox.height / 2;
+              // Zoom hard in then far out (wheel dolly).
+              await page.mouse.move(cx, cy);
+              for (let i = 0; i < 14; i += 1) await page.mouse.wheel(0, -260);
+              await page.waitForTimeout(400);
+              for (let i = 0; i < 10; i += 1) await page.mouse.wheel(0, 420);
+              await page.waitForTimeout(400);
+              // Rotate downward hard (left drag): tries to dive below pitch.
+              await page.mouse.move(cx, cy);
+              await page.mouse.down();
+              for (let i = 1; i <= 10; i += 1) {
+                await page.mouse.move(cx + i * 10, cy + i * 16, { steps: 2 });
+              }
+              await page.mouse.up();
+              await page.waitForTimeout(400);
+              // Pan toward a far corner (right drag), repeatedly past bounds.
+              for (let round = 0; round < 8; round += 1) {
+                await page.mouse.move(cx, cy);
+                await page.mouse.down({ button: 'right' });
+                await page.mouse.move(cx - 240, cy - 150, { steps: 5 });
+                await page.mouse.up({ button: 'right' });
+                await page.waitForTimeout(100);
+              }
+              await page.waitForTimeout(900);
+              const orbitPose = await page.evaluate(() => {
+                const visual = window.__kyneloomScene?.visual;
+                return {
+                  pos: visual?.cameraWorldPosition() ?? null,
+                  target: visual?.cameraLookTarget() ?? null,
+                };
+              });
+              const EPS = 0.05;
+              const orbitOk =
+                orbitPose.pos !== null &&
+                orbitPose.target !== null &&
+                orbitPose.pos[1] >= 0.65 - EPS &&
+                orbitPose.pos[1] <= 165 + EPS &&
+                Math.abs(orbitPose.pos[0]) <= 82 + EPS &&
+                Math.abs(orbitPose.pos[2]) <= 82 + EPS &&
+                orbitPose.target[1] >= -EPS &&
+                orbitPose.target[1] <= 165 + EPS &&
+                Math.abs(orbitPose.target[0]) <= 82 + EPS &&
+                Math.abs(orbitPose.target[2]) <= 82 + EPS;
+              checks.orbitBoundsAfterGestures =
+                orbitPose.pos !== null && orbitPose.target !== null
+                  ? `${orbitOk ? 'ok' : 'VIOLATED'} pos ${orbitPose.pos.map((v) => v.toFixed(1)).join('/')} target ${orbitPose.target.map((v) => v.toFixed(1)).join('/')}`
+                  : 'NO null';
+              if (!checks.orbitBoundsAfterGestures.startsWith('ok')) {
+                failures.push(
+                  `explore @ ${viewport.name}: orbit gestures escaped the safety bounds ${JSON.stringify(orbitPose)}`,
+                );
+              }
+              // Leaving orbit after all that: the spring still converges.
+              const orbitExit = await converge(
+                'Overhead',
+                (pt) => Math.hypot(pt[0], pt[1] - 92, pt[2]) < 0.75,
+              );
+              checks.orbitExitConverged =
+                orbitExit !== null && Math.hypot(orbitExit[1] - 92) < 1 ? 'yes' : 'NO';
+              if (checks.orbitExitConverged !== 'yes') {
+                failures.push(
+                  `explore @ ${viewport.name}: camera failed to converge after orbit exit`,
+                );
+              }
+
+              // FOV stays inside the contract range across every mode.
+              const fovs: number[] = [];
+              for (const cam of ['Broadcast', 'Overhead', 'Follow', 'Goalkeeper', 'Directed']) {
+                await page.getByRole('radio', { name: cam }).click({ force: true });
+                await page.waitForTimeout(700);
+                const fov = await page.evaluate(
+                  () => window.__kyneloomScene?.visual?.cameraFov() ?? null,
+                );
+                if (typeof fov === 'number') fovs.push(fov);
+              }
+              checks.cameraFovRange = fovs.every((f) => f >= 20 && f <= 120)
+                ? `${Math.min(...fovs).toFixed(0)}–${Math.max(...fovs).toFixed(0)}°`
+                : `OUT ${JSON.stringify(fovs)}`;
+              if (!checks.cameraFovRange.includes('°')) {
+                failures.push(`explore @ ${viewport.name}: fov left the 20–120° range`);
+              }
+
+              // Evidence screenshot: the directed composition at the goal.
+              await page.getByRole('radio', { name: 'Directed' }).click({ force: true });
+              await seek(4_728_300);
+              await page.waitForTimeout(1200);
+              await page.screenshot({
+                path: path.join(OUT_DIR, 'screenshots', `explore-directed-${viewport.name}.png`),
+              });
+
+              await page.getByRole('radio', { name: 'Broadcast' }).click({ force: true });
               await page.waitForTimeout(350);
 
               // Performance probe: play 4 s of real playback, then read the

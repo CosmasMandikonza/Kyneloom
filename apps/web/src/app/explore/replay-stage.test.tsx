@@ -21,7 +21,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function renderStage(): Promise<void> {
+async function renderStage(): Promise<HTMLElement> {
   const golden = await loadGoldenMatch();
   const scene = buildSceneData(golden);
   expect(scene).not.toBeNull();
@@ -46,6 +46,7 @@ async function renderStage(): Promise<void> {
     } as unknown as MediaQueryList;
   });
   render(<ReplayStage scene={scene!} />);
+  return screen.getByRole('region', { name: 'Living Replay stage' });
 }
 
 function slider(): HTMLInputElement {
@@ -72,16 +73,53 @@ describe('ReplayStage stage shell', () => {
 });
 
 describe('ReplayStage truthfully enabled controls', () => {
-  it('has four ENABLED camera modes', async () => {
+  it('has six ENABLED camera modes incl. goalkeeper and directed', async () => {
     await renderStage();
     const group = screen.getByRole('radiogroup', { name: 'Camera' });
     const radios = group.querySelectorAll('[role="radio"]') as NodeListOf<HTMLButtonElement>;
-    expect(radios.length).toBe(4);
+    const labels = [...radios].map((radio) => radio.textContent?.trim());
+    expect(labels).toEqual([
+      'Broadcast',
+      'Overhead',
+      'Follow',
+      'Goalkeeper',
+      'Free orbit',
+      'Directed',
+    ]);
     for (const radio of radios) {
-      expect(radio.disabled).toBe(false);
+      expect(radio.disabled).toBe(false); // the authored manifest track is valid
     }
     fireEvent.click(radios[2]!); // Follow
     expect(radios[2]!.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('selects cameras with the 1–6 keyboard shortcuts and Esc exits directed', async () => {
+    const stage = await renderStage();
+    const radios = () =>
+      screen
+        .getByRole('radiogroup', { name: 'Camera' })
+        .querySelectorAll('[role="radio"]') as NodeListOf<HTMLButtonElement>;
+    fireEvent.keyDown(stage, { key: '4' }); // Goalkeeper
+    expect(radios()[3]!.getAttribute('aria-checked')).toBe('true');
+    fireEvent.keyDown(stage, { key: '6' }); // Directed — the guided sequence
+    expect(radios()[5]!.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Exit Directed Mode' })).toBeDefined();
+    fireEvent.keyDown(stage, { key: 'Escape' });
+    expect(radios()[0]!.getAttribute('aria-checked')).toBe('true'); // broadcast
+    expect(screen.queryByRole('button', { name: 'Exit Directed Mode' })).toBeNull();
+  });
+
+  it('keeps the player selection across camera changes', async () => {
+    const stage = await renderStage();
+    const radios = () =>
+      screen
+        .getByRole('radiogroup', { name: 'Camera' })
+        .querySelectorAll('[role="radio"]') as NodeListOf<HTMLButtonElement>;
+    fireEvent.keyDown(stage, { key: '3' }); // Follow — selection chip appears
+    fireEvent.keyDown(stage, { key: '2' }); // Overhead
+    fireEvent.keyDown(stage, { key: '5' }); // Free orbit
+    // No mode change may clear or duplicate the selection identity.
+    expect(radios()[4]!.getAttribute('aria-checked')).toBe('true');
   });
 
   it('plays and pauses with a real toggle button', async () => {

@@ -1,5 +1,7 @@
 # 08 — Living Replay: spatial renderer specification
 
+> **Status (KYN-07, 2026-10-16): the elastic camera rig is IMPLEMENTED.** Six modes — broadcast, overhead, follow, goalkeeper (framed from the ENGAGED keeper's actual position), free orbit and manifest-directed — with exactly one active driver per frame, frame-rate-independent seconds-domain damping of position/target/fov, safety clamps (never underground, inside the stadium, clear of players), keyboard 1–6 + global-Escape exit, touch orbit, and a validated canonical `CameraTrack` (the authored "Invisible Assist" sequence) parsed through `parseManifestCameras` with offset→absolute clock conversion done exactly once. See `apps/web/src/app/explore/scene/camera-rig.tsx`, `camera-track.ts`, `camera-safety.ts`.
+>
 > **Status (KYN-06, 2026-10-14): the Living Replay core is IMPLEMENTED.** `/explore` mounts a real R3F/Three scene (105×68 m pitch, goals, turf, floodlights, textured ball) driven by a single `playheadMs` owner on the server-serialized golden fixture; four cameras, click-to-select with stable identity, full transport (play/pause/step/scrub/0.25–2×), a same-timeline 2D fallback, and QA hooks proving camera-independent world truth. See `apps/web/src/app/explore/scene/` and [16 — Visual QA](16-visual-reference-and-qa.md). Sections below remain the binding specification (cameras beyond the four shipped modes — goalkeeper/directed tracks — stay planned for Issues #7/#8).
 
 ## Desired user sensation

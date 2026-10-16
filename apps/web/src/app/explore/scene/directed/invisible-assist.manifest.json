@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "0.1.0",
+  "manifestId": "mom-invisible-assist-guided",
+  "tenantId": "demo-org",
+  "matchId": "synthetic-derby-01",
+  "revision": 1,
+  "status": "draft",
+  "timeRangeMs": [4717000, 4731000],
+  "input": {
+    "reducerRevision": 11,
+    "sourceEventIds": ["evt-0042"],
+    "trackingSampleRefs": ["frame-47170", "frame-47310"],
+    "sourceHash": "sha256:957b76a8fad4858d9887bf51eadfdcda5d40f9b317500f16c355730ae1cbbc01"
+  },
+  "scene": {
+    "coordinateSystem": "pitch-meters-center-origin-v1",
+    "cameraTracks": [
+      {
+        "id": "cam-invisible-assist",
+        "mode": "directed",
+        "startMs": 0,
+        "endMs": 14000,
+        "keyframes": [
+          {
+            "tMs": 0,
+            "position": [26, -34, 30],
+            "target": [12, -9, 0],
+            "fovDeg": 46
+          },
+          {
+            "tMs": 4000,
+            "position": [13.1, -15.3, 3.0],
+            "target": [17.9, -11.7, 1.3],
+            "fovDeg": 42
+          },
+          {
+            "tMs": 5600,
+            "position": [0, -22, 17],
+            "target": [15, -7.6, 0],
+            "fovDeg": 40
+          },
+          {
+            "tMs": 7000,
+            "position": [13.5, -3.0, 6.5],
+            "target": [24.3, -2.0, 1.0],
+            "fovDeg": 40
+          },
+          {
+            "tMs": 9200,
+            "position": [24, -14, 9],
+            "target": [39.1, -10.2, 0.9],
+            "fovDeg": 38
+          },
+          {
+            "tMs": 10800,
+            "position": [31, -21, 6],
+            "target": [43.5, -9.0, 1.2],
+            "fovDeg": 36
+          },
+          {
+            "tMs": 11300,
+            "position": [59, -7, 3.2],
+            "target": [52.4, -2.0, 1.4],
+            "fovDeg": 40
+          },
+          {
+            "tMs": 14000,
+            "position": [42, -26, 13],
+            "target": [41.2, -2.5, 1.2],
+            "fovDeg": 44
+          }
+        ]
+      }
+    ],
+    "overlays": []
+  },
+  "claims": [],
+  "evidence": [],
+  "lenses": ["fan"],
+  "rightsPolicyRef": "synthetic-0bsd-demo-v1",
+  "approval": null
+}

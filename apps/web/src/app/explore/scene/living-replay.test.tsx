@@ -94,6 +94,7 @@ function tinyScene(): SceneData {
     confidences: [1],
     frameIds: ['frame-10', 'frame-11', 'frame-12'],
     events: [],
+    directedTrack: null,
   };
 }
 

@@ -37,10 +37,20 @@ import { Fallback2D } from './scene/fallback-2d';
  */
 
 const CAMERA_MODES: readonly { id: CameraMode; label: string; hint: string }[] = [
-  { id: 'broadcast', label: 'Broadcast', hint: 'Main wash camera following the play' },
-  { id: 'overhead', label: 'Overhead', hint: 'Tactical top-down view of the whole pitch' },
-  { id: 'follow', label: 'Follow', hint: 'Track the selected player (default: the decoy run)' },
-  { id: 'orbit', label: 'Free orbit', hint: 'Drag to orbit, wheel to zoom' },
+  { id: 'broadcast', label: 'Broadcast', hint: 'Main wash camera following the play (1)' },
+  { id: 'overhead', label: 'Overhead', hint: 'Tactical top-down view of the whole pitch (2)' },
+  { id: 'follow', label: 'Follow', hint: 'Track the selected player (default: the decoy run) (3)' },
+  {
+    id: 'goalkeeper',
+    label: 'Goalkeeper',
+    hint: "Frame the play from the engaged keeper's actual position (4)",
+  },
+  { id: 'orbit', label: 'Free orbit', hint: 'Drag to orbit, wheel or pinch to zoom (5)' },
+  {
+    id: 'directed',
+    label: 'Directed',
+    hint: 'Guided cinematic sequence — The Invisible Assist (6)',
+  },
 ];
 
 const SPEED_LABELS: Record<PlaybackSpeed, string> = {
@@ -210,9 +220,19 @@ function ReplayStageInner({
     return () => cancelAnimationFrame(raf);
   }, [engine, scene.events, momentWindow]);
 
-  // Keyboard transport on the stage: arrows step frames, space toggles play.
+  // Keyboard transport on the stage: arrows step frames, space toggles
+  // play, digits 1–6 select cameras, Escape exits directed/orbit mode.
   const onStageKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
     const target = event.target as HTMLElement;
+    // Escape is a GLOBAL exit: leaving the directed sequence (or free orbit)
+    // must work even while a control holds focus.
+    if (event.key === 'Escape') {
+      if (camera === 'directed' || camera === 'orbit') {
+        event.preventDefault();
+        setCamera('broadcast');
+      }
+      return;
+    }
     if (target.closest('button, input, a, select')) return;
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
       event.preventDefault();
@@ -220,6 +240,12 @@ function ReplayStageInner({
     } else if (event.key === ' ') {
       event.preventDefault();
       togglePlaying();
+    } else if (event.key >= '1' && event.key <= '6') {
+      const next = CAMERA_MODES[Number(event.key) - 1];
+      if (next !== undefined && !(next.id === 'directed' && scene.directedTrack === null)) {
+        event.preventDefault();
+        setCamera(next.id);
+      }
     }
   };
 
@@ -292,20 +318,39 @@ function ReplayStageInner({
               role="radiogroup"
               aria-labelledby={`${modeGroupId}-label`}
             >
-              {CAMERA_MODES.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={camera === mode.id}
-                  title={mode.hint}
-                  className="stage__mode-btn"
-                  onClick={() => setCamera(mode.id)}
-                >
-                  {mode.label}
-                </button>
-              ))}
+              {CAMERA_MODES.map((mode) => {
+                const directedUnavailable = mode.id === 'directed' && scene.directedTrack === null;
+                return (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={camera === mode.id}
+                    title={
+                      directedUnavailable
+                        ? 'Directed sequence unavailable — no validated camera track for this moment'
+                        : mode.hint
+                    }
+                    aria-disabled={directedUnavailable || undefined}
+                    className="stage__mode-btn"
+                    onClick={() => setCamera(mode.id)}
+                    {...(directedUnavailable ? { disabled: true } : {})}
+                  >
+                    {mode.label}
+                  </button>
+                );
+              })}
             </div>
+            {camera === 'directed' ? (
+              <button
+                type="button"
+                className="stage__exit-directed"
+                onClick={() => setCamera('broadcast')}
+                title="Return to the broadcast camera (Escape)"
+              >
+                Exit Directed Mode
+              </button>
+            ) : null}
             <span id={`${lensGroupId}-label`} className="stage__mode-caption">
               Lens
             </span>
@@ -508,7 +553,9 @@ function ReplayStageInner({
                 </button>
               </span>
             ) : (
-              <span className="stage__hint">Click a player to follow their run</span>
+              <span className="stage__hint">
+                Click a player to follow their run · 1–6 cameras · Esc exits directed/orbit
+              </span>
             )}
             <button
               type="button"

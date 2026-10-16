@@ -24,7 +24,8 @@
     "replay:golden": "tsx scripts/replay-golden.ts",
     "qa:visual": "tsx scripts/visual-qa.ts",
     "qa:record": "tsx scripts/record-replay.ts",
-    "qa:record:live": "tsx scripts/record-replay-live.ts"
+    "qa:record:live": "tsx scripts/record-replay-live.ts",
+    "qa:record:camera": "tsx scripts/record-camera-live.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
