@@ -32,8 +32,12 @@ export interface SceneEvent {
   readonly occurredAtMs: number;
   readonly actorId: string;
   readonly teamId: SceneTeamId;
-  readonly xM: number;
-  readonly yM: number;
+  /**
+   * Event location when the SOURCE event carries one; null when the source
+   * has no position. Never defaulted to (0, 0) — overlays must not display
+   * fabricated coordinates.
+   */
+  readonly position: { readonly xM: number; readonly yM: number } | null;
   /** Human label for chips; derived, presentation-only. */
   readonly label: string;
 }
@@ -136,21 +140,23 @@ export function buildSceneData(golden: GoldenMatchStatus): SceneData | null {
   );
 
   const [windowStartMs, windowEndMs] = golden.data.goldenWindowMs;
+  // Strict filter: only events whose source carries a real team identity
+  // ('home' | 'away') enter the scene payload — null/unknown teams would
+  // otherwise be coerced into a plausible but fabricated affiliation.
+  type SourceEvent = (typeof golden.data.projected.acceptedEvents)[number];
+  const hasRealTeam = (event: SourceEvent): event is SourceEvent & { teamId: SceneTeamId } =>
+    event.teamId === 'home' || event.teamId === 'away';
   const events: SceneEvent[] = golden.data.projected.acceptedEvents
-    .filter(
-      (event) =>
-        event.occurredAtMs >= windowStartMs &&
-        event.occurredAtMs <= windowEndMs &&
-        event.teamId !== undefined,
-    )
+    .filter((event) => event.occurredAtMs >= windowStartMs && event.occurredAtMs <= windowEndMs)
+    .filter(hasRealTeam)
     .map((event) => ({
       eventId: event.eventId,
       kind: event.kind,
       occurredAtMs: event.occurredAtMs,
       actorId: event.actorId ?? '',
-      teamId: (event.teamId as SceneTeamId) ?? 'home',
-      xM: event.position?.xM ?? 0,
-      yM: event.position?.yM ?? 0,
+      teamId: event.teamId,
+      position:
+        event.position !== undefined ? { xM: event.position.xM, yM: event.position.yM } : null,
       label: EVENT_LABELS[event.kind] ?? event.kind,
     }))
     .sort((a, b) => a.occurredAtMs - b.occurredAtMs);

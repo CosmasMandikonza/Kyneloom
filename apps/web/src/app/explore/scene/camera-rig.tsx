@@ -1,19 +1,23 @@
 'use client';
 
-import { useFrame } from '@react-three/fiber';
+import { useEffect } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useSceneRuntime, type CameraMode } from './scene-context';
+import { dampFactor } from './kinematics';
+import { registerVisualProbe } from './visual-debug';
 
 /**
  * Camera system (KYN-06, docs/08): broadcast, overhead tactical, player
  * follow and free orbit. Cameras are PRESENTATION ONLY — they never touch
  * player or ball coordinates; the world snapshot at time t is identical in
  * every mode (asserted by the Playwright QA hook). Transitions are damped
- * lerps; reduced motion snaps.
+ * lerps (frame-rate-independent, seconds-domain); reduced motion snaps.
  */
 
 const PITCH_WIDTH_M = 68;
+/** Fraction of the remaining distance closed per 60 fps frame. */
 const DAMPING = 0.075;
 
 const DESIRED = new THREE.Vector3();
@@ -23,9 +27,19 @@ const SMOOTHED_TARGET = new THREE.Vector3(0, 0, 0);
 
 export function CameraRig({ mode }: { mode: CameraMode }) {
   const { scene, engine, getFrame, selected } = useSceneRuntime();
-  useFrame((state, deltaMs) => {
+  const camera = useThree((state) => state.camera);
+
+  useEffect(
+    () =>
+      registerVisualProbe('camera', {
+        cameraWorldPosition: () =>
+          [camera.position.x, camera.position.y, camera.position.z] as const,
+      }),
+    [camera],
+  );
+
+  useFrame((state, deltaSeconds) => {
     if (mode === 'orbit') return; // OrbitControls drives the camera.
-    const camera = state.camera;
     const snapshot = getFrame(engine.playheadMs);
     const ball = snapshot.positions.get(scene.ballEntityId);
     const followId = selected.entityId ?? 'home-11'; // the decoy winger by default
@@ -51,15 +65,17 @@ export function CameraRig({ mode }: { mode: CameraMode }) {
     }
 
     if (engine.reducedMotion) {
-      camera.position.copy(DESIRED);
+      state.camera.position.copy(DESIRED);
       SMOOTHED_TARGET.copy(TARGET);
-      camera.lookAt(SMOOTHED_TARGET);
+      state.camera.lookAt(SMOOTHED_TARGET);
       return;
     }
-    const t = 1 - Math.pow(1 - DAMPING, deltaMs / 16.6667);
-    camera.position.lerp(DESIRED, t);
+    // useFrame's delta is SECONDS; dampFactor converts it to the
+    // frame-rate-independent "close DAMPING per 60 fps frame" lerp.
+    const t = dampFactor(deltaSeconds, DAMPING);
+    state.camera.position.lerp(DESIRED, t);
     SMOOTHED_TARGET.lerp(TARGET, t);
-    camera.lookAt(SMOOTHED_TARGET);
+    state.camera.lookAt(SMOOTHED_TARGET);
   });
 
   return (

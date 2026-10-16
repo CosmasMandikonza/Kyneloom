@@ -1,12 +1,14 @@
 'use client';
 
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { pitchToThree } from '@kyneloom/contracts';
 import { useSceneRuntime, type SelectionState } from './scene-context';
+import { buildTrajectory, headingAt } from './kinematics';
+import { registerVisualProbe } from './visual-debug';
 
 /**
  * The 22 rigged footballers (KYN-06 + KYN-30).
@@ -191,7 +193,6 @@ interface PlayerRuntime {
   readonly mixer: THREE.AnimationMixer;
   readonly actions: Record<string, THREE.AnimationAction>;
   readonly kickClip: THREE.AnimationClip | null;
-  readonly heading: { value: number };
 }
 
 export function Footballers() {
@@ -201,6 +202,16 @@ export function Footballers() {
   const groupRefs = useRef<(THREE.Group | null)[]>([]);
   const ringRef = useRef<THREE.Mesh>(null);
   const kickWindows = useMemo(() => kickWindowsFromEvents(scene.events), [scene.events]);
+
+  // Pure per-entity motion trajectories from the scene's own samples — the
+  // source of deterministic orientation lookups (no render history).
+  const trajectories = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof buildTrajectory>>();
+    for (const track of scene.tracks) {
+      map.set(track.entityId, buildTrajectory(track.entityId, track));
+    }
+    return map;
+  }, [scene.tracks]);
 
   // Independent skeletons per actor: clone shares geometry/materials, bones
   // are per-instance (SkeletonUtils semantics). Kits swap the two source
@@ -271,7 +282,6 @@ export function Footballers() {
         mixer,
         actions,
         kickClip,
-        heading: { value: 0 },
       });
     });
     runtime.current = players;
@@ -280,6 +290,18 @@ export function Footballers() {
       runtime.current = [];
     };
   }, [model, animations, scene.players, teamMaterials]);
+
+  // QA probe over the RENDERED actor roots (see visual-debug.ts).
+  useEffect(
+    () =>
+      registerVisualProbe('players', {
+        playerYaw: (entityId) => {
+          const player = runtime.current.find((candidate) => candidate.entityId === entityId);
+          return player === undefined || !player.root.visible ? null : player.root.rotation.y;
+        },
+      }),
+    [],
+  );
 
   useFrame(() => {
     const t = engine.playheadMs;
@@ -294,15 +316,12 @@ export function Footballers() {
       const [x, y, z] = pitchToThree({ xM: sample.xM, yM: sample.yM, zM: sample.zM });
       player.root.position.set(x, y, z);
 
-      // Heading: authoritative motion direction, damped for presentation.
-      const targetHeading = snapshot.headingsRad.get(player.entityId);
-      if (targetHeading !== undefined) {
-        let delta = targetHeading - player.heading.value;
-        delta = Math.atan2(Math.sin(delta), Math.cos(delta));
-        const step = engine.reducedMotion ? delta : delta * 0.22;
-        player.heading.value += step;
-      }
-      player.root.rotation.y = player.heading.value + MODEL_FORWARD_OFFSET;
+      // Heading: a PURE lookup at the playhead (window-smoothed over the
+      // entity's own samples) — the same timestamp always yields the same
+      // facing, no matter what frames were rendered before the seek.
+      const trajectory = trajectories.get(player.entityId);
+      player.root.rotation.y =
+        (trajectory === undefined ? 0 : headingAt(trajectory, t)) + MODEL_FORWARD_OFFSET;
 
       const speed = snapshot.velocitiesMps.get(player.entityId) ?? 0;
       applyLocomotion(player, speed, t);

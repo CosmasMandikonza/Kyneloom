@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T06:24:21.336Z",
+  "generatedAt": "2026-10-16T13:35:15.406Z",
   "viewports": [
     "1440x900",
     "1280x800",
@@ -40,7 +40,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 23,
-        "scene3dReadyMs": 3670,
+        "scene3dReadyMs": 2775,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 4,
@@ -53,7 +53,12 @@
         "ballTruthAtCheckpoint": true,
         "cameraIndependent": "identical",
         "seekDeterministic": "identical",
-        "perf": "{\"fps\":1,\"p50Ms\":1183.4,\"p95Ms\":1248.5,\"drawCalls\":147,\"triangles\":608032,\"geometries\":37,\"textures\":49,\"samples\":129}",
+        "ballMeshAtSource": "exact",
+        "ballSpinDeterministic": "identical",
+        "playerYawDeterministic": "identical",
+        "cameraOverheadConverged": "yes 0.0/92.0/0.0",
+        "cameraFollowConverged": "yes 5.0/4.4/8.9",
+        "perf": "{\"fps\":1,\"p50Ms\":951.2,\"p95Ms\":1272.1,\"drawCalls\":151,\"triangles\":608152,\"geometries\":41,\"textures\":49,\"samples\":179}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -108,7 +113,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 23,
-        "scene3dReadyMs": 3403,
+        "scene3dReadyMs": 3954,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 4,
@@ -143,7 +148,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 23,
-        "scene3dReadyMs": 3280,
+        "scene3dReadyMs": 3722,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 4,
@@ -156,7 +161,12 @@
         "ballTruthAtCheckpoint": true,
         "cameraIndependent": "identical",
         "seekDeterministic": "identical",
-        "perf": "{\"fps\":1,\"p50Ms\":1094.1,\"p95Ms\":1162.9,\"drawCalls\":148,\"triangles\":608080,\"geometries\":37,\"textures\":49,\"samples\":127}",
+        "ballMeshAtSource": "exact",
+        "ballSpinDeterministic": "identical",
+        "playerYawDeterministic": "identical",
+        "cameraOverheadConverged": "yes 0.0/92.0/0.0",
+        "cameraFollowConverged": "yes 5.0/4.4/8.9",
+        "perf": "{\"fps\":1,\"p50Ms\":885.8,\"p95Ms\":967.4,\"drawCalls\":151,\"triangles\":608152,\"geometries\":41,\"textures\":49,\"samples\":167}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -211,7 +221,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 23,
-        "scene3dReadyMs": 3116,
+        "scene3dReadyMs": 2383,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 4,
@@ -224,7 +234,12 @@
         "ballTruthAtCheckpoint": true,
         "cameraIndependent": "identical",
         "seekDeterministic": "identical",
-        "perf": "{\"fps\":1,\"p50Ms\":1033.8,\"p95Ms\":1100.2,\"drawCalls\":143,\"triangles\":607948,\"geometries\":37,\"textures\":49,\"samples\":131}",
+        "ballMeshAtSource": "exact",
+        "ballSpinDeterministic": "identical",
+        "playerYawDeterministic": "identical",
+        "cameraOverheadConverged": "yes 0.0/92.0/0.0",
+        "cameraFollowConverged": "yes 5.0/4.4/8.9",
+        "perf": "{\"fps\":1,\"p50Ms\":838.5,\"p95Ms\":1084.5,\"drawCalls\":150,\"triangles\":608104,\"geometries\":41,\"textures\":49,\"samples\":177}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -279,7 +294,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 23,
-        "scene3dReadyMs": 2339,
+        "scene3dReadyMs": 1924,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 4,
@@ -292,7 +307,12 @@
         "ballTruthAtCheckpoint": true,
         "cameraIndependent": "identical",
         "seekDeterministic": "identical",
-        "perf": "{\"fps\":1,\"p50Ms\":780.1,\"p95Ms\":813.4,\"drawCalls\":128,\"triangles\":607480,\"geometries\":30,\"textures\":49,\"samples\":129}",
+        "ballMeshAtSource": "exact",
+        "ballSpinDeterministic": "identical",
+        "playerYawDeterministic": "identical",
+        "cameraOverheadConverged": "yes 0.0/92.0/0.0",
+        "cameraFollowConverged": "yes 5.0/4.4/8.9",
+        "perf": "{\"fps\":2,\"p50Ms\":620.4,\"p95Ms\":763.6,\"drawCalls\":131,\"triangles\":607576,\"geometries\":36,\"textures\":49,\"samples\":187}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -347,7 +367,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 23,
-        "scene3dReadyMs": 2430,
+        "scene3dReadyMs": 1924,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 4,
@@ -382,7 +402,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 23,
-        "scene3dReadyMs": 2275,
+        "scene3dReadyMs": 1911,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 4,
@@ -395,7 +415,12 @@
         "ballTruthAtCheckpoint": true,
         "cameraIndependent": "identical",
         "seekDeterministic": "identical",
-        "perf": "{\"fps\":1,\"p50Ms\":769.3,\"p95Ms\":817.2,\"drawCalls\":130,\"triangles\":607544,\"geometries\":30,\"textures\":49,\"samples\":131}",
+        "ballMeshAtSource": "exact",
+        "ballSpinDeterministic": "identical",
+        "playerYawDeterministic": "identical",
+        "cameraOverheadConverged": "yes 0.0/92.0/0.0",
+        "cameraFollowConverged": "yes 5.0/4.4/8.9",
+        "perf": "{\"fps\":2,\"p50Ms\":624.5,\"p95Ms\":774.6,\"drawCalls\":131,\"triangles\":607576,\"geometries\":36,\"textures\":49,\"samples\":174}",
         "contextLoss": "lost → context-lost"
       }
     },

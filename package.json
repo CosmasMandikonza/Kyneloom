@@ -23,7 +23,8 @@
     "fixture:generate": "tsx scripts/generate-fixture.ts",
     "replay:golden": "tsx scripts/replay-golden.ts",
     "qa:visual": "tsx scripts/visual-qa.ts",
-    "qa:record": "tsx scripts/record-replay.ts"
+    "qa:record": "tsx scripts/record-replay.ts",
+    "qa:record:live": "tsx scripts/record-replay-live.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

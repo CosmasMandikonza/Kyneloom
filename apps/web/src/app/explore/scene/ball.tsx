@@ -1,16 +1,21 @@
 'use client';
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { pitchToThree } from '@kyneloom/contracts';
 import { useSceneRuntime } from './scene-context';
+import { buildTrajectory, distanceAt, headingAt } from './kinematics';
+import { registerVisualProbe } from './visual-debug';
 
 /**
  * The match ball (KYN-06). A regulation-size sphere (r = 0.11 m) with a
- * generated panel texture. Its position is authoritative tracking only —
- * flight height comes from the fixture's z samples, spin is a deterministic
- * presentation detail derived from ground velocity.
+ * generated panel texture. Its world position is EXACTLY the authoritative
+ * sample mapped through pitchToThree — the fixture's zM already is the ball
+ * center height (0.11 m resting), so no extra lift is applied. Spin is a
+ * pure function of the playhead: total ground-path length divided by the
+ * radius around the current motion axis, recomputed absolutely every frame —
+ * pause, duplicate frames, reverse and seek all yield the identical pose.
  */
 
 const BALL_RADIUS_M = 0.11;
@@ -61,7 +66,31 @@ export function Ball() {
   const meshRef = useRef<THREE.Mesh>(null);
   const shadowRef = useRef<THREE.Mesh>(null);
   const texture = useMemo(() => drawBallTexture(), []);
-  const spinAxis = useMemo(() => new THREE.Vector3(1, 0, 0), []);
+  const axis = useMemo(() => new THREE.Vector3(), []);
+
+  // Pure ground-path trajectory from the scene's own samples.
+  const trajectory = useMemo(() => {
+    const track = scene.tracks.find((candidate) => candidate.entityId === scene.ballEntityId);
+    return track === undefined ? null : buildTrajectory(track.entityId, track);
+  }, [scene.tracks, scene.ballEntityId]);
+
+  useEffect(() => {
+    if (trajectory === null) return;
+    return registerVisualProbe('ball', {
+      ballWorldPosition: () => {
+        const mesh = meshRef.current;
+        return mesh === null || !mesh.visible
+          ? null
+          : ([mesh.position.x, mesh.position.y, mesh.position.z] as const);
+      },
+      ballQuaternion: () => {
+        const mesh = meshRef.current;
+        return mesh === null || !mesh.visible
+          ? null
+          : ([mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w] as const);
+      },
+    });
+  }, [trajectory]);
 
   useFrame(() => {
     const mesh = meshRef.current;
@@ -76,20 +105,22 @@ export function Ball() {
     mesh.visible = true;
     shadow.visible = true;
     const [x, y, z] = pitchToThree({ xM: sample.xM, yM: sample.yM, zM: sample.zM });
-    mesh.position.set(x, y + BALL_RADIUS_M, z);
+    // zM IS the authoritative ball-center height — transform verbatim.
+    mesh.position.set(x, y, z);
     shadow.position.set(x, 0.015, z);
     const shadowScale = THREE.MathUtils.clamp(1.25 - y * 0.18, 0.45, 1.25);
     shadow.scale.setScalar(shadowScale);
-    // Deterministic-from-playhead roll: same time, same orientation.
-    const back = getFrame(engine.playheadMs - 100).positions.get(scene.ballEntityId);
-    if (back !== undefined) {
-      const dx = sample.xM - back.xM;
-      const dy = sample.yM - back.yM;
-      const distance = Math.hypot(dx, dy);
-      if (distance > 1e-4) {
-        spinAxis.set(dy, 0, -dx).normalize();
-        mesh.rotateOnWorldAxis(spinAxis, distance / BALL_RADIUS_M);
-      }
+
+    // Deterministic roll: angle = ground-path distance / radius, axis =
+    // up × motion direction. Both are pure lookups at the playhead, so the
+    // same timestamp always produces the identical quaternion.
+    if (trajectory !== null) {
+      const t = engine.playheadMs;
+      const heading = headingAt(trajectory, t);
+      // Pitch motion (cos h, sin h) → three-space direction (cos h, 0, −sin h);
+      // rolling axis = up × direction.
+      axis.set(-Math.sin(heading), 0, -Math.cos(heading)).normalize();
+      mesh.quaternion.setFromAxisAngle(axis, distanceAt(trajectory, t) / BALL_RADIUS_M);
     }
   });
 

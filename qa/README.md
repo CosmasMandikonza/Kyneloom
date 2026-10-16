@@ -28,19 +28,30 @@ transport/stage non-overlap (mobile included), 2D fallback mounting on the
 same timeline, and a perf-probe read after 4 s of playback (headless numbers
 are SwiftShader-honest; GPU numbers come from the headed `qa:record` run).
 
+## `qa:record:live` (scripts/record-replay-live.ts)
+
+Records `qa/video/living-replay-screencast.mp4` (+ a transcoded `.webm`
+twin) — a **continuous, real-time 30 fps screencast** of the golden sequence
+on the machine GPU: headed Chromium in a fixed window region, captured with
+ffmpeg's Windows screen grabber (gdigrab). This run: 12.3 s, 368 frames,
+adjacent-frame motion Δ10.7 Y-units (ffmpeg-verified, never a blank capture).
+Live in-browser screencast paths on this host write blank constant-luminance
+WebM files (verified), so the screen-level capture is the honest route to a
+smooth real-time recording. Requires an interactive Windows desktop.
+
 ## `qa:record` (scripts/record-replay.ts)
 
-Produces `qa/video/living-replay-800x600.webm` — the **real browser video
-evidence** of the golden sequence: checkpoint freeze → decoy run (home-11,
-away-03 responding) + pass release (broadcast camera) → scrub back →
+Produces `qa/video/living-replay-800x600.webm` — a **deterministic
+frame-step compilation** (NOT a continuous real-time screencast; the live
+screencast above is the real-time evidence) of the same golden sequence:
+checkpoint freeze → decoy run + pass release (broadcast) → scrub back →
 player-follow camera → threaded pass, shot, goal at 4728300 → paused
-aftermath. Every native screencast path on this host records blank frames
-(verified with ffmpeg), so the script captures **deterministic stepped
-frames**: the paused playhead is seeked in exact 250 ms increments, each real
-rendered frame is screenshotted, and ffmpeg assembles them at 4 fps = true
-match speed. The script self-checks adjacent-frame motion, stays inside the
-8–15 s envelope, and needs an ffmpeg binary (`KYN_FFMPEG`, `.tools/ffmpeg`,
-or PATH).
+aftermath. The paused playhead is seeked in exact 250 ms increments, each
+real rendered frame is screenshotted, and ffmpeg assembles them at 4 fps =
+true match speed — every output frame is a genuine rendered browser frame at
+a known, reproducible playhead. The script self-checks adjacent-frame motion,
+stays inside the 8–15 s envelope, and needs an ffmpeg binary (`KYN_FFMPEG`,
+`.tools/ffmpeg`, or PATH).
 
 ## Procedure (docs/16)
 

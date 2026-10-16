@@ -56,7 +56,38 @@ export interface ReplayStageProps {
   readonly scene: SceneData;
 }
 
+/**
+ * Boundary guard: a payload that fails rehydration validation disables the
+ * stage truthfully (explicit notice, no transport) rather than playing a
+ * plausible-but-false replay built from invented defaults.
+ */
 export function ReplayStage({ scene }: ReplayStageProps) {
+  let timeline: ReturnType<typeof sceneTimeline> | null = null;
+  let invalidReason: string | null = null;
+  try {
+    timeline = sceneTimeline(scene);
+  } catch (error) {
+    invalidReason = error instanceof Error ? error.message : 'unknown validation failure';
+  }
+  if (timeline === null) {
+    return (
+      <section className="stage" aria-label="Living Replay stage">
+        <div className="fallback2d" data-scene-invalid={invalidReason}>
+          <p className="stage__status mono" role="alert">
+            SCENE UNAVAILABLE · the replay payload failed validation, so the 3D and 2D views are
+            disabled rather than showing invented data.
+          </p>
+        </div>
+      </section>
+    );
+  }
+  return <ReplayStageInner scene={scene} timeline={timeline} />;
+}
+
+function ReplayStageInner({
+  scene,
+  timeline,
+}: ReplayStageProps & { timeline: ReturnType<typeof sceneTimeline> }) {
   const modeGroupId = useId();
   const lensGroupId = useId();
   const speedGroupId = useId();
@@ -66,7 +97,6 @@ export function ReplayStage({ scene }: ReplayStageProps) {
     [scene.windowMs],
   );
 
-  const timeline = useMemo(() => sceneTimeline(scene), [scene]);
   const getFrame = useMemo(
     () => createFrameCache(timeline, scene.ballEntityId),
     [timeline, scene.ballEntityId],

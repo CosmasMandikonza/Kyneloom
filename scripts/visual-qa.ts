@@ -69,6 +69,13 @@ declare global {
         ball: { entityId: string; xM: number; yM: number; zM: number; exact: boolean };
         missing: string[];
       };
+      /** Rendered Three.js object probes (mesh roots, camera). */
+      visual?: {
+        ballWorldPosition(): readonly [number, number, number] | null;
+        ballQuaternion(): readonly [number, number, number, number] | null;
+        playerYaw(entityId: string): number | null;
+        cameraWorldPosition(): readonly [number, number, number] | null;
+      };
     };
     __kyneloomPerf?: {
       fps: number;
@@ -393,6 +400,113 @@ async function main(): Promise<void> {
               if (seekA !== seekB) {
                 failures.push(`explore @ ${viewport.name}: seek returned different poses`);
               }
+
+              // RENDERED mesh truth (review fixes 2–3), not just source data:
+              // the ball mesh sits at the exact authoritative transform —
+              // zM IS the ball-center height, no radius double-lift — and its
+              // orientation plus a player's facing are pure functions of the
+              // playhead (scrub away and back → byte-identical).
+              await seek(4728300); // goal frame: ball near the goal mouth, airborne
+              await page.waitForTimeout(500);
+              const meshes = await page.evaluate(() => {
+                const visual = window.__kyneloomScene?.visual;
+                return {
+                  ballPos: visual?.ballWorldPosition() ?? null,
+                  ballQuat: visual?.ballQuaternion() ?? null,
+                  yaw: visual?.playerYaw('home-11') ?? null,
+                  ballSource: window.__kyneloomScene!.snapshot().ball,
+                };
+              });
+              if (meshes.ballPos === null || meshes.ballQuat === null || meshes.yaw === null) {
+                failures.push(`explore @ ${viewport.name}: visual probe returned nulls`);
+              } else {
+                // pitchToThree(ball) = (xM, zM, −yM) exactly.
+                const [ex, ey, ez] = meshes.ballSource
+                  ? [meshes.ballSource.xM, meshes.ballSource.zM, -meshes.ballSource.yM]
+                  : [0, 0, 0];
+                const poseOk =
+                  Math.abs(meshes.ballPos[0] - ex) < 0.002 &&
+                  Math.abs(meshes.ballPos[1] - ey) < 0.002 &&
+                  Math.abs(meshes.ballPos[2] - ez) < 0.002;
+                checks.ballMeshAtSource = poseOk
+                  ? 'exact'
+                  : `OFF ${JSON.stringify(meshes.ballPos)}`;
+                if (!poseOk) {
+                  failures.push(
+                    `explore @ ${viewport.name}: ball mesh ${JSON.stringify(meshes.ballPos)} ≠ source [${ex}, ${ey}, ${ez}]`,
+                  );
+                }
+                await seek(4717500); // scrub far away
+                await seek(4728300); // and back
+                await page.waitForTimeout(500);
+                const back = await page.evaluate(() => {
+                  const visual = window.__kyneloomScene?.visual;
+                  return {
+                    ballQuat: visual?.ballQuaternion() ?? null,
+                    yaw: visual?.playerYaw('home-11') ?? null,
+                  };
+                });
+                const reference = meshes.ballQuat;
+                const quatIdentical =
+                  back.ballQuat !== null &&
+                  reference !== null &&
+                  back.ballQuat.every((v, i) => Math.abs(v - (reference[i] ?? 0)) < 1e-9);
+                checks.ballSpinDeterministic = quatIdentical ? 'identical' : 'DIVERGED';
+                if (!quatIdentical) {
+                  failures.push(`explore @ ${viewport.name}: ball spin drifted across scrub`);
+                }
+                const yawIdentical = back.yaw !== null && Math.abs(back.yaw - meshes.yaw) < 1e-9;
+                checks.playerYawDeterministic = yawIdentical ? 'identical' : 'DIVERGED';
+                if (!yawIdentical) {
+                  failures.push(`explore @ ${viewport.name}: player facing drifted across scrub`);
+                }
+              }
+
+              // Camera convergence (review fix 5): with seconds-domain
+              // damping, mode switches must actually settle — overhead to
+              // its fixed vantage, follow to its tracking height — at real
+              // frame rates (SwiftShader included: big dt closes FASTER).
+              const converge = async (
+                cam: string,
+                done: (p: readonly [number, number, number]) => boolean,
+              ) => {
+                await page.getByRole('radio', { name: cam }).click();
+                const deadline = Date.now() + 12_000;
+                let last: readonly [number, number, number] | null = null;
+                while (Date.now() < deadline) {
+                  await page.waitForTimeout(450);
+                  const p = await page.evaluate(
+                    () => window.__kyneloomScene?.visual?.cameraWorldPosition() ?? null,
+                  );
+                  if (p !== null && done(p)) return p;
+                  last = p;
+                }
+                return last;
+              };
+              const overheadPos = await converge(
+                'Overhead',
+                (p) => Math.hypot(p[0] - 0, p[1] - 92, p[2] - 0.001) < 0.75,
+              );
+              checks.cameraOverheadConverged =
+                overheadPos !== null && Math.hypot(overheadPos[1] - 92) < 1
+                  ? `yes ${overheadPos.map((v) => v.toFixed(1)).join('/')}`
+                  : `NO ${overheadPos === null ? 'null' : overheadPos.map((v) => v.toFixed(1)).join('/')}`;
+              if (!checks.cameraOverheadConverged.startsWith('yes')) {
+                failures.push(`explore @ ${viewport.name}: overhead camera never converged`);
+              }
+              const followPos = await converge(
+                'Follow',
+                (p) => Math.abs(p[1] - 4.4) < 0.4 && Math.abs(p[0]) < 60 && Math.abs(p[2]) < 60,
+              );
+              checks.cameraFollowConverged =
+                followPos !== null && Math.abs(followPos[1] - 4.4) < 0.5
+                  ? `yes ${followPos.map((v) => v.toFixed(1)).join('/')}`
+                  : `NO ${followPos === null ? 'null' : followPos.map((v) => v.toFixed(1)).join('/')}`;
+              if (!checks.cameraFollowConverged.startsWith('yes')) {
+                failures.push(`explore @ ${viewport.name}: follow camera never converged`);
+              }
+              await page.getByRole('radio', { name: 'Broadcast' }).click();
+              await page.waitForTimeout(350);
 
               // Performance probe: play 4 s of real playback, then read the
               // fixed instrument (frame times in ms, renderer stats). Numbers

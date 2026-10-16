@@ -16,6 +16,7 @@ import { Ball } from './ball';
 import { Footballers } from './footballers';
 import { CameraRig } from './camera-rig';
 import { Fallback2D } from './fallback-2d';
+import { sceneVisual } from './visual-debug';
 
 /**
  * LivingReplayCanvas (KYN-06): the real WebGL scene mounted into the
@@ -46,7 +47,10 @@ export function LivingReplayCanvas({
     if (!capabilities.current.webgl) setFailure('webgl-unavailable');
   }, [setFailure]);
 
-  if (failure !== null && failure !== 'asset-error') {
+  // EVERY failure reason degrades to the same-timeline 2D view — including
+  // asset errors. Rendering null here would leave a blank stage, exactly
+  // what the failure contract forbids.
+  if (failure !== null) {
     return <Fallback2D runtime={runtime} reason={failure} />;
   }
 
@@ -155,8 +159,17 @@ function QaHook() {
   const runtime = useSceneRuntime();
   useEffect(() => {
     const hook = window as unknown as Record<string, unknown>;
+    const visual = sceneVisual();
     hook['__kyneloomScene'] = {
       playheadMs: (): number => runtime.engine.playheadMs,
+      // Rendered Three.js object poses (mesh roots, camera) for Playwright
+      // assertions that go beyond the source-data snapshot.
+      visual: {
+        ballWorldPosition: (): unknown => visual.ballWorldPosition?.() ?? null,
+        ballQuaternion: (): unknown => visual.ballQuaternion?.() ?? null,
+        playerYaw: (entityId: string): unknown => visual.playerYaw?.(entityId) ?? null,
+        cameraWorldPosition: (): unknown => visual.cameraWorldPosition?.() ?? null,
+      },
       snapshot: (): unknown => {
         const frame = runtime.getFrame(runtime.engine.playheadMs);
         const players: unknown[] = [];
