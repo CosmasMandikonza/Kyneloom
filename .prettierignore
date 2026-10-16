@@ -15,6 +15,10 @@ apps/web/next-env.d.ts
 tests/fixtures/generated/**
 tests/fixtures/index.json
 
+# Machine-written by `pnpm qa:visual` (visual QA report); the screenshots are
+# binary and never formatted either.
+qa/report.json
+
 # Documentation is intentionally excluded from formatting to avoid
 # repository-wide diffs and merge conflicts with parallel feature work.
 **/*.md
