@@ -44,6 +44,9 @@ const MODE_FOV: Record<Exclude<CameraMode, 'orbit'>, number> = {
   directed: 46,
 };
 
+/** Last applied look-target (any mode) — read by the visual QA probe. */
+const LAST_TARGET = new THREE.Vector3(0, 0, 0);
+
 const DESIRED = new THREE.Vector3();
 const TARGET = new THREE.Vector3();
 const MOTION = new THREE.Vector3();
@@ -76,6 +79,7 @@ export function CameraRig({ mode }: { mode: CameraMode }) {
         cameraWorldPosition: () =>
           [camera.position.x, camera.position.y, camera.position.z] as const,
         cameraFov: () => camera.fov,
+        cameraLookTarget: () => [LAST_TARGET.x, LAST_TARGET.y, LAST_TARGET.z] as const,
       }),
     [camera],
   );
@@ -90,9 +94,39 @@ export function CameraRig({ mode }: { mode: CameraMode }) {
   }, [mode]);
 
   useFrame((state, deltaSeconds) => {
-    if (mode === 'orbit') return; // OrbitControls is the single active driver.
     const camera = state.camera as THREE.PerspectiveCamera;
     const snapshot = getFrame(engine.playheadMs);
+
+    // Player roots (scratch pool, zero per-frame allocation) — shared by
+    // every mode's safety pass, orbit included.
+    const players = snapshot.positions;
+    const scratch = playerScratch(players.size);
+    let count = 0;
+    for (const sample of players.values()) {
+      if (sample.entityId === scene.ballEntityId) continue;
+      const v = scratch[count]!;
+      v.set(sample.xM, sample.zM, -sample.yM); // pitchToThree, inlined for the hot loop
+      count += 1;
+    }
+    const playerRoots = scratch.slice(0, count);
+
+    if (mode === 'orbit') {
+      // OrbitControls remains the single active driver; the rig enforces
+      // the SAME safety contract on its camera position and pan target —
+      // drag/zoom/touch keep working, the lens just cannot leave the
+      // stadium, go underground or enter a player. drei updates the
+      // controls at useFrame priority -1, i.e. BEFORE this callback, so
+      // this clamp is the FINAL write of the frame (never call update()
+      // here — re-applying residual damping deltas would push the camera
+      // back out of bounds after the clamp).
+      const controls = controlsRef.current;
+      if (controls !== null) {
+        clampCameraPose(camera.position, controls.target, playerRoots);
+        LAST_TARGET.copy(controls.target);
+      }
+      return;
+    }
+
     const ball = snapshot.positions.get(scene.ballEntityId);
     const followId = selected.entityId ?? 'home-11'; // the decoy winger by default
 
@@ -180,16 +214,8 @@ export function CameraRig({ mode }: { mode: CameraMode }) {
 
     // Safety last: no mode/track/transition can end underground, outside
     // the stadium or inside a player.
-    const players = snapshot.positions;
-    const scratch = playerScratch(players.size);
-    let count = 0;
-    for (const sample of players.values()) {
-      if (sample.entityId === scene.ballEntityId) continue;
-      const v = scratch[count]!;
-      v.set(sample.xM, sample.zM, -sample.yM); // pitchToThree, inlined for the hot loop
-      count += 1;
-    }
-    clampCameraPose(camera.position, SMOOTHED_TARGET, scratch.slice(0, count));
+    clampCameraPose(camera.position, SMOOTHED_TARGET, playerRoots);
+    LAST_TARGET.copy(SMOOTHED_TARGET);
 
     if (Math.abs(camera.fov - fovRef.current) > 0.01) {
       camera.fov = fovRef.current;

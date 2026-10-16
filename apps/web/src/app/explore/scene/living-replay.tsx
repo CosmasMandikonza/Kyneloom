@@ -170,6 +170,7 @@ function QaHook() {
         playerYaw: (entityId: string): unknown => visual.playerYaw?.(entityId) ?? null,
         cameraWorldPosition: (): unknown => visual.cameraWorldPosition?.() ?? null,
         cameraFov: (): unknown => visual.cameraFov?.() ?? null,
+        cameraLookTarget: (): unknown => visual.cameraLookTarget?.() ?? null,
       },
       snapshot: (): unknown => {
         const frame = runtime.getFrame(runtime.engine.playheadMs);

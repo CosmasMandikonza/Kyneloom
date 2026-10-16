@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { loadGoldenMatch } from './match-fixture';
 import { sceneTimeline, tracksToSamples } from './scene-client';
 import { buildSceneData, selectDirectedTrack } from './scene-data';
+import invisibleAssistManifest from '../app/explore/scene/directed/invisible-assist.manifest.json';
 
 /**
  * KYN-06 acceptance tests for the server→client scene-data boundary.
@@ -155,12 +156,9 @@ describe('directed camera track selection (KYN-07)', () => {
   it('returns null for a structurally invalid manifest (fail closed)', async () => {
     const golden = await loadGoldenMatch();
     if (!golden.ok) return;
-    const corrupt = JSON.parse(
-      JSON.stringify(
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        (await import('../app/explore/scene/directed/invisible-assist.manifest.json')).default,
-      ),
-    ) as { scene: { cameraTracks: { keyframes: { position: number[] }[] }[] } };
+    const corrupt = JSON.parse(JSON.stringify(invisibleAssistManifest)) as {
+      scene: { cameraTracks: { keyframes: { position: number[] }[] }[] };
+    };
     corrupt.scene.cameraTracks[0]!.keyframes[0]!.position = [0, -34, 0.1]; // underground camera
     expect(
       selectDirectedTrack(golden.data.goldenWindowMs[0], golden.data.goldenWindowMs[1], corrupt),

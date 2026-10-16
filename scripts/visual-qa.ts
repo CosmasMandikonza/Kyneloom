@@ -76,6 +76,7 @@ declare global {
         playerYaw(entityId: string): number | null;
         cameraWorldPosition(): readonly [number, number, number] | null;
         cameraFov(): number | null;
+        cameraLookTarget(): readonly [number, number, number] | null;
       };
     };
     __kyneloomPerf?: {
@@ -622,6 +623,80 @@ async function main(): Promise<void> {
               if (checks.rapidChangesConverge !== 'yes') {
                 failures.push(
                   `explore @ ${viewport.name}: camera unstable after rapid mode changes`,
+                );
+              }
+
+              // Free-orbit safety (review round 2): actual drag / pan / zoom
+              // gestures pushed toward and beyond the boundaries — the lens
+              // must stay inside the stadium, above ground, and the pan
+              // target inside its box, without breaking the controls.
+              await page.getByRole('radio', { name: 'Free orbit' }).click({ force: true });
+              await page.waitForTimeout(900);
+              const stageBox = await page.locator('.stage__canvas').boundingBox();
+              if (stageBox === null) throw new Error('stage box missing for orbit gestures');
+              const cx = stageBox.x + stageBox.width / 2;
+              const cy = stageBox.y + stageBox.height / 2;
+              // Zoom hard in then far out (wheel dolly).
+              await page.mouse.move(cx, cy);
+              for (let i = 0; i < 14; i += 1) await page.mouse.wheel(0, -260);
+              await page.waitForTimeout(400);
+              for (let i = 0; i < 10; i += 1) await page.mouse.wheel(0, 420);
+              await page.waitForTimeout(400);
+              // Rotate downward hard (left drag): tries to dive below pitch.
+              await page.mouse.move(cx, cy);
+              await page.mouse.down();
+              for (let i = 1; i <= 10; i += 1) {
+                await page.mouse.move(cx + i * 10, cy + i * 16, { steps: 2 });
+              }
+              await page.mouse.up();
+              await page.waitForTimeout(400);
+              // Pan toward a far corner (right drag), repeatedly past bounds.
+              for (let round = 0; round < 8; round += 1) {
+                await page.mouse.move(cx, cy);
+                await page.mouse.down({ button: 'right' });
+                await page.mouse.move(cx - 240, cy - 150, { steps: 5 });
+                await page.mouse.up({ button: 'right' });
+                await page.waitForTimeout(100);
+              }
+              await page.waitForTimeout(900);
+              const orbitPose = await page.evaluate(() => {
+                const visual = window.__kyneloomScene?.visual;
+                return {
+                  pos: visual?.cameraWorldPosition() ?? null,
+                  target: visual?.cameraLookTarget() ?? null,
+                };
+              });
+              const EPS = 0.05;
+              const orbitOk =
+                orbitPose.pos !== null &&
+                orbitPose.target !== null &&
+                orbitPose.pos[1] >= 0.65 - EPS &&
+                orbitPose.pos[1] <= 165 + EPS &&
+                Math.abs(orbitPose.pos[0]) <= 82 + EPS &&
+                Math.abs(orbitPose.pos[2]) <= 82 + EPS &&
+                orbitPose.target[1] >= -EPS &&
+                orbitPose.target[1] <= 165 + EPS &&
+                Math.abs(orbitPose.target[0]) <= 82 + EPS &&
+                Math.abs(orbitPose.target[2]) <= 82 + EPS;
+              checks.orbitBoundsAfterGestures =
+                orbitPose.pos !== null && orbitPose.target !== null
+                  ? `${orbitOk ? 'ok' : 'VIOLATED'} pos ${orbitPose.pos.map((v) => v.toFixed(1)).join('/')} target ${orbitPose.target.map((v) => v.toFixed(1)).join('/')}`
+                  : 'NO null';
+              if (!checks.orbitBoundsAfterGestures.startsWith('ok')) {
+                failures.push(
+                  `explore @ ${viewport.name}: orbit gestures escaped the safety bounds ${JSON.stringify(orbitPose)}`,
+                );
+              }
+              // Leaving orbit after all that: the spring still converges.
+              const orbitExit = await converge(
+                'Overhead',
+                (pt) => Math.hypot(pt[0], pt[1] - 92, pt[2]) < 0.75,
+              );
+              checks.orbitExitConverged =
+                orbitExit !== null && Math.hypot(orbitExit[1] - 92) < 1 ? 'yes' : 'NO';
+              if (checks.orbitExitConverged !== 'yes') {
+                failures.push(
+                  `explore @ ${viewport.name}: camera failed to converge after orbit exit`,
                 );
               }
 
