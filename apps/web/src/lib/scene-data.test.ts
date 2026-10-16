@@ -3,7 +3,7 @@ import { pitchToThree } from '@kyneloom/contracts';
 import { describe, expect, it } from 'vitest';
 import { loadGoldenMatch } from './match-fixture';
 import { sceneTimeline, tracksToSamples } from './scene-client';
-import { buildSceneData } from './scene-data';
+import { buildSceneData, selectDirectedTrack } from './scene-data';
 
 /**
  * KYN-06 acceptance tests for the server→client scene-data boundary.
@@ -129,6 +129,42 @@ describe('buildSceneData boundary', () => {
     expect(goal.occurredAtMs).toBe(4_728_300);
     expect(goal.actorId).toBe('home-09');
     expect(goal.label).toBe('GOAL');
+  });
+});
+
+describe('directed camera track selection (KYN-07)', () => {
+  it('exposes the authored Invisible Assist track through the golden scene', async () => {
+    const golden = await loadGoldenMatch();
+    const scene = buildSceneData(golden)!;
+    expect(scene.directedTrack).not.toBeNull();
+    expect(scene.directedTrack!.id).toBe('cam-invisible-assist');
+    expect(scene.directedTrack!.mode).toBe('directed');
+    // Offsets stay manifest-relative until the rig converts them once.
+    expect(scene.directedTrack!.startMs).toBe(0);
+    expect(scene.directedTrack!.endMs).toBe(14_000);
+  });
+
+  it('returns null when the manifest window does not match the scene window', async () => {
+    const golden = await loadGoldenMatch();
+    if (!golden.ok) return;
+    expect(
+      selectDirectedTrack(golden.data.goldenWindowMs[0] + 100, golden.data.goldenWindowMs[1]),
+    ).toBeNull();
+  });
+
+  it('returns null for a structurally invalid manifest (fail closed)', async () => {
+    const golden = await loadGoldenMatch();
+    if (!golden.ok) return;
+    const corrupt = JSON.parse(
+      JSON.stringify(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        (await import('../app/explore/scene/directed/invisible-assist.manifest.json')).default,
+      ),
+    ) as { scene: { cameraTracks: { keyframes: { position: number[] }[] }[] } };
+    corrupt.scene.cameraTracks[0]!.keyframes[0]!.position = [0, -34, 0.1]; // underground camera
+    expect(
+      selectDirectedTrack(golden.data.goldenWindowMs[0], golden.data.goldenWindowMs[1], corrupt),
+    ).toBeNull();
   });
 });
 

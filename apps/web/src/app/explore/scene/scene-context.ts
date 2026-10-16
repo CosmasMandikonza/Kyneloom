@@ -25,7 +25,11 @@ export interface ReplayEngine {
   revision: number;
 }
 
-export type CameraMode = 'broadcast' | 'overhead' | 'follow' | 'orbit';
+/**
+ * The six camera modes (KYN-07, docs/08). Exactly one drives the camera at
+ * a time; `orbit` hands ownership to OrbitControls.
+ */
+export type CameraMode = 'broadcast' | 'overhead' | 'follow' | 'goalkeeper' | 'orbit' | 'directed';
 
 export interface SelectionState {
   readonly entityId: string | null;

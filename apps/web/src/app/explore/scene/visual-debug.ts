@@ -19,6 +19,8 @@ export interface SceneVisualProbe {
   readonly playerYaw?: (entityId: string) => number | null;
   /** Active camera world position [x, y, z], or null if absent. */
   readonly cameraWorldPosition?: () => readonly [number, number, number] | null;
+  /** Active camera vertical fov in degrees, or null if absent. */
+  readonly cameraFov?: () => number | null;
 }
 
 const probes = new Map<string, SceneVisualProbe>();
@@ -34,6 +36,7 @@ export function registerVisualProbe(key: string, probe: SceneVisualProbe): () =>
 export function sceneVisual(): SceneVisualProbe {
   return {
     ballWorldPosition: () => first('ballWorldPosition'),
+    cameraFov: () => first('cameraFov') as number | null,
     ballQuaternion: () => first('ballQuaternion'),
     playerYaw: (entityId) => {
       for (const probe of probes.values()) {

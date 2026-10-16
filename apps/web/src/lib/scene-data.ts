@@ -1,5 +1,7 @@
 import { AWAY_TEAM, HOME_TEAM, ROSTERS, type PlayerProfile } from '@kyneloom/match-core';
+import { parseManifestCameras, type ThreeCameraTrack } from '@kyneloom/scene-renderer';
 import type { GoldenMatchStatus } from './match-fixture';
+import invisibleAssistManifest from '../app/explore/scene/directed/invisible-assist.manifest.json';
 
 /**
  * KYN-06 server→client scene-data boundary.
@@ -58,7 +60,18 @@ export interface SceneEntityTrack {
   readonly f: readonly number[];
 }
 
+/**
+ * A validated manifest-directed camera track in Three space (KYN-07).
+ * `tMs`/`startMs`/`endMs` remain OFFSETS from the window start (the
+ * manifest's clock law); the rig converts them to absolute match ms
+ * exactly once. Null when no valid track exists — directed mode is then
+ * truthfully disabled, never fed fabricated camera poses.
+ */
+export type SceneDirectedTrack = ThreeCameraTrack;
+
 export interface SceneData {
+  /** Validated directed camera track for this moment, or null. */
+  readonly directedTrack: SceneDirectedTrack | null;
   readonly matchId: string;
   readonly schemaVersion: string;
   readonly seed: number;
@@ -161,6 +174,8 @@ export function buildSceneData(golden: GoldenMatchStatus): SceneData | null {
     }))
     .sort((a, b) => a.occurredAtMs - b.occurredAtMs);
 
+  const windowStart = golden.data.goldenWindowMs[0];
+  const windowEnd = golden.data.goldenWindowMs[1];
   return {
     matchId: golden.data.matchId,
     schemaVersion: golden.data.projected.acceptedTracking[0]?.schemaVersion ?? '1.0',
@@ -177,5 +192,52 @@ export function buildSceneData(golden: GoldenMatchStatus): SceneData | null {
     confidences,
     frameIds,
     events,
+    directedTrack: selectDirectedTrack(windowStart, windowEnd),
   };
+}
+
+/**
+ * KYN-07: parse the authored canonical manifest (docs/06 schema) through
+ * the shared contract seam and expose its directed track, or null.
+ *
+ * Rejection rules (fail closed — never fabricate camera geometry):
+ * - manifest must pass `parseMomentManifest` (every schema + bounds rule);
+ * - its absolute `timeRangeMs` must equal this scene's window, so the
+ *   offset→absolute clock conversion is exact;
+ * - the selected track must be mode 'directed' and structurally usable
+ *   (≥ 2 strictly increasing finite keyframes, finite poses, fov within
+ *   20–120°, camera height ≥ 0.5 m in Three space, target not underground).
+ */
+export function selectDirectedTrack(
+  windowStartMs: number,
+  windowEndMs: number,
+  manifest: unknown = invisibleAssistManifest,
+): SceneDirectedTrack | null {
+  const parsed = parseManifestCameras(manifest);
+  if (!parsed.ok) return null;
+  if (
+    parsed.manifest.timeRangeMs[0] !== windowStartMs ||
+    parsed.manifest.timeRangeMs[1] !== windowEndMs
+  ) {
+    return null;
+  }
+  for (const track of parsed.tracks) {
+    if (track.mode !== 'directed') continue;
+    if (!isStructurallyUsable(track)) continue;
+    return track;
+  }
+  return null;
+}
+
+function isStructurallyUsable(track: SceneDirectedTrack): boolean {
+  if (track.keyframes.length < 2) return false;
+  let previousT = Number.NEGATIVE_INFINITY;
+  for (const kf of track.keyframes) {
+    if (!Number.isFinite(kf.tMs) || kf.tMs <= previousT) return false;
+    previousT = kf.tMs;
+    if ([...kf.position, ...kf.target].some((v) => !Number.isFinite(v))) return false;
+    if (!Number.isFinite(kf.fovDeg) || kf.fovDeg < 20 || kf.fovDeg > 120) return false;
+    if (kf.position[1] < 0.5 || kf.target[1] < 0) return false;
+  }
+  return true;
 }

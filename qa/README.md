@@ -39,6 +39,14 @@ Live in-browser screencast paths on this host write blank constant-luminance
 WebM files (verified), so the screen-level capture is the honest route to a
 smooth real-time recording. Requires an interactive Windows desktop.
 
+## `qa:record:camera` (scripts/record-camera-live.ts)
+
+KYN-07's rig evidence: a continuous 30 fps gdigrab screencast of the camera
+system itself — overhead → winger-follow descent → goalkeeper perspective →
+an interrupted mid-flight transition → the manifest-directed shot-to-goal
+composition → exit — `qa/video/camera-rig-screencast.mp4` (+ `.webm` twin).
+Same pipeline and honesty rules as `qa:record:live`.
+
 ## `qa:record` (scripts/record-replay.ts)
 
 Produces `qa/video/living-replay-800x600.webm` — a **deterministic

@@ -194,6 +194,26 @@
     0 6px 20px -8px var(--mint-glow);
 }
 
+/* Exit Directed Mode — visible only while the guided sequence runs. */
+.stage__exit-directed {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--mint-500) 55%, transparent);
+  background: rgba(81, 215, 189, 0.12);
+  color: var(--mint-500);
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  letter-spacing: 0.06em;
+  padding: 0.35rem 0.7rem;
+  min-height: 2.25rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.stage__exit-directed:hover {
+  background: rgba(81, 215, 189, 0.22);
+  color: var(--mint-200);
+}
+
 .stage__mode-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
