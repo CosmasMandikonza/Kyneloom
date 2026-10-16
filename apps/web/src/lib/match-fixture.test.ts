@@ -264,15 +264,18 @@ describe('loadGoldenMatch (unavailable fixtures)', () => {
 
   it('degrades truthfully when the env override points outside the workspace', async () => {
     const spy = fixtureFailureLogger();
-    await withFixtureDir('Q:/kyneloom-missing-fixtures', null, async () => {
+    const overrideDir = 'Q:/kyneloom-missing-fixtures';
+    await withFixtureDir(overrideDir, null, async () => {
       const golden = await loadGoldenMatch();
       expect(golden.ok).toBe(false);
       if (golden.ok) return;
       expect(golden.reason).toBe('unavailable');
       expectNoPathLeakage(golden.message, 'Q:', 'kyneloom-missing-fixtures');
+      // The logged diagnostic contains the directory exactly as the seam
+      // resolves it (path.resolve + path.join), on any platform.
       expectLoggedDirectory(
         spy,
-        path.join('Q:\\kyneloom-missing-fixtures', 'generated', CANONICAL_SEED_DIR),
+        path.join(path.resolve(overrideDir), 'generated', CANONICAL_SEED_DIR),
       );
     });
   });
