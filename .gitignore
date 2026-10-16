@@ -34,3 +34,11 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Local working notes (PR body drafted per-run)
+.pr-body.md
+
+# Local evidence tooling (ffmpeg binary for qa:record frame assembly)
+.tools/
+qa/video-frames/
+qa/video-test/

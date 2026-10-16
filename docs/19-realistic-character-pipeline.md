@@ -1,6 +1,6 @@
 # 19 — Realistic football character pipeline (source-backed build specification)
 
-> **Status:** Implementation guide and non-negotiable visual acceptance requirements; **not a claim that licensed 3D assets, animations, or working realism are already present in the repository.**
+> **Status (KYN-30, 2026-10-14): IMPLEMENTED for the golden replay.** The Explore surface now renders 22 independently animated skinned humanoids (CC0 Quaternius base rig, 65-bone skeleton, ~0.8 MB GLB), fictional home/away/goalkeeper kit tints, idle/walk/jog/sprint locomotion blended from tracking speed plus an authored pass/shot clip — every clip a deterministic pure function of `playheadMs`. Rights are recorded in the [asset rights ledger](asset-ledger.md); the reproduction pipeline is `scripts/build-player-asset.mjs`. What remains NOT claimed: captured biomechanics (10 Hz tracking cannot provide them — all limb motion is labeled reconstructed presentation), foot-ground IK, and crowd LOD. The text below remains the source-backed specification.
 >
 > **Decision:** **The production-quality replay uses rigged human football player meshes and genuine 3D environments.** Circles/markers may exist as a temporary tactical abstraction or developer debugging aid, **never as the default finished fan replay**.
 
