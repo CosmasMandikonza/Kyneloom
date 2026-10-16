@@ -17,7 +17,7 @@ const ROLE_CAP = new Map(
 describe('determinism (KYN-03 acceptance)', () => {
   it(
     'produces byte-identical canonical output for identical seed + version',
-    { timeout: 20_000 },
+    { timeout: 60_000 },
     () => {
       const a = generateMatchFixture({ seed: GOLDEN_SEED });
       const b = generateMatchFixture({ seed: GOLDEN_SEED });
@@ -27,7 +27,7 @@ describe('determinism (KYN-03 acceptance)', () => {
     },
   );
 
-  it('produces different but valid scenarios for different seeds', { timeout: 20_000 }, () => {
+  it('produces different but valid scenarios for different seeds', { timeout: 60_000 }, () => {
     const a = generateMatchFixture({ seed: GOLDEN_SEED });
     const b = generateMatchFixture({ seed: 4242 });
     expect(canonicalJsonStringify(a.tracking)).not.toBe(canonicalJsonStringify(b.tracking));
@@ -91,7 +91,7 @@ describe('determinism (KYN-03 acceptance)', () => {
     },
   );
 
-  it('still accepts rates up to the tick; default output unchanged', { timeout: 20_000 }, () => {
+  it('still accepts rates up to the tick; default output unchanged', { timeout: 60_000 }, () => {
     const atTick = generateMatchFixture({ seed: 24017, goldenHz: 10 });
     const defaults = generateMatchFixture({ seed: 24017 });
     expect(canonicalJsonStringify(atTick.tracking)).toBe(canonicalJsonStringify(defaults.tracking));

@@ -12,8 +12,9 @@
 }
 
 .stage__canvas {
-  aspect-ratio: 105 / 68;
-  min-height: min(72svh, 48rem);
+  /* Height-driven so the transport bar always fits the viewport; the R3F
+     canvas letterboxes itself inside. */
+  height: clamp(22rem, 58svh, 44rem);
   display: block;
 }
 
@@ -198,28 +199,36 @@
   cursor: not-allowed;
 }
 
-/* Playback rail — bottom */
-.stage__rail-wrap {
-  position: absolute;
-  left: 50%;
-  bottom: var(--space-4);
-  transform: translateX(-50%);
-  width: min(100% - 2 * var(--space-4), 44rem);
-}
-
-.stage__rail {
+/* Transport bar — below the stage (KYN-06). Keyboard + touch friendly. */
+.stage__transport {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  width: 100%;
+  max-width: 72rem;
+  margin: var(--space-4) auto var(--space-6);
+  padding: var(--space-3) var(--space-4);
   background: var(--surface-glass);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--line-soft);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
 }
 
-.stage__play {
+.stage__transport-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.stage__transport-row--meta {
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.stage__play,
+.stage__step {
   appearance: none;
   flex: none;
   width: 2.5rem;
@@ -236,27 +245,74 @@
     background var(--dur-fast) var(--ease-out);
 }
 
-.stage__play:hover:not(:disabled) {
+.stage__play {
+  background: var(--mint-500);
+  border-color: var(--mint-500);
+  color: var(--ink-950);
+}
+
+.stage__play:hover {
+  background: var(--mint-200);
+}
+
+.stage__step:hover {
   border-color: var(--mint-500);
   background: var(--mint-glow);
 }
 
-.stage__play:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.stage__speed {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-full);
 }
 
-.stage__track {
-  position: relative;
-  flex: 1;
-  height: 2.75rem;
+.stage__speed-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--step--1);
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.7rem;
+  min-height: 2rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.stage__speed-btn[aria-checked='true'] {
+  color: var(--ink-950);
+  background: var(--mint-500);
+  font-weight: 600;
+}
+
+.stage__scrub {
   display: flex;
   align-items: center;
-  cursor: pointer;
-  touch-action: none;
+  gap: var(--space-3);
 }
 
-.stage__track::before {
+.stage__scrub-edge {
+  flex: none;
+  font-size: var(--step--1);
+  color: var(--text-muted);
+}
+
+.stage__scrub-track {
+  position: relative;
+  flex: 1;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.stage__scrub-track::before {
   content: '';
   position: absolute;
   left: 0;
@@ -266,47 +322,162 @@
   background: var(--ink-700);
 }
 
-.stage__track-progress {
+.stage__scrub-fill {
   position: absolute;
   left: 0;
   height: 4px;
   border-radius: 2px;
   background: var(--mint-500);
-  transition: width 60ms linear;
+  pointer-events: none;
 }
 
-.stage__track-thumb {
-  position: absolute;
-  width: 1.1rem;
-  height: 1.1rem;
-  transform: translateX(-50%);
+.stage__slider {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+  height: 2.5rem;
+  margin: 0;
+}
+
+.stage__slider::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent;
+}
+
+.stage__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: -0.575rem;
   border-radius: 50%;
   background: var(--mint-200);
   border: 2px solid var(--ink-950);
   box-shadow: 0 0 0 1px var(--mint-500);
 }
 
-.stage__track-start,
-.stage__track-end {
+.stage__slider::-moz-range-thumb {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  background: var(--mint-200);
+  border: 2px solid var(--ink-950);
+  box-shadow: 0 0 0 1px var(--mint-500);
+}
+
+.stage__event-mark {
   position: absolute;
-  top: -1.4rem;
+  top: 50%;
+  width: 3px;
+  height: 0.9rem;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: var(--text-muted);
+  pointer-events: none;
+}
+
+.stage__event-mark--goal {
+  background: var(--amber-400);
+  height: 1.2rem;
+}
+
+.stage__event-chip {
+  font-size: var(--step--1);
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.stage__event-chip[data-goal='true'] {
+  color: var(--amber-400);
+  font-weight: 700;
+}
+
+.stage__selection {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+}
+
+.stage__selection-clear {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.15em;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.stage__selection-clear:hover {
+  background: rgba(81, 215, 189, 0.2);
+}
+
+.stage__hint {
   font-size: var(--step--1);
   color: var(--text-muted);
 }
 
-.stage__track-start {
-  left: 0;
-}
-
-.stage__track-end {
-  right: 0;
-}
-
-.stage__window {
-  flex: none;
-  color: var(--text-muted);
+.stage__view-toggle {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
   font-size: var(--step--1);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
+  padding: 0.4rem 0.9rem;
+  min-height: 2.25rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.stage__view-toggle:hover,
+.stage__view-toggle[aria-pressed='true'] {
+  border-color: var(--mint-500);
+  background: var(--mint-glow);
+}
+
+/* Loading chip over the canvas while the GLB streams in. */
+.stage__loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0.5rem 1.1rem;
+  background: var(--surface-glass);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-full);
+  color: var(--mint-200);
+  letter-spacing: 0.16em;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* 2D tactical fallback (same timeline). */
+.fallback2d {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--ink-950);
+  overflow: auto;
+}
+
+.fallback2d__svg {
+  width: 100%;
+  height: auto;
+  max-height: calc(100% - 2rem);
+  border-radius: var(--radius-sm);
 }
 
 .stage__status {
@@ -377,7 +548,7 @@
 @media (max-width: 48rem) {
   .stage__canvas {
     aspect-ratio: auto;
-    min-height: 62svh;
+    min-height: 56svh;
   }
 
   .stage__context {
@@ -413,11 +584,19 @@
     display: none;
   }
 
-  .stage__rail-wrap {
-    bottom: var(--space-3);
+  .stage__transport {
+    /* auto (not 100%) so the inline margins shrink with the viewport instead
+       of pushing the right edge past it on narrow screens. */
+    width: auto;
+    margin-inline: var(--space-3);
+    padding: var(--space-3);
   }
 
-  .stage__window {
+  .stage__speed {
+    margin-left: 0;
+  }
+
+  .stage__scrub-edge {
     display: none;
   }
 }

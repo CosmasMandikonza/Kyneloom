@@ -19,7 +19,7 @@
 
 **Contracts:** [04 Architecture](04-system-architecture.md) · [05 Events](05-data-and-event-contracts.md) · [06 Moment Manifest](06-moment-manifest.md) · [07 Agents](07-agent-orchestration.md)
 
-**Engineering:** **[20 Current hackathon competitive radar](20-competitive-radar-2026-10-13.md)** · [19 Realistic football players & animation](19-realistic-character-pipeline.md) · [08 Spatial renderer](08-3d-engine.md) · [09 Azure](09-azure-platform.md) · [10 Security & rights](10-security-and-rights.md) · [11 Evaluation](11-evaluation-and-reliability.md)
+**Engineering:** **[20 Current hackathon competitive radar](20-competitive-radar-2026-10-13.md)** · [19 Realistic football players & animation](19-realistic-character-pipeline.md) · [08 Spatial renderer](08-3d-engine.md) · [09 Azure](09-azure-platform.md) · [10 Security & rights](10-security-and-rights.md) · [Asset rights ledger](asset-ledger.md) · [11 Evaluation](11-evaluation-and-reliability.md)
 
 **Execution:** **[18 Issue board & agent handoff](18-execution-board.md)** · [12 Roadmap](12-delivery-roadmap.md) · [13 Competition](13-hackathon-submission.md) · [14 Market context](14-competitive-landscape.md) · [15 First build](15-first-vertical-slice.md) · [16 Visual QA](16-visual-reference-and-qa.md) · **[17 Source-verified UI implementation](17-source-verified-frontend.md)** · [References](REFERENCES.md)
 

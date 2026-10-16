@@ -1,6 +1,6 @@
 # 08 — Living Replay: spatial renderer specification
 
-> **Status:** Planned. Existing earlier concept art and SVG interaction sketches are not real tracking-powered 3D.
+> **Status (KYN-06, 2026-10-14): the Living Replay core is IMPLEMENTED.** `/explore` mounts a real R3F/Three scene (105×68 m pitch, goals, turf, floodlights, textured ball) driven by a single `playheadMs` owner on the server-serialized golden fixture; four cameras, click-to-select with stable identity, full transport (play/pause/step/scrub/0.25–2×), a same-timeline 2D fallback, and QA hooks proving camera-independent world truth. See `apps/web/src/app/explore/scene/` and [16 — Visual QA](16-visual-reference-and-qa.md). Sections below remain the binding specification (cameras beyond the four shipped modes — goalkeeper/directed tracks — stay planned for Issues #7/#8).
 
 ## Desired user sensation
 

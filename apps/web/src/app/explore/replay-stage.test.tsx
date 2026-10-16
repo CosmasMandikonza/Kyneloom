@@ -1,165 +1,134 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { loadGoldenMatch } from '@/lib/match-fixture';
+import { buildSceneData } from '@/lib/scene-data';
 import { ReplayStage } from './replay-stage';
 
 /**
- * KYN-05 — interaction contract of the Living Replay stage shell.
+ * KYN-06 — interaction contract of the Living Replay stage.
  *
- * Everything enabled must really work (lens selection, playhead scrubbing by
- * pointer AND keyboard), everything that needs the KYN-06 renderer must be
- * visibly disabled, and the canvas region the renderer mounts into must exist.
+ * The transport controls are REAL now: play/pause, frame stepping, speed,
+ * scrubbing in explicit milliseconds, enabled cameras, and a lens that
+ * switches to the accessible 2D view. WebGL cannot exist under jsdom, so
+ * the canvas gate falls back to the 2D tactical view — which conveniently
+ * exercises the fallback contract here.
  */
-
-function renderStage() {
-  return render(
-    <ReplayStage
-      windowStartLabel="78:37"
-      windowEndLabel="78:51"
-      checkpointLabel="78:42"
-      windowSpanMs={14_000}
-    />,
-  );
-}
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
-function slider(): HTMLElement {
-  return screen.getByRole('slider', { name: 'Moment playhead' });
+async function renderStage(): Promise<void> {
+  const golden = await loadGoldenMatch();
+  const scene = buildSceneData(golden);
+  expect(scene).not.toBeNull();
+  // requestAnimationFrame does not exist in this jsdom setup the way the
+  // transport loop expects; polyfill deterministically.
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+    return setTimeout(() => cb(performance.now()), 16) as unknown as number;
+  });
+  vi.stubGlobal('cancelAnimationFrame', (handle: number): void => {
+    clearTimeout(handle as unknown as ReturnType<typeof setTimeout>);
+  });
+  vi.stubGlobal('matchMedia', (query: string): MediaQueryList => {
+    return {
+      matches: false,
+      media: query,
+      addEventListener: (): void => undefined,
+      removeEventListener: (): void => undefined,
+      addListener: (): void => undefined,
+      removeListener: (): void => undefined,
+      dispatchEvent: (): boolean => false,
+      onchange: null,
+    } as unknown as MediaQueryList;
+  });
+  render(<ReplayStage scene={scene!} />);
+}
+
+function slider(): HTMLInputElement {
+  return screen.getByRole('slider', { name: 'Moment playhead' }) as HTMLInputElement;
 }
 
 describe('ReplayStage stage shell', () => {
-  it('renders the canvas mount region the KYN-06 renderer expects', () => {
-    renderStage();
+  it('renders the canvas mount region and the 2D fallback under jsdom', async () => {
+    await renderStage();
     const mount = document.querySelector('[data-scene-mount]');
     expect(mount).not.toBeNull();
-    expect(screen.getByText('Living Replay')).toBeTruthy();
+    // jsdom has no WebGL → the accessible 2D view must be showing.
+    const fallback = document.querySelector('[data-scene-fallback]');
+    expect(fallback).not.toBeNull();
+    // 22 player dots + ball dot.
+    const dots = fallback?.querySelectorAll('circle');
+    expect(dots?.length).toBeGreaterThanOrEqual(23);
   });
 
-  it('marks the scene as not implemented — never fakes a 3D scene', () => {
-    renderStage();
-    expect(screen.getByText('Not implemented')).toBeTruthy();
-    expect(screen.getByText(/SCENE PENDING/i)).toBeTruthy();
+  it('shows the live scene status with the canonical seed', async () => {
+    await renderStage();
+    expect(screen.getByText(/SCENE LIVE · seed 24017/i)).toBeTruthy();
   });
 });
 
-describe('ReplayStage truthfully disabled controls', () => {
-  it('disables every camera mode until the renderer exists', () => {
-    renderStage();
-    const radios = screen
-      .getAllByRole('radio')
-      .filter((radio) =>
-        ['Broadcast', 'Overhead', 'Follow player', 'Free orbit'].includes(radio.textContent ?? ''),
-      );
-    expect(radios).toHaveLength(4);
+describe('ReplayStage truthfully enabled controls', () => {
+  it('has four ENABLED camera modes', async () => {
+    await renderStage();
+    const group = screen.getByRole('radiogroup', { name: 'Camera' });
+    const radios = group.querySelectorAll('[role="radio"]') as NodeListOf<HTMLButtonElement>;
+    expect(radios.length).toBe(4);
     for (const radio of radios) {
-      expect((radio as HTMLButtonElement).disabled).toBe(true);
+      expect(radio.disabled).toBe(false);
     }
+    fireEvent.click(radios[2]!); // Follow
+    expect(radios[2]!.getAttribute('aria-checked')).toBe('true');
   });
 
-  it('disables playback until the renderer timeline sampler exists', () => {
-    renderStage();
-    const play = screen.getByRole('button', { name: 'Play' }) as HTMLButtonElement;
-    expect(play.disabled).toBe(true);
-  });
-});
-
-describe('ReplayStage lens selection (real state)', () => {
-  it('starts on Fan and moves the checked state on click', () => {
-    renderStage();
-    const fan = screen.getByRole('radio', { name: 'Fan' });
-    const analyst = screen.getByRole('radio', { name: 'Analyst' });
-    expect(fan.getAttribute('aria-checked')).toBe('true');
-    expect(analyst.getAttribute('aria-checked')).toBe('false');
-
-    fireEvent.click(analyst);
-    expect(analyst.getAttribute('aria-checked')).toBe('true');
-    expect(fan.getAttribute('aria-checked')).toBe('false');
+  it('plays and pauses with a real toggle button', async () => {
+    await renderStage();
+    const play = screen.getByRole('button', { name: 'Play' });
+    expect(play.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(play);
+    expect(screen.getByRole('button', { name: 'Pause' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    expect(screen.getByRole('button', { name: 'Play' }).getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('exposes labelled radiogroups for camera and lens', () => {
-    renderStage();
-    expect(screen.getByRole('radiogroup', { name: 'Camera' })).toBeTruthy();
-    expect(screen.getByRole('radiogroup', { name: 'Lens' })).toBeTruthy();
+  it('offers exactly the four required speeds', async () => {
+    await renderStage();
+    const group = screen.getByRole('radiogroup', { name: 'Playback speed' });
+    const labels = [...group.querySelectorAll('[role="radio"]')].map((radio) => radio.textContent);
+    expect(labels).toEqual(['0.25×', '0.5×', '1×', '2×']);
   });
-});
 
-describe('ReplayStage playhead (fraction of the moment window)', () => {
-  it('exposes a slider over 0–100 with a percent value text', () => {
-    renderStage();
+  it('scrubs in explicit milliseconds', async () => {
+    await renderStage();
     const rail = slider();
-    expect(rail.getAttribute('aria-valuemin')).toBe('0');
-    expect(rail.getAttribute('aria-valuemax')).toBe('100');
-    expect(rail.getAttribute('aria-valuenow')).toBe('0');
-    expect(rail.getAttribute('aria-valuetext')).toContain('0 percent');
+    expect(rail.min).toBe('4717000');
+    expect(rail.max).toBe('4731000');
+    expect(rail.step).toBe('10');
+    expect(rail.value).toBe('4722100');
+    fireEvent.input(rail, { target: { value: '4728000' } });
+    expect(rail.value).toBe('4728000');
   });
 
-  it('scrubs by pointer position across the rail', () => {
-    renderStage();
-    const rail = slider();
-    vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({
-      x: 0,
-      y: 0,
-      left: 0,
-      top: 0,
-      right: 400,
-      bottom: 44,
-      width: 400,
-      height: 44,
-      toJSON: () => ({}),
-    } as DOMRect);
-
-    // jsdom's PointerEvent drops coordinate init data, so the pointer event is
-    // dispatched as a coordinate-carrying MouseEvent of type pointerdown.
-    // Real-browser pointer behavior is verified by the Playwright QA run.
-    const pointerAt = (clientX: number) =>
-      act(() => {
-        rail.dispatchEvent(new MouseEvent('pointerdown', { clientX, bubbles: true }));
-      });
-
-    pointerAt(300);
-    expect(rail.getAttribute('aria-valuenow')).toBe('75');
-    expect(rail.getAttribute('aria-valuetext')).toContain('75 percent');
-
-    pointerAt(40);
-    expect(rail.getAttribute('aria-valuenow')).toBe('10');
+  it('steps frames and resets to the checkpoint deterministically', async () => {
+    await renderStage();
+    const back = screen.getByRole('button', { name: 'Step back one frame' });
+    fireEvent.click(back);
+    fireEvent.click(back);
+    // The slider DOM syncs on the transport loop's next tick.
+    await waitFor(() => expect(slider().value).toBe('4721900'));
+    const reset = screen.getByRole('button', { name: /Reset to checkpoint/ });
+    fireEvent.click(reset);
+    await waitFor(() => expect(slider().value).toBe('4722100'));
   });
 
-  it('moves by keyboard: arrows step 2, shift+arrow steps 10, Home/End clamp', () => {
-    renderStage();
-    const rail = slider();
-
-    fireEvent.keyDown(rail, { key: 'ArrowRight' });
-    expect(rail.getAttribute('aria-valuenow')).toBe('2');
-
-    fireEvent.keyDown(rail, { key: 'ArrowRight', shiftKey: true });
-    expect(rail.getAttribute('aria-valuenow')).toBe('12');
-
-    fireEvent.keyDown(rail, { key: 'ArrowUp', shiftKey: true });
-    expect(rail.getAttribute('aria-valuenow')).toBe('22');
-
-    fireEvent.keyDown(rail, { key: 'ArrowLeft' });
-    expect(rail.getAttribute('aria-valuenow')).toBe('20');
-
-    fireEvent.keyDown(rail, { key: 'End' });
-    expect(rail.getAttribute('aria-valuenow')).toBe('100');
-
-    fireEvent.keyDown(rail, { key: 'ArrowRight' });
-    expect(rail.getAttribute('aria-valuenow')).toBe('100');
-
-    fireEvent.keyDown(rail, { key: 'Home' });
-    expect(rail.getAttribute('aria-valuenow')).toBe('0');
-
-    fireEvent.keyDown(rail, { key: 'ArrowLeft' });
-    expect(rail.getAttribute('aria-valuenow')).toBe('0');
-  });
-
-  it('renders the golden window labels the reducer supplied', () => {
-    renderStage();
-    expect(screen.getByText('78:37')).toBeTruthy();
-    expect(screen.getByText('78:51')).toBeTruthy();
-    expect(screen.getByText('14s window')).toBeTruthy();
+  it('Accessible lens switches to the 2D tactical view', async () => {
+    await renderStage();
+    const accessible = screen.getByRole('radio', { name: 'Accessible' });
+    fireEvent.click(accessible);
+    expect(accessible.getAttribute('aria-checked')).toBe('true');
+    expect(document.querySelector('[data-scene-fallback="user-choice"]')).not.toBeNull();
   });
 });
