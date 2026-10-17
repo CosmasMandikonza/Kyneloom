@@ -79,6 +79,13 @@ declare global {
         cameraLookTarget(): readonly [number, number, number] | null;
       };
     };
+    __kyneloomXray?: {
+      active(): boolean;
+      phase(): 'before' | 'after' | 'both' | null;
+      visibleLineCount(): number;
+      labelVisible(): boolean;
+      hitTargetsScreen(): { x: number; y: number }[];
+    };
     __kyneloomPerf?: {
       fps: number;
       p50Ms: number;
@@ -698,6 +705,252 @@ async function main(): Promise<void> {
                 failures.push(
                   `explore @ ${viewport.name}: camera failed to converge after orbit exit`,
                 );
+              }
+
+              // KYN-08 — Evidence X-Ray: the FULL click-to-claim-to-evidence
+              // path in the real browser, plus invariance under camera
+              // switches and scrubbing.
+              const xray = page.getByRole('button', { name: 'X-Ray' });
+              if ((await xray.count()) !== 1 || !(await xray.isEnabled())) {
+                failures.push(`explore @ ${viewport.name}: X-Ray affordance missing/disabled`);
+              } else {
+                await xray.click();
+                await page.waitForTimeout(700);
+                const probeOn = await page.evaluate(() => ({
+                  active: window.__kyneloomXray?.active() ?? false,
+                  lines: window.__kyneloomXray?.visibleLineCount() ?? -1,
+                  label: window.__kyneloomXray?.labelVisible() ?? false,
+                }));
+                checks.xrayOverlaysRendered =
+                  probeOn.active && probeOn.lines >= 3 && probeOn.label
+                    ? `yes (${String(probeOn.lines)} lines + label)`
+                    : `NO ${JSON.stringify(probeOn)}`;
+                if (!checks.xrayOverlaysRendered.startsWith('yes')) {
+                  failures.push(
+                    `explore @ ${viewport.name}: X-Ray overlays did not render ${JSON.stringify(probeOn)}`,
+                  );
+                }
+
+                // Evidence invariance: camera switches and scrubbing never
+                // change the measurement or canonical coordinates.
+                const evidenceBefore = await page.evaluate(() =>
+                  window.__kyneloomScene!.snapshot(),
+                );
+                for (const cam of ['Overhead', 'Follow', 'Goalkeeper', 'Broadcast']) {
+                  await page.getByRole('radio', { name: cam }).click({ force: true });
+                  await page.waitForTimeout(450);
+                }
+                await seek(4_717_400);
+                await seek(4_728_300);
+                await page.waitForTimeout(500);
+                const evidenceAfter = await page.evaluate(() => window.__kyneloomScene!.snapshot());
+                checks.xrayWorldInvariant =
+                  JSON.stringify({
+                    players: evidenceBefore.players,
+                    ball: evidenceBefore.ball,
+                    missing: evidenceBefore.missing,
+                  }) ===
+                  JSON.stringify({
+                    players: evidenceAfter.players,
+                    ball: evidenceAfter.ball,
+                    missing: evidenceAfter.missing,
+                  })
+                    ? 'identical'
+                    : 'DIVERGED';
+                if (checks.xrayWorldInvariant !== 'identical') {
+                  failures.push(
+                    `explore @ ${viewport.name}: world changed across X-Ray interactions`,
+                  );
+                }
+
+                // Phase switch changes the drawn geometry (before-only).
+                await page.getByRole('button', { name: 'Before', exact: true }).click();
+                await page.waitForTimeout(500);
+                const beforeLines = await page.evaluate(
+                  () => window.__kyneloomXray?.visibleLineCount() ?? -1,
+                );
+                checks.xrayPhaseSwitch = beforeLines >= 2 ? `yes (${String(beforeLines)})` : 'NO';
+                if (!checks.xrayPhaseSwitch.startsWith('yes')) {
+                  failures.push(`explore @ ${viewport.name}: X-Ray phase switch drew nothing`);
+                }
+
+                // SCENE→INSPECTOR (review gate 3): click the REAL measured
+                // geometry with actual pointer events. The probe projects
+                // several candidate points along the visible line; the first
+                // whose screen point is actually the canvas (floating UI
+                // can legitimately cover part of the geometry on narrow
+                // viewports) is clicked/tapped.
+                await page.getByRole('radio', { name: 'Overhead' }).click({ force: true });
+                await page.waitForTimeout(700);
+                await page.getByRole('button', { name: 'Both', exact: true }).click({
+                  force: true,
+                });
+                await page.waitForTimeout(450);
+                const target = await page.evaluate(() => {
+                  const canvas = document.querySelector('canvas');
+                  const hits = window.__kyneloomXray?.hitTargetsScreen() ?? [];
+                  if (canvas === null || hits.length === 0) return null;
+                  const box = canvas.getBoundingClientRect();
+                  for (let i = 0; i < hits.length; i += 1) {
+                    const px = box.left + hits[i]!.x;
+                    const py = box.top + hits[i]!.y;
+                    if (document.elementFromPoint(px, py) === canvas) {
+                      return { px, py, candidate: i, count: hits.length };
+                    }
+                  }
+                  return { px: -1, py: -1, candidate: -1, count: hits.length };
+                });
+                if (target === null) {
+                  failures.push(`explore @ ${viewport.name}: no scene click target (canvas/hits)`);
+                } else if (target.candidate < 0) {
+                  failures.push(
+                    `explore @ ${viewport.name}: every geometry click target is occluded by floating UI`,
+                  );
+                } else {
+                  const px = target.px;
+                  const py = target.py;
+                  let via = 'click';
+                  if (viewport.name === '390x844') {
+                    try {
+                      await page.touchscreen.tap(px, py);
+                      via = 'tap';
+                    } catch {
+                      await page.mouse.click(px, py); // context lacks hasTouch
+                    }
+                  } else {
+                    await page.mouse.click(px, py);
+                  }
+                  await page.waitForTimeout(400);
+                  const sceneClicked = (await page.getByTestId('evidence-sentence').count()) === 1;
+                  checks.xraySceneClick = sceneClicked
+                    ? `yes (${via} @ ${Math.round(px)},${Math.round(py)}, candidate ${String(target.candidate)}/${String(target.count - 1)})`
+                    : 'NO';
+                  if (!sceneClicked) {
+                    failures.push(
+                      `explore @ ${viewport.name}: clicking the separation geometry did not open the inspector`,
+                    );
+                  }
+                  if (viewport.name === '1440x900' || viewport.name === '390x844') {
+                    await page.screenshot({
+                      path: path.join(
+                        OUT_DIR,
+                        'screenshots',
+                        `explore-xray-click-${viewport.name}.png`,
+                      ),
+                    });
+                  }
+                  await page.keyboard.press('Escape');
+                  await page.waitForTimeout(250);
+                }
+
+                // Inspector: computed values verbatim + provenance + frames.
+                await page.getByRole('button', { name: 'Show evidence' }).click();
+                await page.waitForTimeout(300);
+                const sentence = await page.getByTestId('evidence-sentence').innerText();
+                const deltaChip = await page.getByTestId('evidence-delta').innerText();
+                const sentenceOk =
+                  sentence.includes('6.306') &&
+                  sentence.includes('20.344') &&
+                  sentence.includes('14.038');
+                checks.inspectorSentence = sentenceOk ? 'exact values' : sentence.slice(0, 80);
+                if (!sentenceOk) {
+                  failures.push(
+                    `explore @ ${viewport.name}: inspector sentence not the computed values`,
+                  );
+                }
+                checks.inspectorDelta = deltaChip.includes('14.038') ? 'exact' : deltaChip;
+                if (checks.inspectorDelta !== 'exact') {
+                  failures.push(
+                    `explore @ ${viewport.name}: inspector delta chip wrong: ${deltaChip}`,
+                  );
+                }
+                const interp = await page.getByTestId('evidence-interpretation').innerText();
+                checks.inspectorInterpretation = interp.includes('INTERPRETATION')
+                  ? 'labeled hypothesis'
+                  : 'MISSING LABEL';
+                if (checks.inspectorInterpretation !== 'labeled hypothesis') {
+                  failures.push(`explore @ ${viewport.name}: interpretation label missing`);
+                }
+                await page.getByRole('button', { name: 'Show source frames' }).click();
+                const framesText = await page.getByTestId('evidence-frames').innerText();
+                checks.inspectorFrames =
+                  framesText.includes('frame-47205') && framesText.includes('frame-47240')
+                    ? 'exact frame ids'
+                    : 'MISSING';
+                if (checks.inspectorFrames !== 'exact frame ids') {
+                  failures.push(`explore @ ${viewport.name}: source frame ids missing`);
+                }
+                // Frame navigation seeks; back-to-replay returns.
+                await page.getByRole('button', { name: 'Go to before frame' }).click();
+                await page.waitForTimeout(400);
+                checks.inspectorSeek =
+                  (await page.locator('.stage__slider').inputValue()) === '4720500' ? 'yes' : 'NO';
+                if (checks.inspectorSeek !== 'yes') {
+                  failures.push(`explore @ ${viewport.name}: evidence frame nav did not seek`);
+                }
+                await page.getByRole('button', { name: 'Back to replay' }).click();
+                await page.waitForTimeout(400);
+                // Keyboard: X off, X on, I opens, Escape closes.
+                await page.locator('.stage__slider').focus();
+                await page.keyboard.press('x');
+                await page.waitForTimeout(250);
+                await page.keyboard.press('x');
+                await page.keyboard.press('i');
+                await page.waitForTimeout(250);
+                checks.xrayKeyboard =
+                  (await page.getByTestId('evidence-sentence').count()) === 1 ? 'yes' : 'NO';
+                if (checks.xrayKeyboard !== 'yes') {
+                  failures.push(`explore @ ${viewport.name}: keyboard X/I path failed`);
+                }
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(250);
+                // Evidence screenshot per viewport (overhead for clarity).
+                // X-Ray is still ON here (the keyboard 'x' above re-enabled
+                // it; Escape only closed the inspector) — do NOT toggle again
+                // before capturing, only switch to the tactical camera.
+                await page.getByRole('radio', { name: 'Overhead' }).click({ force: true });
+                await page.waitForTimeout(900);
+                await page.screenshot({
+                  path: path.join(OUT_DIR, 'screenshots', `explore-xray-${viewport.name}.png`),
+                });
+                await page.getByRole('button', { name: 'X-Ray' }).click(); // off
+
+                // BOUNDED RESOURCES (review gate 4): repeated toggling and
+                // phase switching must not leak WebGL geometries/textures.
+                if (viewport.name === '1440x900') {
+                  const read = () =>
+                    page.evaluate(() => ({
+                      geometries: window.__kyneloomPerf?.geometries ?? -1,
+                      textures: window.__kyneloomPerf?.textures ?? -1,
+                    }));
+                  await page.waitForTimeout(800);
+                  const before = await read();
+                  for (let round = 0; round < 4; round += 1) {
+                    await page.getByRole('button', { name: 'X-Ray' }).click();
+                    await page.waitForTimeout(350);
+                    for (const phase of ['After', 'Before', 'Both'] as const) {
+                      await page.getByRole('button', { name: phase, exact: true }).click({
+                        force: true,
+                      });
+                      await page.waitForTimeout(250);
+                    }
+                    await page.getByRole('button', { name: 'X-Ray' }).click();
+                    await page.waitForTimeout(350);
+                  }
+                  await page.waitForTimeout(1200);
+                  const after = await read();
+                  const dGeo = after.geometries - before.geometries;
+                  const dTex = after.textures - before.textures;
+                  checks.xrayResourcesBounded =
+                    dGeo <= 2 && dTex <= 2
+                      ? `ok (Δgeo +${String(dGeo)}, Δtex +${String(dTex)} after 4 on/off rounds × 3 phases)`
+                      : `LEAK (Δgeo +${String(dGeo)}, Δtex +${String(dTex)})`;
+                  if (!checks.xrayResourcesBounded.startsWith('ok')) {
+                    failures.push(
+                      `explore @ ${viewport.name}: X-Ray toggling leaked WebGL resources ${JSON.stringify({ before, after })}`,
+                    );
+                  }
+                }
               }
 
               // FOV stays inside the contract range across every mode.

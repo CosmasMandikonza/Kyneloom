@@ -140,6 +140,16 @@
   flex-direction: column;
   align-items: flex-end;
   gap: var(--space-2);
+  /* The floating control stack must not swallow clicks meant for the scene
+     beneath it: only its actual controls are hit targets — the transparent
+     space between rows/groups passes pointer events through to the pitch
+     (players, X-Ray geometry). */
+  pointer-events: none;
+}
+
+.stage__modes button,
+.stage__modes .stage__exit-directed {
+  pointer-events: auto;
 }
 
 .stage__mode-group {
@@ -192,6 +202,213 @@
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--mint-500) 55%, transparent),
     0 6px 20px -8px var(--mint-glow);
+}
+
+/* Evidence X-Ray inspector — compact, contextual; never eats the stage. */
+.inspector {
+  position: absolute;
+  left: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 6;
+  width: min(24rem, calc(100% - 2 * var(--space-4)));
+  max-height: min(26rem, 70%);
+  overflow-y: auto;
+  background: var(--surface-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in srgb, var(--mint-500) 35%, transparent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: 0 18px 48px -20px rgba(0, 0, 0, 0.65);
+}
+
+.inspector__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.inspector__title {
+  font-size: var(--step--1);
+  letter-spacing: 0.18em;
+  color: var(--mint-400, #51d7bd);
+}
+
+.inspector__return {
+  margin-left: auto;
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--mint-500) 45%, transparent);
+  background: rgba(81, 215, 189, 0.1);
+  color: var(--mint-400, #51d7bd);
+  font-family: var(--font-mono);
+  font-size: var(--step--2, 0.75rem);
+  padding: 0.25rem 0.55rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.inspector__close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  min-width: 1.6rem;
+  min-height: 1.6rem;
+}
+
+.inspector__sentence {
+  margin: var(--space-2) 0 var(--space-2);
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+.inspector__facts {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0 0 var(--space-2);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.inspector__facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.inspector__facts dt {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+}
+
+.inspector__facts dd {
+  margin: 0;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.inspector__sources {
+  appearance: none;
+  border: 1px solid var(--line-soft);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.inspector__frames {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px dashed var(--line-soft);
+  border-radius: var(--radius-sm, 8px);
+  font-size: 0.75rem;
+}
+
+.inspector__frames-caption {
+  margin: 0.2rem 0;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.65rem;
+}
+
+.inspector__frames ul {
+  margin: 0.1rem 0 0.4rem;
+  padding-left: 1rem;
+  color: var(--text-primary);
+}
+
+.inspector__frame-nav {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.inspector__frame-nav button {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--mint-500) 45%, transparent);
+  background: transparent;
+  color: var(--mint-400, #51d7bd);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.inspector__interpretation {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed color-mix(in srgb, var(--amber, #f6ba77) 55%, transparent);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.inspector__interpretation-tag {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-full);
+  border: 1px dashed color-mix(in srgb, var(--amber, #f6ba77) 70%, transparent);
+  color: var(--amber, #f6ba77);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+}
+
+.inspector__unavailable {
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+.inspector__fine {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+/* X-Ray chip emphasis within the modes cluster. */
+.stage__mode-btn--xray[aria-pressed='true'] {
+  color: var(--ink-950);
+  background: var(--mint-500);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--mint-500) 55%, transparent),
+    0 6px 20px -8px var(--mint-glow);
+}
+
+/* 2D fallback X-Ray line — same fact, same words, tactical view. */
+.stage__xray-2d {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--space-3);
+  z-index: 5;
+  padding: 0.3rem 0.7rem;
+  background: rgba(7, 19, 25, 0.85);
+  border: 1px solid color-mix(in srgb, var(--mint-500) 40%, transparent);
+  border-radius: var(--radius-full);
+  color: var(--mint-400, #51d7bd);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  /* It is a button (click opens the evidence inspector) styled as the
+     passive-looking measurement line it replaced. */
+  font-family: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 48rem) {
+  /* Mobile: the inspector must never cover the transport bar — it docks
+     above it and stops at 55% of the stage height. */
+  .inspector {
+    bottom: calc(var(--space-2));
+    max-height: 52%;
+    width: calc(100% - 2 * var(--space-3));
+    left: var(--space-3);
+  }
 }
 
 /* Exit Directed Mode — visible only while the guided sequence runs. */

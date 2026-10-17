@@ -17,6 +17,7 @@ import { Footballers } from './footballers';
 import { CameraRig } from './camera-rig';
 import { Fallback2D } from './fallback-2d';
 import { sceneVisual } from './visual-debug';
+import { registerXrayProbe } from './xray-overlay';
 
 /**
  * LivingReplayCanvas (KYN-06): the real WebGL scene mounted into the
@@ -33,10 +34,13 @@ export function LivingReplayCanvas({
   runtime,
   cameraMode,
   quality,
+  children,
 }: {
   runtime: SceneRuntime;
   cameraMode: CameraMode;
   quality: SceneQuality;
+  /** Optional overlay children (Evidence X-Ray) rendered inside the scene. */
+  children?: React.ReactNode;
 }) {
   const [failure, setFailure] = useState<
     'webgl-unavailable' | 'context-lost' | 'asset-error' | null
@@ -81,6 +85,7 @@ export function LivingReplayCanvas({
             <Ball />
           </Suspense>
           <CameraRig mode={cameraMode} />
+          {children}
           <PerfProbe />
           <QaHook />
         </SceneRuntimeContext.Provider>
@@ -160,6 +165,10 @@ function QaHook() {
   useEffect(() => {
     const hook = window as unknown as Record<string, unknown>;
     const visual = sceneVisual();
+    // Evidence X-Ray probe: reads the overlay's live state so Playwright
+    // can assert the REAL rendered overlays, not just React props.
+    const xrayProbe = registerXrayProbe();
+    hook['__kyneloomXray'] = xrayProbe;
     hook['__kyneloomScene'] = {
       playheadMs: (): number => runtime.engine.playheadMs,
       // Rendered Three.js object poses (mesh roots, camera) for Playwright
@@ -205,6 +214,7 @@ function QaHook() {
     };
     return () => {
       delete hook['__kyneloomScene'];
+      delete hook['__kyneloomXray'];
     };
   }, [runtime]);
   return null;

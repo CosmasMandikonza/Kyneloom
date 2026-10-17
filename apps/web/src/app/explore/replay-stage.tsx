@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { formatMatchClock, formatMatchClockTenths } from '@/lib/clock';
 import {
   advancePlayhead,
@@ -10,7 +11,7 @@ import {
   stepFrame,
   type PlaybackSpeed,
 } from '@/lib/playback';
-import { sceneTimeline } from '@/lib/scene-client';
+import { sceneTimeline, tracksToSamples } from '@/lib/scene-client';
 import type { SceneData } from '@/lib/scene-data';
 import {
   createFrameCache,
@@ -19,6 +20,9 @@ import {
   type ReplayEngine,
 } from './scene/scene-context';
 import { LivingReplayCanvas, type SceneQuality } from './scene/living-replay';
+import { XrayOverlay, type XrayPhase, SCENE_OPEN_INSPECTOR_EVENT } from './scene/xray-overlay';
+import { EvidenceInspector } from './evidence-inspector';
+import { validateEvidenceProjection, type EvidenceProjection } from '@/lib/evidence-data';
 import { Fallback2D } from './scene/fallback-2d';
 
 /**
@@ -62,8 +66,25 @@ const SPEED_LABELS: Record<PlaybackSpeed, string> = {
 
 type LensId = 'fan' | 'analyst' | 'accessible';
 
+/** Pointer/touch hit tolerance around the projected measured segments. */
+const HIT_TOLERANCE_PX = 14;
+
+function distanceToSegmentPx(
+  px: number,
+  py: number,
+  seg: { x1: number; y1: number; x2: number; y2: number },
+): number {
+  const dx = seg.x2 - seg.x1;
+  const dy = seg.y2 - seg.y1;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq === 0) return Math.hypot(px - seg.x1, py - seg.y1);
+  const t = Math.max(0, Math.min(1, ((px - seg.x1) * dx + (py - seg.y1) * dy) / lengthSq));
+  return Math.hypot(px - (seg.x1 + t * dx), py - (seg.y1 + t * dy));
+}
+
 export interface ReplayStageProps {
   readonly scene: SceneData;
+  readonly evidence: EvidenceProjection;
 }
 
 /**
@@ -71,7 +92,7 @@ export interface ReplayStageProps {
  * stage truthfully (explicit notice, no transport) rather than playing a
  * plausible-but-false replay built from invented defaults.
  */
-export function ReplayStage({ scene }: ReplayStageProps) {
+export function ReplayStage({ scene, evidence }: ReplayStageProps) {
   let timeline: ReturnType<typeof sceneTimeline> | null = null;
   let invalidReason: string | null = null;
   try {
@@ -91,11 +112,12 @@ export function ReplayStage({ scene }: ReplayStageProps) {
       </section>
     );
   }
-  return <ReplayStageInner scene={scene} timeline={timeline} />;
+  return <ReplayStageInner scene={scene} evidence={evidence} timeline={timeline} />;
 }
 
 function ReplayStageInner({
   scene,
+  evidence,
   timeline,
 }: ReplayStageProps & { timeline: ReturnType<typeof sceneTimeline> }) {
   const modeGroupId = useId();
@@ -129,6 +151,25 @@ function ReplayStageInner({
   const [view, setView] = useState<'3d' | '2d'>('3d');
   const [selected, setSelected] = useState<string | null>(null);
   const [quality, setQuality] = useState<SceneQuality>('high');
+  // Evidence X-Ray: validated projection only — a corrupt payload disables
+  // the lens truthfully rather than drawing fabricated evidence. Validation
+  // BINDS the payload to this scene's own rehydrated timeline + accepted
+  // tracking (match id, identities, window, frames, fingerprint), so a
+  // plausible but falsified payload is rejected, not displayed.
+  const evidenceCtx = useMemo(
+    () => ({ matchId: scene.matchId, timeline, tracking: tracksToSamples(scene) }),
+    [scene.matchId, timeline, scene],
+  );
+  const evidenceSafe = useMemo(
+    () => validateEvidenceProjection(evidence, evidenceCtx),
+    [evidence, evidenceCtx],
+  );
+  const [xrayActive, setXrayActive] = useState(false);
+  const [xrayPhase, setXrayPhase] = useState<XrayPhase>('both');
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [inspectorReturnMs, setInspectorReturnMs] = useState(scene.initialFocusMs);
+  const xrayAvailable = evidenceSafe?.status === 'verified';
 
   const clockRef = useRef<HTMLSpanElement>(null);
   const sliderRef = useRef<HTMLInputElement>(null);
@@ -221,7 +262,8 @@ function ReplayStageInner({
   }, [engine, scene.events, momentWindow]);
 
   // Keyboard transport on the stage: arrows step frames, space toggles
-  // play, digits 1–6 select cameras, Escape exits directed/orbit mode.
+  // play, digits 1–6 select cameras, X toggles Evidence X-Ray, I opens the
+  // inspector, Escape exits directed/orbit mode and closes the inspector.
   const onStageKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
     const target = event.target as HTMLElement;
     // Escape is a GLOBAL exit: leaving the directed sequence (or free orbit)
@@ -231,7 +273,18 @@ function ReplayStageInner({
         event.preventDefault();
         setCamera('broadcast');
       }
+      if (inspectorOpen) setInspectorOpen(false);
       return;
+    }
+    if (event.key.toLowerCase() === 'x' && xrayAvailable) {
+      event.preventDefault();
+      setXrayActive((current) => !current);
+    } else if (event.key.toLowerCase() === 'i' && xrayActive) {
+      event.preventDefault();
+      setInspectorOpen((current) => {
+        if (!current) setInspectorReturnMs(engineRef.current.playheadMs);
+        return !current;
+      });
     }
     if (target.closest('button, input, a, select')) return;
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
@@ -252,6 +305,92 @@ function ReplayStageInner({
   const onSelect = useCallback((entityId: string | null): void => {
     setSelected(entityId);
   }, []);
+
+  // Scene→inspector path: clicking/tapping the measured separation geometry
+  // (or the 2D evidence line) opens the actual evidence inspector WITHOUT
+  // disturbing the current selection or playhead. The 3D geometry signals
+  // through a DOM CustomEvent (see xray-overlay.tsx) because updates called
+  // directly from the R3F canvas's raw listeners do not reliably commit for
+  // touch input; the flush keeps the commit synchronous from any listener.
+  const openInspector = useCallback((): void => {
+    flushSync(() => {
+      setInspectorReturnMs(engineRef.current.playheadMs);
+      setInspectorOpen(true);
+    });
+  }, []);
+  useEffect(() => {
+    const onSceneOpen = (): void => openInspector();
+    window.addEventListener(SCENE_OPEN_INSPECTOR_EVENT, onSceneOpen);
+    return () => window.removeEventListener(SCENE_OPEN_INSPECTOR_EVENT, onSceneOpen);
+  }, [openInspector]);
+
+  // DOM hit-test path for scene→inspector: pointer/touch DOWN anywhere on
+  // the canvas within HIT_TOLERANCE_PX of a projected measured segment
+  // opens the inspector. A plain DOM listener in this React root commits
+  // reliably for every input path (mouse, touch, synthetic test input);
+  // updates raised from inside the R3F canvas's own pointer pipeline were
+  // observed NOT to commit for synthetic touch on this stack. The projected
+  // segments are the exact same measured geometry the 3D raycast boxes
+  // wrap, so the hit area is equivalent.
+  const xrayActiveRef = useRef(xrayActive);
+  xrayActiveRef.current = xrayActive;
+  const lastPointerdownAtRef = useRef(0);
+  const lastClickDetailRef = useRef(0);
+  // A "ghost click": a mouse-detail click (detail > 0 — keyboard activation
+  // carries detail 0 and must never be blocked) that trails the last
+  // pointerdown by a long gap. That is exactly what browsers synthesize
+  // ~100–300 ms after a touch tap, and it must not drive the inspector it
+  // just opened under the finger.
+  const ghostClick = useCallback(
+    (): boolean =>
+      lastClickDetailRef.current > 0 && Date.now() - lastPointerdownAtRef.current > 150,
+    [],
+  );
+  useEffect(() => {
+    const onDown = (event: PointerEvent): void => {
+      // Every real interaction begins with a pointerdown; browsers
+      // synthesize a trailing click AFTER a touch tap with a long gap and
+      // no pointerdown of its own — that ghost must not drive the
+      // inspector (see ghostClick()).
+      lastPointerdownAtRef.current = Date.now();
+      lastClickDetailRef.current = 0;
+      if (!xrayActiveRef.current) return;
+      const target = event.target as Element | null;
+      // Real controls win over scene hit-testing — a tap on a button must
+      // never be reinterpreted as a geometry click.
+      if (target?.closest?.('button, input, a, select, label')) return;
+      const canvas = target?.closest?.('canvas');
+      if (canvas === null || canvas === undefined) return;
+      const rect = canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      const probe = (
+        window as unknown as {
+          __kyneloomXray?: {
+            hitSegmentsScreen(): { x1: number; y1: number; x2: number; y2: number }[];
+          };
+        }
+      ).__kyneloomXray;
+      for (const seg of probe?.hitSegmentsScreen() ?? []) {
+        if (distanceToSegmentPx(px, py, seg) <= HIT_TOLERANCE_PX) {
+          openInspector();
+          return;
+        }
+      }
+    };
+    const onClick = (event: MouseEvent): void => {
+      lastClickDetailRef.current = event.detail;
+    };
+    // Capture phase: downstream code (the R3F pipeline, browser touch
+    // handling) may stop native propagation before document bubble phase;
+    // capture guarantees this listener sees every pointer/touch down.
+    document.addEventListener('pointerdown', onDown, { capture: true });
+    document.addEventListener('click', onClick, { capture: true });
+    return () => {
+      document.removeEventListener('pointerdown', onDown, { capture: true });
+      document.removeEventListener('click', onClick, { capture: true });
+    };
+  }, [openInspector]);
 
   const runtime = useMemo(
     () => ({ scene, engine, getFrame, selected: { entityId: selected }, onSelect }),
@@ -291,7 +430,12 @@ function ReplayStageInner({
         {/* The canvas region. data-scene-mount marks where the R3F Canvas goes. */}
         <div className="stage__canvas scene-stage" data-scene-mount="">
           {view === '3d' ? (
-            <LivingReplayCanvas runtime={runtime} cameraMode={camera} quality={quality} />
+            <LivingReplayCanvas runtime={runtime} cameraMode={camera} quality={quality}>
+              <XrayOverlay
+                evidence={evidenceSafe ?? evidence}
+                state={{ active: xrayActive, phase: xrayPhase }}
+              />
+            </LivingReplayCanvas>
           ) : (
             <Fallback2D runtime={runtime} reason="user-choice" />
           )}
@@ -341,6 +485,64 @@ function ReplayStageInner({
                 );
               })}
             </div>
+            <span id={`${modeGroupId}-label}-xray`} className="stage__mode-caption">
+              Evidence
+            </span>
+            <div className="stage__mode-group" role="group" aria-label="Evidence X-Ray">
+              <button
+                type="button"
+                className="stage__mode-btn stage__mode-btn--xray"
+                aria-pressed={xrayActive}
+                disabled={!xrayAvailable}
+                title={
+                  xrayAvailable
+                    ? 'Reveal the measured defender–striker separation behind the run (X)'
+                    : 'Evidence X-Ray unavailable — the measurement failed verification for this moment'
+                }
+                onClick={() => {
+                  setXrayActive((current) => !current);
+                  if (!xrayActive) setInspectorOpen(false);
+                }}
+              >
+                X-Ray
+              </button>
+              {xrayActive && xrayAvailable ? (
+                <>
+                  {(['before', 'after', 'both'] as const).map((phase) => (
+                    <button
+                      key={phase}
+                      type="button"
+                      className="stage__mode-btn"
+                      aria-pressed={xrayPhase === phase}
+                      title={
+                        phase === 'before'
+                          ? 'Separation at the start of the measured interval'
+                          : phase === 'after'
+                            ? 'Separation at the end of the measured interval'
+                            : 'Show both states for comparison'
+                      }
+                      onClick={() => setXrayPhase(phase)}
+                    >
+                      {phase === 'before' ? 'Before' : phase === 'after' ? 'After' : 'Both'}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="stage__mode-btn stage__mode-btn--inspect"
+                    aria-pressed={inspectorOpen}
+                    title="Show how this number was calculated (I)"
+                    onClick={() => {
+                      setInspectorOpen((current) => {
+                        if (!current) setInspectorReturnMs(engineRef.current.playheadMs);
+                        return !current;
+                      });
+                    }}
+                  >
+                    Show evidence
+                  </button>
+                </>
+              ) : null}
+            </div>
             {camera === 'directed' ? (
               <button
                 type="button"
@@ -384,6 +586,44 @@ function ReplayStageInner({
               ))}
             </div>
           </div>
+
+          {/* Evidence X-Ray inspector — compact, contextual, collapsible. */}
+          <EvidenceInspector
+            evidence={evidenceSafe ?? evidence}
+            open={inspectorOpen}
+            sourcesExpanded={sourcesExpanded}
+            onToggleSources={() => {
+              if (ghostClick()) return;
+              setSourcesExpanded((current) => !current);
+            }}
+            onCollapse={() => {
+              if (ghostClick()) return; // trailing touch ghost, not a user click
+              setInspectorOpen(false);
+            }}
+            onSeek={(ms) => {
+              if (ghostClick()) return;
+              setPlaying(false);
+              setPlayhead(ms);
+            }}
+            onReturn={(ms) => {
+              if (ghostClick()) return;
+              setPlayhead(ms);
+              setInspectorOpen(false);
+            }}
+            returnMs={inspectorReturnMs}
+          />
+          {view === '2d' && xrayActive && evidenceSafe?.status === 'verified' ? (
+            <button
+              type="button"
+              className="stage__xray-2d mono"
+              data-xray-2d="separation"
+              onClick={openInspector}
+              title="Show how this number was calculated"
+            >
+              X-RAY · {evidenceSafe.evidence.separationBeforeM.toFixed(3)} m →{' '}
+              {evidenceSafe.evidence.separationAfterM.toFixed(3)} m · measured, not interpretation
+            </button>
+          ) : null}
 
           {/* Scene status — bottom right, minimal */}
           <p className="stage__status mono" aria-label="Scene status">

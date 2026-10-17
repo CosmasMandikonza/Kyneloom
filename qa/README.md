@@ -15,7 +15,8 @@ themselves on a scratch port.
 Playwright Chromium captures the four routes (`/`, `/explore`, `/studio`,
 `/m/mom-synthetic-78m`) at **1440×900, 1280×800, 1024×768, 390×844 and
 375×812**, plus `prefers-reduced-motion` variants (`*-rm.png`) for `/` and
-`/explore` at 1440×900 and 390×844 — 25 captures in total.
+`/explore` at 1440×900 and 390×844 — 27 captures in total (25 route captures +
+the two X-Ray scene-click evidence captures).
 
 Per capture it verifies: no horizontal overflow, no console errors, and
 route-specific interaction checks. The `/explore` (KYN-06) pass additionally
@@ -38,6 +39,38 @@ adjacent-frame motion Δ10.7 Y-units (ffmpeg-verified, never a blank capture).
 Live in-browser screencast paths on this host write blank constant-luminance
 WebM files (verified), so the screen-level capture is the honest route to a
 smooth real-time recording. Requires an interactive Windows desktop.
+
+### Evidence X-Ray checks (KYN-08)
+
+The `/explore` pass also drives the full click-to-claim-to-evidence path:
+X-Ray toggle → real rendered overlays (live probe), world invariance across
+camera switches + scrubbing during X-Ray, before/after phase redraw,
+**scene→inspector interaction** (real mouse click — real touch tap on
+390×844 — on the measured geometry via the overlay probe's projected hit
+target; `explore-xray-click-1440x900.png` + `explore-xray-click-390x844.png`
+capture the open inspector), the inspector sentence with the computed
+values verbatim, provenance + interpretation labels, source frame IDs,
+frame navigation seeking, keyboard `X`/`I`/Escape, and a **bounded-resource
+check** (4 X-Ray on/off rounds × 3 phase switches must not grow the WebGL
+geometry/texture counts) — plus `explore-xray-*.png` captures per viewport.
+
+## `qa:record:xray` (scripts/record-xray-live.ts)
+
+KYN-08's interaction evidence: a continuous, real-time capture of the full
+Evidence X-Ray path — overhead → play → `X` activates the overlays → before/
+after/both phases → **click the measured geometry itself to open the
+inspector (scene→claim→source)** → source frame IDs → Go to before frame →
+Back to replay → X-Ray off → broadcast — `qa/video/xray-screencast.mp4`
+(+ `.webm` twin). Captured from the **browser compositor's own frame stream**
+(CDP `Page.startScreencast`): every frame is the exact composited page,
+WebGL canvas included. On this host screen-level capture is unavailable (the
+operator's desktop covers every screen region, and gdigrab's PrintWindow
+window capture returns black for Chrome's GPU surfaces), and occlusion
+throttling is disabled (`--disable-backgrounding-occluded-windows` +
+`--disable-features=CalculateNativeWinOcclusion`) so compositing continues
+at full rate while covered. This run: 13.2 s, 333 frames at a measured
+25.3 fps, adjacent-frame motion Δ9.6 Y-units (ffmpeg-verified), inside the
+8–15 s envelope.
 
 ## `qa:record:camera` (scripts/record-camera-live.ts)
 
