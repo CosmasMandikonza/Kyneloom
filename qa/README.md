@@ -58,14 +58,18 @@ geometry/texture counts) — plus `explore-xray-*.png` captures per viewport.
 
 The `/` pass asserts the encounter contract (headline, one clickable CTA,
 fixture facts, live orb probe) at every viewport, then drives the FULL
-orb→stadium transition at 1440×900 / 1280×800 / 1024×768 / 390×844:
-fragment + reveal captures by deterministic elapsed time, handoff to
-`/explore?enter=orb` at the canonical checkpoint with 22 players, the
-landing probe deleted and exactly one canvas; Skip during intro, rapid
-double-click lockout, reduced-motion direct handoff (timed), a
-WebGL-disabled browser instance proving the poster fallback
+orb→stadium transition: fragment + reveal captures by deterministic
+elapsed time, handoff to `/explore?enter=orb` at the canonical checkpoint
+with 22 players, the landing probe deleted and exactly one canvas. Phase
+transitions are asserted from a sessionStorage phase trace (review round):
+the normal entry passes idle → intro → fragments → pitch_reveal → ready in
+order; reduced motion goes idle → ready directly (no choreography, timed);
+a rapid double activation keeps startCount === 1 and preserves
+`?enter=orb`; Skip during intro is proven at 1280×800. Fragment budgets
+are asserted numerically (320 at 390×844 AND 375×812, 900 at desktop). A
+WebGL-disabled browser instance proves the poster fallback
 (`landing-fallback-375x812.png`), and repeated landing→replay→back→replay
-navigation with bounded GPU geometry/texture growth.
+navigation keeps GPU geometry/texture growth bounded.
 
 ## `qa:record:landing` (scripts/record-landing-live.ts)
 

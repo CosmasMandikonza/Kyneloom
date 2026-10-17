@@ -300,6 +300,15 @@ async function main(): Promise<void> {
               if (!landing.includes('"state":"idle"')) {
                 failures.push(`landing @ ${viewport.name}: orb probe not idle: ${landing}`);
               }
+              // Review gate 4: phone widths (fine OR coarse pointer) must
+              // get the mobile fragment budget; desktop the full field.
+              const expectedFragments =
+                viewport.name === '390x844' || viewport.name === '375x812' ? 320 : 900;
+              if (!landing.includes(`"fragments":${String(expectedFragments)}`)) {
+                failures.push(
+                  `landing @ ${viewport.name}: fragment budget ${landing} != expected ${String(expectedFragments)}`,
+                );
+              }
             }
           }
           if (route.name === 'landing' && !reducedMotion) {
@@ -360,7 +369,58 @@ async function main(): Promise<void> {
                 (window as { __kyneloomLanding?: unknown }).__kyneloomLanding === undefined,
               canvases: document.querySelectorAll('canvas').length,
             }));
-            checks.landingHandoff = JSON.stringify({ ...ready, ms: Date.now() - flowStart });
+            // Phase-state evidence (review gates 1 + 2), surviving the SPA
+            // navigation via sessionStorage: the exact phases this entry
+            // passed through, and that rapid activation started once.
+            const trace = await page.evaluate(() => {
+              try {
+                return JSON.parse(
+                  window.sessionStorage.getItem('kyneloom.landing.phases') ??
+                    '{"phases":[],"startCount":-1}',
+                ) as { phases?: string[]; startCount?: number };
+              } catch {
+                return { phases: [], startCount: -1 };
+              }
+            });
+            checks.landingHandoff = JSON.stringify({
+              ...ready,
+              phases: trace.phases,
+              startCount: trace.startCount,
+              ms: Date.now() - flowStart,
+            });
+            if (viewport.name === '1440x900') {
+              // The full choreography, in order, exactly once each.
+              const expected = ['idle', 'intro', 'fragments', 'pitch_reveal', 'ready'];
+              const got = trace.phases ?? [];
+              const orderedOk =
+                expected.every((phase) => got.includes(phase)) &&
+                expected.every(
+                  (phase, i) =>
+                    got.indexOf(phase) !== -1 &&
+                    (i === 0 ||
+                      got.indexOf(expected[i - 1]!) === -1 ||
+                      got.indexOf(expected[i - 1]!) < got.indexOf(phase)),
+                );
+              if (!orderedOk) {
+                failures.push(
+                  `landing @ ${viewport.name}: phase history ${JSON.stringify(got)} missing the ordered five states`,
+                );
+              }
+            }
+            if (viewport.name === '1024x768') {
+              // Review gate 2: the double activation started the machine
+              // exactly once and the intended navigation kept enter=orb.
+              if (trace.startCount !== 1) {
+                failures.push(
+                  `landing @ ${viewport.name}: rapid double-click startCount ${String(trace.startCount)} != 1`,
+                );
+              }
+              if (!page.url().includes('enter=orb')) {
+                failures.push(
+                  `landing @ ${viewport.name}: completed transition lost ?enter=orb (${page.url()})`,
+                );
+              }
+            }
             // Acceptance 4: the canonical checkpoint survives the handoff.
             if (ready.playhead !== 4_722_100) {
               failures.push(
@@ -425,7 +485,31 @@ async function main(): Promise<void> {
             await page.waitForFunction(() => window.location.pathname === '/explore', undefined, {
               timeout: 25_000,
             });
-            checks.landingReducedMotion = `direct handoff in ${String(Date.now() - t0)}ms`;
+            // Review gate 1: PHASE assertion, not just navigation — the
+            // machine went idle → ready and never entered choreography.
+            const rmTrace = await page.evaluate(() => {
+              try {
+                return JSON.parse(
+                  window.sessionStorage.getItem('kyneloom.landing.phases') ?? '{"phases":[]}',
+                ) as { phases?: string[] };
+              } catch {
+                return { phases: [] };
+              }
+            });
+            checks.landingReducedMotion = `direct handoff in ${String(Date.now() - t0)}ms; phases ${JSON.stringify(rmTrace.phases)}`;
+            const rmPhases = rmTrace.phases ?? [];
+            if (
+              rmPhases.length !== 2 ||
+              rmPhases[0] !== 'idle' ||
+              rmPhases[1] !== 'ready' ||
+              rmPhases.includes('intro') ||
+              rmPhases.includes('fragments') ||
+              rmPhases.includes('pitch_reveal')
+            ) {
+              failures.push(
+                `landing reduced-motion: phases ${JSON.stringify(rmPhases)} != ['idle','ready']`,
+              );
+            }
             await page.waitForFunction(
               () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
               undefined,
@@ -1023,7 +1107,10 @@ async function main(): Promise<void> {
                       ),
                     });
                   }
-                  await page.keyboard.press('Escape');
+                  // Close via the inspector's own control — deterministic
+                  // regardless of where the tap left keyboard focus (an
+                  // Escape only works while focus is inside the stage).
+                  await page.getByRole('button', { name: 'Close inspector' }).click();
                   await page.waitForTimeout(250);
                 }
 

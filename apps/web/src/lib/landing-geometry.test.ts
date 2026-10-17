@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildLandingField, mulberry32, type LandingFieldInput } from './landing-geometry';
+import {
+  buildLandingField,
+  fragmentBudget,
+  mulberry32,
+  type LandingFieldInput,
+} from './landing-geometry';
 import { pitchToThree } from '@kyneloom/contracts';
 
 /**
@@ -127,6 +132,27 @@ describe('buildLandingField', () => {
     });
     expect(field.fragments).toHaveLength(10); // fall back to outline targets
     expect(field.checkpointMarkers).toHaveLength(0);
+  });
+});
+
+describe('fragmentBudget (device budgets, review gate 4)', () => {
+  it('phone widths get the mobile budget even with a FINE pointer', () => {
+    // The exact regression: 375×812 with a desktop-pointer emulation.
+    expect(fragmentBudget(375, false)).toBe(320);
+    expect(fragmentBudget(390, false)).toBe(320);
+    expect(fragmentBudget(479, false)).toBe(320);
+  });
+
+  it('coarse pointers get the mobile budget at any width', () => {
+    expect(fragmentBudget(1440, true)).toBe(320);
+    expect(fragmentBudget(430, true)).toBe(320);
+  });
+
+  it('tablet widths cap at the mid budget; desktop gets the full field', () => {
+    expect(fragmentBudget(480, false)).toBe(600);
+    expect(fragmentBudget(1023, false)).toBe(600);
+    expect(fragmentBudget(1024, false)).toBe(900);
+    expect(fragmentBudget(1440, false)).toBe(900);
   });
 });
 

@@ -6,9 +6,11 @@ import { useRouter } from 'next/navigation';
 import { detectSceneCapabilities } from '@kyneloom/scene-renderer';
 import {
   buildLandingField,
+  fragmentBudget,
   type LandingFieldInput,
   type LandingFieldSpec,
 } from '@/lib/landing-geometry';
+import { ASSET_WARM_TIMEOUT_MS, EXPLORE_ASSETS, warmExploreAssets } from '@/lib/landing-assets';
 import {
   DEFAULT_LANDING_CONFIG,
   initialLandingState,
@@ -29,9 +31,6 @@ import { OrbField } from './orb-field';
  * when WebGL is unavailable or dies mid-transition. The CTA stays a real
  * button at every moment; effects never capture pointer events above it.
  */
-
-/** Warmed by the CTA so /explore starts fast (same-origin static assets). */
-const EXPLORE_ASSETS = ['/models/footballer.glb'];
 
 export interface LandingExperienceProps {
   readonly fixtureFacts: {
@@ -56,9 +55,17 @@ export function LandingExperience({ fixtureFacts, fieldInput }: LandingExperienc
   const [webglOk, setWebglOk] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [coarsePointer, setCoarsePointer] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(1280);
 
   useEffect(() => {
     setWebglOk(detectSceneCapabilities().webgl);
+  }, []);
+
+  useEffect(() => {
+    const onResize = (): void => setViewportWidth(window.innerWidth);
+    onResize();
+    window.addEventListener('resize', onResize, { passive: true });
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   useEffect(() => {
@@ -81,6 +88,17 @@ export function LandingExperience({ fixtureFacts, fieldInput }: LandingExperienc
     state: initialLandingState(),
     config: DEFAULT_LANDING_CONFIG,
   }));
+  // The FSM's config mirrors the LIVE reduced-motion preference (review
+  // gate 1): dispatch always reads the CURRENT config, so a preference
+  // flipped before pressing the CTA takes the direct idle-to-ready path,
+  // never the choreography.
+  useEffect(() => {
+    setReducer((current) =>
+      current.config.reducedMotion === reducedMotion
+        ? current
+        : { ...current, config: { ...current.config, reducedMotion } },
+    );
+  }, [reducedMotion]);
   const dispatch = useCallback((event: LandingEvent) => {
     setReducer((current) => ({
       ...current,
@@ -90,34 +108,38 @@ export function LandingExperience({ fixtureFacts, fieldInput }: LandingExperienc
 
   const phase = reducer.state.phase;
 
-  // Device-tuned deterministic fragment budget (same seed → same field).
+  // Device-tuned deterministic fragment budget (same seed → same field):
+  // narrow viewports and coarse pointers BOTH drop to the mobile count, so
+  // a desktop-pointer emulation at phone width can never hit 900 shards.
   const field: LandingFieldSpec = useMemo(
     () =>
       buildLandingField({
         ...fieldInput,
-        fragmentCount: coarsePointer ? 320 : 900,
+        fragmentCount: fragmentBudget(viewportWidth, coarsePointer),
       }),
-    [fieldInput, coarsePointer],
+    [fieldInput, viewportWidth, coarsePointer],
   );
 
-  // Asset warm-up starts with the CTA; readiness gates the reveal's exit.
+  // Asset warm-up starts with the CTA. ASSETS_READY is dispatched ONLY when
+  // every required asset genuinely responded ok (review gate 3): a 404, a
+  // blocked network or an aborted load stays NOT-ready, and the transition
+  // relies on the FSM's bounded assetMaxWaitMs ceiling — the user always
+  // reaches /explore, whose own loading chip and WebGL/2D fallbacks take
+  // over. Never a fabricated ready, never a trap.
   const warmStarted = useRef(false);
   const startTransition = useCallback((): void => {
     dispatch({ type: 'START' });
     if (!warmStarted.current) {
       warmStarted.current = true;
-      void router.prefetch('/explore');
-      void Promise.all(
-        EXPLORE_ASSETS.map(async (url) => {
-          try {
-            await fetch(url, { priority: 'low' as RequestPriority });
-          } catch {
-            /* warm-up is best-effort; /explore loads honestly on its own */
-          }
-        }),
-      ).then(() => dispatch({ type: 'ASSETS_READY' }));
-      // The FSM's assetMaxWaitMs ceiling makes this a soft gate only.
-      window.setTimeout(() => dispatch({ type: 'ASSETS_READY' }), 3200);
+      void router.prefetch('/explore'); // best-effort, no readiness claim
+      const controller = new AbortController();
+      const abortTimer = window.setTimeout(() => controller.abort(), ASSET_WARM_TIMEOUT_MS);
+      void warmExploreAssets(EXPLORE_ASSETS, (url, init) =>
+        fetch(url, { ...init, signal: controller.signal }),
+      ).then((ready) => {
+        window.clearTimeout(abortTimer);
+        if (ready) dispatch({ type: 'ASSETS_READY' });
+      });
     }
   }, [dispatch, router]);
 
@@ -169,6 +191,7 @@ export function LandingExperience({ fixtureFacts, fieldInput }: LandingExperienc
           <OrbField
             phase={phase}
             phaseEnteredAtMs={reducer.state.phaseEnteredAtMs}
+            startCount={reducer.state.startCount}
             field={field}
             introMs={reducer.config.introMs}
             fragmentsMs={reducer.config.fragmentsMs}
@@ -198,17 +221,7 @@ export function LandingExperience({ fixtureFacts, fieldInput }: LandingExperienc
           run nobody filmed, and open the evidence behind every number.
         </p>
         <div className="landing__actions">
-          {phase === 'idle' ? (
-            <button
-              type="button"
-              className="btn btn--primary landing__cta"
-              onClick={startTransition}
-              data-testid="enter-the-moment"
-            >
-              Enter the moment
-              <span aria-hidden="true">→</span>
-            </button>
-          ) : (
+          {phase === 'fallback' ? (
             <Link
               href="/explore"
               className="btn btn--primary landing__cta"
@@ -217,6 +230,18 @@ export function LandingExperience({ fixtureFacts, fieldInput }: LandingExperienc
               Enter the moment
               <span aria-hidden="true">→</span>
             </Link>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--primary landing__cta"
+              onClick={phase === 'idle' ? startTransition : undefined}
+              aria-disabled={phase !== 'idle' ? 'true' : undefined}
+              data-busy={phase !== 'idle' ? 'true' : undefined}
+              data-testid="enter-the-moment"
+            >
+              {phase === 'idle' ? 'Enter the moment' : 'Entering…'}
+              <span aria-hidden="true">→</span>
+            </button>
           )}
           <Link href="/studio" className="btn btn--ghost">
             Open Studio

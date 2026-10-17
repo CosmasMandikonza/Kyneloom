@@ -24,6 +24,18 @@ const HALF_LENGTH = PITCH.lengthM / 2; // 52.5
 const HALF_WIDTH = PITCH.widthM / 2; // 34
 const CENTRE_CIRCLE_RADIUS_M = 9.15;
 
+/**
+ * Device-tuned fragment budget (review gate 4): narrow screens AND coarse
+ * pointers both drop to the mobile budget, so a desktop-pointer emulation
+ * at phone width (the QA case that produced 900 fragments at 375×812) can
+ * never reach the desktop particle count. Pure + unit-tested.
+ */
+export function fragmentBudget(viewportWidthPx: number, coarsePointer: boolean): number {
+  if (coarsePointer || viewportWidthPx < 480) return 320;
+  if (viewportWidthPx < 1024) return 600;
+  return 900;
+}
+
 /** mulberry32 — tiny deterministic PRNG (no dependency). */
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;

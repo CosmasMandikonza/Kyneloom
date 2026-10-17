@@ -36,6 +36,8 @@ import { ORB_FRAGMENT, ORB_VERTEX, OrbDriver, ORB_PALETTE } from './orb-shader';
 export interface OrbFieldProps {
   readonly phase: LandingPhase;
   readonly phaseEnteredAtMs: number;
+  /** FSM START count — exposed for QA's rapid-click lockout assertion. */
+  readonly startCount: number;
   readonly field: LandingFieldSpec;
   readonly introMs: number;
   readonly fragmentsMs: number;
@@ -529,12 +531,29 @@ function PhaseClock({
   return null;
 }
 
+const PHASE_STORAGE_KEY = 'kyneloom.landing.phases';
+
+function recordPhase(phase: string, startCount: number): void {
+  try {
+    const stored = window.sessionStorage.getItem(PHASE_STORAGE_KEY);
+    const parsed = stored === null ? null : (JSON.parse(stored) as { phases?: string[] });
+    const phases = parsed?.phases ?? [];
+    if (phases[phases.length - 1] === phase) return;
+    phases.push(phase);
+    window.sessionStorage.setItem(PHASE_STORAGE_KEY, JSON.stringify({ phases, startCount }));
+  } catch {
+    /* storage unavailable — the in-memory probe still reports */
+  }
+}
+
 function LandingProbe({
   phase,
+  startCount,
   field,
   onContextLost,
 }: {
   phase: LandingPhase;
+  startCount: number;
   field: LandingFieldSpec;
   onContextLost: () => void;
 }) {
@@ -542,6 +561,11 @@ function LandingProbe({
   const frames = useRef<number[]>([]);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
+  const startCountRef = useRef(startCount);
+  startCountRef.current = startCount;
+  // Fresh page load starts a fresh phase record; SPA back-navigation mounts
+  // a new probe and appends after a reset marker-free start.
+  const bootRef = useRef(true);
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -550,11 +574,32 @@ function LandingProbe({
       onContextLost();
     };
     canvas.addEventListener('webglcontextlost', onLost);
+    if (bootRef.current) {
+      bootRef.current = false;
+      try {
+        window.sessionStorage.removeItem(PHASE_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      recordPhase(phaseRef.current, startCountRef.current);
+    }
     const hook = window as unknown as Record<string, unknown>;
     hook['__kyneloomLanding'] = {
       state: (): string => phaseRef.current,
       fragmentCount: (): number => field.fragments.length,
       markerCount: (): number => field.checkpointMarkers.length,
+      startCount: (): number => startCountRef.current,
+      /** Every phase this page instance entered, in order (QA gate 1). */
+      phaseHistory: (): string[] => {
+        try {
+          const stored = window.sessionStorage.getItem(PHASE_STORAGE_KEY);
+          return stored === null
+            ? []
+            : ((JSON.parse(stored) as { phases?: string[] }).phases ?? []);
+        } catch {
+          return [];
+        }
+      },
     };
     return () => {
       canvas.removeEventListener('webglcontextlost', onLost);
@@ -562,6 +607,12 @@ function LandingProbe({
       delete hook['__kyneloomLandingPerf'];
     };
   }, [gl, field, onContextLost]);
+
+  // Record transitions on the React commit path (frame-cadence independent,
+  // so a phase entered immediately before navigation is still recorded).
+  useEffect(() => {
+    recordPhase(phase, startCount);
+  }, [phase, startCount]);
 
   useFrame((_, deltaSeconds) => {
     const framesBuffer = frames.current;
@@ -591,6 +642,7 @@ function LandingProbe({
 export function OrbField({
   phase,
   phaseEnteredAtMs,
+  startCount,
   field,
   introMs,
   fragmentsMs,
@@ -642,7 +694,12 @@ export function OrbField({
         revealMs={revealMs}
         onPhaseComplete={onPhaseComplete}
       />
-      <LandingProbe phase={phase} field={field} onContextLost={() => onFail('context-lost')} />
+      <LandingProbe
+        phase={phase}
+        startCount={startCount}
+        field={field}
+        onContextLost={() => onFail('context-lost')}
+      />
     </Canvas>
   );
 }
