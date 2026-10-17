@@ -140,6 +140,16 @@
   flex-direction: column;
   align-items: flex-end;
   gap: var(--space-2);
+  /* The floating control stack must not swallow clicks meant for the scene
+     beneath it: only its actual controls are hit targets — the transparent
+     space between rows/groups passes pointer events through to the pitch
+     (players, X-Ray geometry). */
+  pointer-events: none;
+}
+
+.stage__modes button,
+.stage__modes .stage__exit-directed {
+  pointer-events: auto;
 }
 
 .stage__mode-group {
@@ -384,6 +394,10 @@
   color: var(--mint-400, #51d7bd);
   font-size: 0.72rem;
   letter-spacing: 0.04em;
+  /* It is a button (click opens the evidence inspector) styled as the
+     passive-looking measurement line it replaced. */
+  font-family: inherit;
+  cursor: pointer;
 }
 
 @media (max-width: 48rem) {

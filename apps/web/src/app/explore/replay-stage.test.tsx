@@ -172,3 +172,88 @@ describe('ReplayStage truthfully enabled controls', () => {
     expect(document.querySelector('[data-scene-fallback="user-choice"]')).not.toBeNull();
   });
 });
+
+describe('Evidence X-Ray (KYN-08)', () => {
+  it('full button path: X-Ray → Show evidence → sources → frame navigation → back to replay', async () => {
+    await renderStage();
+    const xray = screen.getByRole('button', { name: 'X-Ray' });
+    fireEvent.click(xray);
+    expect(xray.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Show evidence' }));
+    const sentence = await screen.findByTestId('evidence-sentence');
+    expect(sentence.textContent).toContain('6.306');
+    expect(sentence.textContent).toContain('20.344');
+    expect(sentence.textContent).toContain('14.038');
+    expect(screen.getByTestId('evidence-delta').textContent).toContain('14.038');
+    expect(screen.getByTestId('evidence-interpretation').textContent).toContain('INTERPRETATION');
+    fireEvent.click(screen.getByRole('button', { name: 'Show source frames' }));
+    const frames = await screen.findByTestId('evidence-frames');
+    expect(frames.textContent).toContain('frame-47205');
+    expect(frames.textContent).toContain('frame-47240');
+    fireEvent.click(screen.getByRole('button', { name: 'Go to before frame' }));
+    await waitFor(() => expect(slider().value).toBe('4720500'));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to replay' }));
+    await waitFor(() => expect(slider().value).toBe('4722100'));
+  });
+
+  it('scene evidence is clickable: the 2D measurement line opens the inspector', async () => {
+    await renderStage();
+    fireEvent.click(screen.getByRole('button', { name: 'X-Ray' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Accessible' }));
+    const line = document.querySelector('[data-xray-2d="separation"]');
+    expect(line).not.toBeNull();
+    expect(line!.textContent).toContain('6.306 m → 20.344 m');
+    fireEvent.click(line as HTMLElement);
+    const sentence = await screen.findByTestId('evidence-sentence');
+    expect(sentence.textContent).toContain('14.038');
+  });
+
+  it('keyboard X/I/Escape drive the same path', async () => {
+    await renderStage();
+    const stage = screen.getByRole('region', { name: 'Living Replay stage' });
+    fireEvent.keyDown(stage, { key: 'x' });
+    expect(screen.getByRole('button', { name: 'X-Ray' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.keyDown(stage, { key: 'i' });
+    expect(await screen.findByTestId('evidence-sentence')).toBeTruthy();
+    fireEvent.keyDown(stage, { key: 'Escape' });
+    expect(screen.queryByTestId('evidence-sentence')).toBeNull();
+  });
+
+  it('withholds X-Ray entirely when verification fails (button disabled, no geometry)', async () => {
+    const golden = await loadGoldenMatch();
+    const scene = buildSceneData(golden);
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback): number => {
+      return setTimeout(() => cb(performance.now()), 16) as unknown as number;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (handle: number): void => {
+      clearTimeout(handle as unknown as ReturnType<typeof setTimeout>);
+    });
+    vi.stubGlobal('matchMedia', (query: string): MediaQueryList => {
+      return {
+        matches: false,
+        media: query,
+        addEventListener: (): void => undefined,
+        removeEventListener: (): void => undefined,
+        addListener: (): void => undefined,
+        removeListener: (): void => undefined,
+        dispatchEvent: (): boolean => false,
+        onchange: null,
+      } as unknown as MediaQueryList;
+    });
+    render(
+      <ReplayStage
+        scene={scene!}
+        evidence={{
+          status: 'unverified',
+          reason: 'verification failed — dependency fingerprint changed',
+          defenderId: 'away-03',
+          strikerId: 'home-09',
+          fromMs: 4_720_500,
+          toMs: 4_724_000,
+        }}
+      />,
+    );
+    const xray = screen.getByRole('button', { name: 'X-Ray' });
+    expect((xray as HTMLButtonElement).disabled).toBe(true);
+  });
+});

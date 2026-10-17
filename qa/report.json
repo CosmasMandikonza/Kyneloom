@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T07:31:56.147Z",
+  "generatedAt": "2026-10-17T13:11:58.172Z",
   "viewports": [
     "1440x900",
     "1280x800",
@@ -40,7 +40,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 2984,
+        "scene3dReadyMs": 3067,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -68,14 +68,16 @@
         "xrayOverlaysRendered": "yes (3 lines + label)",
         "xrayWorldInvariant": "identical",
         "xrayPhaseSwitch": "yes (2)",
+        "xraySceneClick": "yes (click @ 887,275, candidate 0/10)",
         "inspectorSentence": "exact values",
         "inspectorDelta": "exact",
         "inspectorInterpretation": "labeled hypothesis",
         "inspectorFrames": "exact frame ids",
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
+        "xrayResourcesBounded": "ok (Δgeo +0, Δtex +0 after 4 on/off rounds × 3 phases)",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":956.5,\"p95Ms\":1059.3,\"drawCalls\":151,\"triangles\":608152,\"geometries\":68,\"textures\":51,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":1002.5,\"p95Ms\":1080.4,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -130,7 +132,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 2976,
+        "scene3dReadyMs": 3055,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -165,7 +167,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 2816,
+        "scene3dReadyMs": 2875,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -193,6 +195,7 @@
         "xrayOverlaysRendered": "yes (3 lines + label)",
         "xrayWorldInvariant": "identical",
         "xrayPhaseSwitch": "yes (2)",
+        "xraySceneClick": "yes (click @ 789,245, candidate 0/10)",
         "inspectorSentence": "exact values",
         "inspectorDelta": "exact",
         "inspectorInterpretation": "labeled hypothesis",
@@ -200,7 +203,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":912.7,\"p95Ms\":995.3,\"drawCalls\":151,\"triangles\":608152,\"geometries\":68,\"textures\":51,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":959.1,\"p95Ms\":1020.8,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -255,7 +258,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 2718,
+        "scene3dReadyMs": 2709,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -283,6 +286,7 @@
         "xrayOverlaysRendered": "yes (3 lines + label)",
         "xrayWorldInvariant": "identical",
         "xrayPhaseSwitch": "yes (2)",
+        "xraySceneClick": "yes (click @ 655,235, candidate 0/10)",
         "inspectorSentence": "exact values",
         "inspectorDelta": "exact",
         "inspectorInterpretation": "labeled hypothesis",
@@ -290,7 +294,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":850,\"p95Ms\":961.1,\"drawCalls\":150,\"triangles\":608104,\"geometries\":68,\"textures\":51,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":917.3,\"p95Ms\":981.7,\"drawCalls\":150,\"triangles\":608104,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -345,7 +349,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 1367,
+        "scene3dReadyMs": 1384,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -373,6 +377,7 @@
         "xrayOverlaysRendered": "yes (3 lines + label)",
         "xrayWorldInvariant": "identical",
         "xrayPhaseSwitch": "yes (2)",
+        "xraySceneClick": "yes (tap @ 352,258, candidate 0/10)",
         "inspectorSentence": "exact values",
         "inspectorDelta": "exact",
         "inspectorInterpretation": "labeled hypothesis",
@@ -380,7 +385,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":3,\"p50Ms\":376.3,\"p95Ms\":510.1,\"drawCalls\":79,\"triangles\":303976,\"geometries\":56,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":2,\"p50Ms\":406.8,\"p95Ms\":528,\"drawCalls\":79,\"triangles\":303976,\"geometries\":37,\"textures\":47,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -435,7 +440,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 1378,
+        "scene3dReadyMs": 1384,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -470,7 +475,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 2149,
+        "scene3dReadyMs": 2113,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -498,6 +503,7 @@
         "xrayOverlaysRendered": "yes (3 lines + label)",
         "xrayWorldInvariant": "identical",
         "xrayPhaseSwitch": "yes (2)",
+        "xraySceneClick": "yes (click @ 338,248, candidate 0/10)",
         "inspectorSentence": "exact values",
         "inspectorDelta": "exact",
         "inspectorInterpretation": "labeled hypothesis",
@@ -505,7 +511,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":2,\"p50Ms\":615.4,\"p95Ms\":771,\"drawCalls\":131,\"triangles\":607576,\"geometries\":58,\"textures\":51,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":697.1,\"p95Ms\":774.2,\"drawCalls\":130,\"triangles\":607544,\"geometries\":39,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },

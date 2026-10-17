@@ -3,7 +3,8 @@
  *
  * Records a CONTINUOUS, real-time capture of the full signature interaction:
  * enter the moment → select the decoy winger → activate X-Ray (X) →
- * before/after separation geometry + measurement label → Show evidence →
+ * before/after separation geometry + measurement label → CLICK THE
+ * GEOMETRY to open the evidence inspector (scene→claim→source) →
  * source frame IDs → frame navigation → Back to replay → X-Ray off,
  * cinematic replay continues.
  *
@@ -175,37 +176,56 @@ async function main(): Promise<void> {
     // The judge's path, in order.
     await page.getByRole('button', { name: /Reset to checkpoint/ }).click();
     await cam('Overhead'); // tactical view first
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(700);
     await page.locator('.stage__play').click();
-    await page.waitForTimeout(1000); // the run develops
+    await page.waitForTimeout(900); // the run develops
 
     // Activate Evidence X-Ray (keyboard X, the power-user path).
     await page.locator('.stage__slider').focus();
     await page.keyboard.press('x');
-    await page.waitForTimeout(1100); // separation geometry + label visible
+    await page.waitForTimeout(1000); // separation geometry + label visible
 
     // Compare states: before → after → both.
     await page.getByRole('button', { name: 'Before', exact: true }).click({ force: true });
-    await page.waitForTimeout(800);
-    await page.getByRole('button', { name: 'After', exact: true }).click({ force: true });
-    await page.waitForTimeout(800);
-    await page.getByRole('button', { name: 'Both', exact: true }).click({ force: true });
-    await page.waitForTimeout(600);
-
-    // Open the source inspector; expand the exact frames.
-    await page.getByRole('button', { name: 'Show evidence' }).click({ force: true });
-    await page.waitForTimeout(800);
-    await page.getByRole('button', { name: 'Show source frames' }).click({ force: true });
-    await page.waitForTimeout(900);
-    await page.getByRole('button', { name: 'Go to before frame' }).click({ force: true });
     await page.waitForTimeout(700);
+    await page.getByRole('button', { name: 'After', exact: true }).click({ force: true });
+    await page.waitForTimeout(700);
+    await page.getByRole('button', { name: 'Both', exact: true }).click({ force: true });
+    await page.waitForTimeout(500);
+
+    // Open the inspector BY CLICKING THE MEASURED GEOMETRY ITSELF (the
+    // scene→claim→source path), not a button.
+    const target = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      const hits =
+        (
+          window as { __kyneloomXray?: { hitTargetsScreen(): { x: number; y: number }[] } }
+        ).__kyneloomXray?.hitTargetsScreen() ?? [];
+      if (canvas === null || hits.length === 0) return null;
+      const box = canvas.getBoundingClientRect();
+      for (const hit of hits) {
+        const px = box.left + hit.x;
+        const py = box.top + hit.y;
+        if (document.elementFromPoint(px, py) === canvas) return { px, py };
+      }
+      return null;
+    });
+    if (target === null) {
+      throw new Error('no reachable scene click target — geometry occluded or probe empty');
+    }
+    await page.mouse.click(target.px, target.py);
+    await page.waitForTimeout(700);
+    await page.getByRole('button', { name: 'Show source frames' }).click({ force: true });
+    await page.waitForTimeout(800);
+    await page.getByRole('button', { name: 'Go to before frame' }).click({ force: true });
+    await page.waitForTimeout(600);
 
     // Return to cinematic replay: back to the playhead, X-Ray off, play on.
     await page.getByRole('button', { name: 'Back to replay' }).click({ force: true });
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(350);
     await page.keyboard.press('x'); // X-Ray off
     await cam('Broadcast');
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(700);
 
     await cdp.send('Page.stopScreencast');
 

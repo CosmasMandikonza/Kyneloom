@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeSeparation,
+  createTimeline,
   SEPARATION_ALGORITHM_VERSION,
   verifySeparationEvidence,
 } from '@kyneloom/match-core';
@@ -9,17 +10,28 @@ import {
   buildEvidenceProjection,
   DECOY_RUNNER_ID,
   SEPARATION_INPUT,
+  SOURCE_QUALITY_POLICY,
   validateEvidenceProjection,
+  type EvidenceValidationContext,
 } from './evidence-data';
 
 /**
  * KYN-08 acceptance: the UI's evidence object IS the authoritative metric
  * object — computed by `separationFromTimeline`, re-verified with KYN-04
- * dependency semantics, projected verbatim, and validated fail-closed on
- * the client. No hardcoded numbers, no rounded narrative substitutes.
+ * dependency semantics, gated by the documented source-quality policy,
+ * projected verbatim, and validated fail-closed on the client against the
+ * scene's OWN timeline + accepted tracking. No hardcoded numbers, no
+ * rounded narrative substitutes, no plausible-but-falsified payloads.
  */
 
 const GOLDEN_VALUES = { before: 6.306, after: 20.344, delta: 14.038 } as const;
+
+async function goldenContext(): Promise<EvidenceValidationContext> {
+  const golden = await loadGoldenMatch();
+  if (!golden.ok) throw new Error('golden fixture unavailable');
+  const tracking = golden.data.projected.acceptedTracking;
+  return { matchId: 'synthetic-derby-01', timeline: createTimeline(tracking), tracking };
+}
 
 describe('buildEvidenceProjection (golden fixture)', () => {
   it('derives the measurement from the authoritative metric — equality, not proximity', async () => {
@@ -93,13 +105,135 @@ describe('buildEvidenceProjection (golden fixture)', () => {
     const revived = JSON.parse(JSON.stringify(projection));
     expect(revived).toEqual(projection);
   });
+
+  it('the golden endpoints satisfy the documented source-quality policy', async () => {
+    const golden = await loadGoldenMatch();
+    if (!golden.ok) return;
+    for (const sample of golden.data.projected.acceptedTracking) {
+      if (
+        (sample.entityId === SEPARATION_INPUT.defenderId ||
+          sample.entityId === SEPARATION_INPUT.strikerId) &&
+        (sample.sampleTimeMs === SEPARATION_INPUT.fromMs ||
+          sample.sampleTimeMs === SEPARATION_INPUT.toMs)
+      ) {
+        expect(sample.confidence).toBeGreaterThanOrEqual(
+          SOURCE_QUALITY_POLICY.minEndpointConfidence,
+        );
+        expect(sample.visibility).toBe('tracked');
+        expect(sample.origin).toBe('synthetic_ground_truth');
+      }
+    }
+  });
+});
+
+describe('source-quality gate (raw endpoint records decide)', () => {
+  const withEndpointMutation = async (
+    mutate: (sample: Record<string, unknown>, entityId: string, tMs: number) => boolean,
+  ) => {
+    const golden = await loadGoldenMatch();
+    if (!golden.ok) throw new Error('golden unavailable');
+    const clone = JSON.parse(JSON.stringify(golden)) as typeof golden;
+    if (!clone.ok) throw new Error('clone failed');
+    for (const sample of clone.data.projected.acceptedTracking as unknown as Record<
+      string,
+      unknown
+    >[]) {
+      if (
+        (sample.entityId === SEPARATION_INPUT.defenderId ||
+          sample.entityId === SEPARATION_INPUT.strikerId) &&
+        (sample.sampleTimeMs === SEPARATION_INPUT.fromMs ||
+          sample.sampleTimeMs === SEPARATION_INPUT.toMs)
+      ) {
+        mutate(sample, sample.entityId as string, sample.sampleTimeMs as number);
+      }
+    }
+    return buildEvidenceProjection(clone);
+  };
+
+  it('withholds when an endpoint confidence is below the threshold', async () => {
+    const projection = await withEndpointMutation((sample, id) => {
+      if (id === SEPARATION_INPUT.defenderId) sample.confidence = 0.42;
+      return true;
+    });
+    expect(projection.status).toBe('unverified');
+    if (projection.status !== 'unverified') return;
+    expect(projection.reason).toContain('confidence');
+    expect(projection.reason).toContain('0.42');
+    expect(projection.reason).toContain('below the supported threshold');
+  });
+
+  it('withholds when an endpoint visibility is partial (reconstructed)', async () => {
+    const projection = await withEndpointMutation((sample, id) => {
+      if (id === SEPARATION_INPUT.strikerId) sample.visibility = 'partial';
+      return true;
+    });
+    expect(projection.status).toBe('unverified');
+    if (projection.status !== 'unverified') return;
+    expect(projection.reason).toContain('visibility');
+    expect(projection.reason).toContain('home-09');
+  });
+
+  it('withholds observed/mixed provenance instead of mislabeling it synthetic ground truth', async () => {
+    const projection = await withEndpointMutation((sample, id) => {
+      if (id === SEPARATION_INPUT.defenderId) sample.origin = 'source_observed';
+      return true;
+    });
+    expect(projection.status).toBe('unverified');
+    if (projection.status !== 'unverified') return;
+    expect(projection.reason).toContain('source_observed');
+    expect(projection.reason).toContain('withheld rather than relabeled');
+  });
+
+  it('withholds ambiguous endpoint identity (duplicate accepted samples)', async () => {
+    const golden = await loadGoldenMatch();
+    if (!golden.ok) return;
+    const clone = JSON.parse(JSON.stringify(golden)) as typeof golden;
+    if (!clone.ok) return;
+    const tracking = clone.data.projected.acceptedTracking as unknown as Array<
+      Record<string, unknown>
+    >;
+    const original = tracking.find(
+      (s) =>
+        s.entityId === SEPARATION_INPUT.defenderId && s.sampleTimeMs === SEPARATION_INPUT.fromMs,
+    )!;
+    tracking.push({ ...original, xM: (original.xM as number) + 3 });
+    const projection = buildEvidenceProjection(clone);
+    expect(projection.status).toBe('unverified');
+    if (projection.status !== 'unverified') return;
+    expect(projection.reason).toContain('ambiguous');
+  });
+
+  it('keeps the untouched golden measurement verified (6.306 → 20.344, +14.038)', async () => {
+    const golden = await loadGoldenMatch();
+    const projection = buildEvidenceProjection(golden);
+    if (projection.status !== 'verified') throw new Error('golden must stay verified');
+    expect(projection.evidence.separationBeforeM).toBe(GOLDEN_VALUES.before);
+    expect(projection.evidence.separationAfterM).toBe(GOLDEN_VALUES.after);
+    expect(projection.evidence.deltaM).toBe(GOLDEN_VALUES.delta);
+  });
 });
 
 describe('validateEvidenceProjection (fail-closed client gate)', () => {
   it('accepts the genuine projection round-tripped through JSON', async () => {
+    const ctx = await goldenContext();
     const golden = await loadGoldenMatch();
     const projection = JSON.parse(JSON.stringify(buildEvidenceProjection(golden))) as unknown;
-    expect(validateEvidenceProjection(projection)?.status).toBe('verified');
+    const validated = validateEvidenceProjection(projection, ctx);
+    expect(validated?.status).toBe('verified');
+    if (validated?.status !== 'verified') return;
+    expect(validated.evidence.separationBeforeM).toBe(GOLDEN_VALUES.before);
+    expect(validated.evidence.deltaM).toBe(GOLDEN_VALUES.delta);
+  });
+
+  it('rejects a projection for a different match than the scene', async () => {
+    const ctx = await goldenContext();
+    const golden = await loadGoldenMatch();
+    const raw = JSON.parse(JSON.stringify(buildEvidenceProjection(golden))) as Record<
+      string,
+      unknown
+    >;
+    (raw.evidence as Record<string, unknown>).matchId = 'another-match-99';
+    expect(validateEvidenceProjection(raw, ctx)).toBeNull();
   });
 
   const corruptions: readonly [name: string, mutate: (p: Record<string, unknown>) => void][] = [
@@ -138,22 +272,313 @@ describe('validateEvidenceProjection (fail-closed client gate)', () => {
 
   for (const [name, mutate] of corruptions) {
     it(`rejects: ${name}`, async () => {
+      const ctx = await goldenContext();
       const golden = await loadGoldenMatch();
       const raw = JSON.parse(JSON.stringify(buildEvidenceProjection(golden))) as Record<
         string,
         unknown
       >;
       mutate(raw);
-      expect(validateEvidenceProjection(raw)).toBeNull();
+      expect(validateEvidenceProjection(raw, ctx)).toBeNull();
     });
   }
 
-  it('rejects non-object payloads outright', () => {
-    expect(validateEvidenceProjection(null)).toBeNull();
-    expect(validateEvidenceProjection('verified')).toBeNull();
-    expect(validateEvidenceProjection(42)).toBeNull();
+  it('rejects non-object payloads outright without throwing', async () => {
+    const ctx = await goldenContext();
+    for (const bad of [null, undefined, 'verified', 42, true, [], () => {}]) {
+      expect(validateEvidenceProjection(bad, ctx)).toBeNull();
+    }
+  });
+
+  const malformations: readonly [name: string, mutate: (p: Record<string, unknown>) => void][] = [
+    ['evidence is null', (p) => void (p.evidence = null)],
+    ['evidence is a string', (p) => void (p.evidence = 'verified')],
+    ['evidence is missing', (p) => void delete p.evidence],
+    [
+      'beforeSourceFrameIds is an object',
+      (p) =>
+        void ((p.evidence as Record<string, unknown>).beforeSourceFrameIds = { 0: 'frame-47205' }),
+    ],
+    [
+      'beforeSourceFrameIds is a string',
+      (p) => void ((p.evidence as Record<string, unknown>).beforeSourceFrameIds = 'frame-47205'),
+    ],
+    ['dependsOn is null', (p) => void ((p.evidence as Record<string, unknown>).dependsOn = null)],
+    [
+      'dependsOn.sourceFrameIds too short',
+      (p) =>
+        void ((
+          (p.evidence as Record<string, unknown>).dependsOn as Record<string, unknown>
+        ).sourceFrameIds = ['frame-47205']),
+    ],
+    ['endpoints contains null', (p) => void ((p.endpoints as unknown[])[1] = null)],
+    ['endpoints is an object not an array', (p) => void (p.endpoints = { length: 4 })],
+    ['runnerTrail contains null', (p) => void ((p.runnerTrail as unknown[])[0] = null)],
+    ['interpretation is null', (p) => void (p.interpretation = null)],
+    ['interpretation is a string', (p) => void (p.interpretation = 'hypothesis')],
+    [
+      'deltaM is a numeric string',
+      (p) => void ((p.evidence as Record<string, unknown>).deltaM = '14.038'),
+    ],
+    [
+      'fromMs is +Infinity',
+      (p) => void ((p.evidence as Record<string, unknown>).fromMs = Number.POSITIVE_INFINITY),
+    ],
+    [
+      'fromMs is a non-integer float',
+      (p) => void ((p.evidence as Record<string, unknown>).fromMs = 4720500.5),
+    ],
+    [
+      'window inverted (toMs <= fromMs)',
+      (p) => void ((p.evidence as Record<string, unknown>).toMs = 4720500),
+    ],
+    [
+      'sourceFrameId not a frame pattern',
+      (p) => void ((p.endpoints as Record<string, unknown>[])[0]!.sourceFrameId = 'frame-abc'),
+    ],
+    [
+      'reason missing on an unverified projection',
+      (p) => void ((p as Record<string, unknown>).status = 'unverified'),
+    ],
+  ];
+
+  for (const [name, mutate] of malformations) {
+    it(`never throws and rejects: ${name}`, async () => {
+      const ctx = await goldenContext();
+      const golden = await loadGoldenMatch();
+      const raw = JSON.parse(JSON.stringify(buildEvidenceProjection(golden))) as Record<
+        string,
+        unknown
+      >;
+      mutate(raw);
+      let result: unknown = 'unset';
+      expect(() => {
+        result = validateEvidenceProjection(raw, ctx);
+      }).not.toThrow();
+      expect(result).toBeNull();
+    });
+  }
+
+  it('rejects random unknown garbage without throwing', async () => {
+    const ctx = await goldenContext();
+    const garbage: unknown[] = [
+      { status: 'verified', evidence: { beforeSourceFrameIds: [] } },
+      { status: 'verified' },
+      { status: 1 },
+      { status: null },
+      { status: 'verified', evidence: [], endpoints: 'x' },
+      { status: 'verified', evidence: { deltaM: 14.038 }, endpoints: [1, 2, 3, 4] },
+      Object.create(null),
+      new Date(0),
+    ];
+    for (const payload of garbage) {
+      expect(() => validateEvidenceProjection(payload, ctx)).not.toThrow();
+      expect(validateEvidenceProjection(payload, ctx)).toBeNull();
+    }
+  });
+
+  describe('plausible but falsified source references (arithmetic-consistent forgeries)', () => {
+    it('rejects endpoint identities swapped between defender and striker', async () => {
+      const ctx = await goldenContext();
+      const golden = await loadGoldenMatch();
+      const raw = JSON.parse(JSON.stringify(buildEvidenceProjection(golden))) as Record<
+        string,
+        unknown
+      >;
+      const eps = raw.endpoints as Record<string, unknown>[];
+      const first = eps[0]!.entityId;
+      eps[0]!.entityId = eps[1]!.entityId;
+      eps[1]!.entityId = first; // distances between the same points: unchanged
+      expect(validateEvidenceProjection(raw, ctx)).toBeNull();
+    });
+
+    it('rejects a forged endpoint frame id that exists elsewhere in the fixture', async () => {
+      const ctx = await goldenContext();
+      const golden = await loadGoldenMatch();
+      const raw = JSON.parse(JSON.stringify(buildEvidenceProjection(golden))) as Record<
+        string,
+        unknown
+      >;
+      // frame-47206 is a real frame — but not this endpoint's source.
+      (raw.endpoints as Record<string, unknown>[])[0]!.sourceFrameId = 'frame-47206';
+      expect(validateEvidenceProjection(raw, ctx)).toBeNull();
+    });
+
+    it('rejects an arbitrary fingerprint string on an otherwise genuine payload', async () => {
+      const ctx = await goldenContext();
+      const golden = await loadGoldenMatch();
+      const raw = JSON.parse(JSON.stringify(buildEvidenceProjection(golden))) as Record<
+        string,
+        unknown
+      >;
+      (raw.evidence as Record<string, unknown>).inputFingerprint = 'deadbeef';
+      expect(validateEvidenceProjection(raw, ctx)).toBeNull();
+    });
+
+    it('rejects a fully self-consistent measurement for a DIFFERENT (shifted) window', async () => {
+      const ctx = await goldenContext();
+      const golden = await loadGoldenMatch();
+      if (!golden.ok) return;
+      // Build a genuine metric object for a different exact-frame window —
+      // internally perfect, arithmetically consistent, but not the moment
+      // this product claims to measure.
+      const shifted = computeSeparation(golden.data.projected.acceptedTracking, {
+        ...SEPARATION_INPUT,
+        fromMs: SEPARATION_INPUT.fromMs + 100,
+        toMs: SEPARATION_INPUT.toMs + 100,
+      });
+      if (!shifted.ok) return;
+      const raw = JSON.parse(JSON.stringify(shifted.evidence)) as Record<string, unknown>;
+      const payload = {
+        status: 'verified',
+        evidence: raw,
+        endpoints: [
+          {
+            entityId: shifted.evidence.defenderId,
+            xM: 0,
+            yM: 0,
+            sourceFrameId: 'frame-47206',
+            exact: true,
+          },
+          {
+            entityId: shifted.evidence.strikerId,
+            xM: shifted.evidence.separationBeforeM,
+            yM: 0,
+            sourceFrameId: 'frame-47206',
+            exact: true,
+          },
+          {
+            entityId: shifted.evidence.defenderId,
+            xM: 0,
+            yM: 0,
+            sourceFrameId: 'frame-47241',
+            exact: true,
+          },
+          {
+            entityId: shifted.evidence.strikerId,
+            xM: shifted.evidence.separationAfterM,
+            yM: 0,
+            sourceFrameId: 'frame-47241',
+            exact: true,
+          },
+        ],
+        runnerTrail: [
+          { tMs: SEPARATION_INPUT.fromMs, xM: 0, yM: 0 },
+          { tMs: SEPARATION_INPUT.fromMs + 100, xM: 1, yM: 0 },
+        ],
+        interpretation: {
+          text: 'plausible story',
+          classification: 'hypothesis',
+          boundary: shifted.evidence.hypothesisBoundary,
+        },
+      };
+      expect(validateEvidenceProjection(payload, ctx)).toBeNull();
+    });
+
+    it('rejects endpoints moved to reproduce shifted but delta-consistent distances', async () => {
+      const ctx = await goldenContext();
+      const golden = await loadGoldenMatch();
+      const raw = JSON.parse(JSON.stringify(buildEvidenceProjection(golden))) as Record<
+        string,
+        unknown
+      >;
+      const e = raw.evidence as Record<string, unknown>;
+      const eps = raw.endpoints as Record<string, unknown>[];
+      // Stretch both distances by exactly 1 m — delta unchanged (14.038),
+      // all arithmetic still consistent, but coordinates no longer match the
+      // authoritative timeline samples.
+      const before = shiftedPair(
+        eps[0] as { xM: number; yM: number },
+        eps[1] as { xM: number; yM: number },
+        1,
+      );
+      const after = shiftedPair(
+        eps[2] as { xM: number; yM: number },
+        eps[3] as { xM: number; yM: number },
+        1,
+      );
+      eps[0]!.xM = before.a.xM;
+      eps[0]!.yM = before.a.yM;
+      eps[1]!.xM = before.b.xM;
+      eps[1]!.yM = before.b.yM;
+      eps[2]!.xM = after.a.xM;
+      eps[2]!.yM = after.a.yM;
+      eps[3]!.xM = after.b.xM;
+      eps[3]!.yM = after.b.yM;
+      e.separationBeforeM = before.distance;
+      e.separationAfterM = after.distance;
+      expect(validateEvidenceProjection(raw, ctx)).toBeNull();
+    });
+
+    it('rejects a tampered hypothesis boundary (verified-cause language)', async () => {
+      const ctx = await goldenContext();
+      const golden = await loadGoldenMatch();
+      const raw = JSON.parse(JSON.stringify(buildEvidenceProjection(golden))) as Record<
+        string,
+        unknown
+      >;
+      (raw.interpretation as Record<string, unknown>).boundary =
+        'The winger definitely caused the space — verified causation.';
+      expect(validateEvidenceProjection(raw, ctx)).toBeNull();
+    });
+
+    it('rejects the genuine projection against a MISMATCHED scene context', async () => {
+      const golden = await loadGoldenMatch();
+      if (!golden.ok) return;
+      const projection = JSON.parse(JSON.stringify(buildEvidenceProjection(golden)));
+      // A tracking correction on a dependency frame: the scene no longer
+      // supports this evidence, so the client gate must reject it.
+      const corrected = golden.data.projected.acceptedTracking.map((sample) =>
+        sample.entityId === SEPARATION_INPUT.defenderId &&
+        sample.sampleTimeMs === SEPARATION_INPUT.toMs
+          ? { ...sample, xM: sample.xM + 0.5 }
+          : sample,
+      );
+      const mismatchedCtx: EvidenceValidationContext = {
+        matchId: 'synthetic-derby-01',
+        timeline: createTimeline(corrected),
+        tracking: corrected,
+      };
+      expect(validateEvidenceProjection(projection, mismatchedCtx)).toBeNull();
+    });
+
+    it('accepts the genuine projection against its own scene context (KYN-04 verify passes)', async () => {
+      const ctx = await goldenContext();
+      const golden = await loadGoldenMatch();
+      if (!golden.ok) return;
+      const evidence = buildEvidenceProjection(golden);
+      if (evidence.status !== 'verified') return;
+      expect(verifySeparationEvidence(evidence.evidence, ctx.tracking)).toBe(true);
+    });
   });
 });
+
+function shiftedPair(
+  a: { xM: number; yM: number },
+  b: { xM: number; yM: number },
+  growM: number,
+): { a: { xM: number; yM: number }; b: { xM: number; yM: number }; distance: number } {
+  const dx = b.xM - a.xM;
+  const dy = b.yM - a.yM;
+  const len = Math.hypot(dx, dy);
+  const target = Math.round((len + growM) * 1000) / 1000;
+  const scale = target / len;
+  const nb = {
+    xM: Math.round((a.xM + dx * scale) * 1000) / 1000,
+    yM: Math.round((a.yM + dy * scale) * 1000) / 1000,
+  };
+  const distance = Math.round(Math.hypot(nb.xM - a.xM, nb.yM - a.yM) * 1000) / 1000;
+  // Keep the pair distance exactly the rounded target for the arithmetic layer.
+  const adjusted = {
+    xM: a.xM + (nb.xM - a.xM) * (target / distance),
+    yM: a.yM + (nb.yM - a.yM) * (target / distance),
+  };
+  return {
+    a,
+    b: { xM: Math.round(adjusted.xM * 1000) / 1000, yM: Math.round(adjusted.yM * 1000) / 1000 },
+    distance: target,
+  };
+}
 
 describe('unverified projections (adversarial evidence states)', () => {
   it('withholds the measurement when an endpoint entity has no exact frame', async () => {

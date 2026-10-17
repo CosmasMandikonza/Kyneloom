@@ -84,6 +84,7 @@ declare global {
       phase(): 'before' | 'after' | 'both' | null;
       visibleLineCount(): number;
       labelVisible(): boolean;
+      hitTargetsScreen(): { x: number; y: number }[];
     };
     __kyneloomPerf?: {
       fps: number;
@@ -773,6 +774,75 @@ async function main(): Promise<void> {
                   failures.push(`explore @ ${viewport.name}: X-Ray phase switch drew nothing`);
                 }
 
+                // SCENE→INSPECTOR (review gate 3): click the REAL measured
+                // geometry with actual pointer events. The probe projects
+                // several candidate points along the visible line; the first
+                // whose screen point is actually the canvas (floating UI
+                // can legitimately cover part of the geometry on narrow
+                // viewports) is clicked/tapped.
+                await page.getByRole('radio', { name: 'Overhead' }).click({ force: true });
+                await page.waitForTimeout(700);
+                await page.getByRole('button', { name: 'Both', exact: true }).click({
+                  force: true,
+                });
+                await page.waitForTimeout(450);
+                const target = await page.evaluate(() => {
+                  const canvas = document.querySelector('canvas');
+                  const hits = window.__kyneloomXray?.hitTargetsScreen() ?? [];
+                  if (canvas === null || hits.length === 0) return null;
+                  const box = canvas.getBoundingClientRect();
+                  for (let i = 0; i < hits.length; i += 1) {
+                    const px = box.left + hits[i]!.x;
+                    const py = box.top + hits[i]!.y;
+                    if (document.elementFromPoint(px, py) === canvas) {
+                      return { px, py, candidate: i, count: hits.length };
+                    }
+                  }
+                  return { px: -1, py: -1, candidate: -1, count: hits.length };
+                });
+                if (target === null) {
+                  failures.push(`explore @ ${viewport.name}: no scene click target (canvas/hits)`);
+                } else if (target.candidate < 0) {
+                  failures.push(
+                    `explore @ ${viewport.name}: every geometry click target is occluded by floating UI`,
+                  );
+                } else {
+                  const px = target.px;
+                  const py = target.py;
+                  let via = 'click';
+                  if (viewport.name === '390x844') {
+                    try {
+                      await page.touchscreen.tap(px, py);
+                      via = 'tap';
+                    } catch {
+                      await page.mouse.click(px, py); // context lacks hasTouch
+                    }
+                  } else {
+                    await page.mouse.click(px, py);
+                  }
+                  await page.waitForTimeout(400);
+                  const sceneClicked = (await page.getByTestId('evidence-sentence').count()) === 1;
+                  checks.xraySceneClick = sceneClicked
+                    ? `yes (${via} @ ${Math.round(px)},${Math.round(py)}, candidate ${String(target.candidate)}/${String(target.count - 1)})`
+                    : 'NO';
+                  if (!sceneClicked) {
+                    failures.push(
+                      `explore @ ${viewport.name}: clicking the separation geometry did not open the inspector`,
+                    );
+                  }
+                  if (viewport.name === '1440x900' || viewport.name === '390x844') {
+                    await page.screenshot({
+                      path: path.join(
+                        OUT_DIR,
+                        'screenshots',
+                        `explore-xray-click-${viewport.name}.png`,
+                      ),
+                    });
+                  }
+                  await page.keyboard.press('Escape');
+                  await page.waitForTimeout(250);
+                }
+
                 // Inspector: computed values verbatim + provenance + frames.
                 await page.getByRole('button', { name: 'Show evidence' }).click();
                 await page.waitForTimeout(300);
@@ -844,6 +914,43 @@ async function main(): Promise<void> {
                   path: path.join(OUT_DIR, 'screenshots', `explore-xray-${viewport.name}.png`),
                 });
                 await page.getByRole('button', { name: 'X-Ray' }).click(); // off
+
+                // BOUNDED RESOURCES (review gate 4): repeated toggling and
+                // phase switching must not leak WebGL geometries/textures.
+                if (viewport.name === '1440x900') {
+                  const read = () =>
+                    page.evaluate(() => ({
+                      geometries: window.__kyneloomPerf?.geometries ?? -1,
+                      textures: window.__kyneloomPerf?.textures ?? -1,
+                    }));
+                  await page.waitForTimeout(800);
+                  const before = await read();
+                  for (let round = 0; round < 4; round += 1) {
+                    await page.getByRole('button', { name: 'X-Ray' }).click();
+                    await page.waitForTimeout(350);
+                    for (const phase of ['After', 'Before', 'Both'] as const) {
+                      await page.getByRole('button', { name: phase, exact: true }).click({
+                        force: true,
+                      });
+                      await page.waitForTimeout(250);
+                    }
+                    await page.getByRole('button', { name: 'X-Ray' }).click();
+                    await page.waitForTimeout(350);
+                  }
+                  await page.waitForTimeout(1200);
+                  const after = await read();
+                  const dGeo = after.geometries - before.geometries;
+                  const dTex = after.textures - before.textures;
+                  checks.xrayResourcesBounded =
+                    dGeo <= 2 && dTex <= 2
+                      ? `ok (Δgeo +${String(dGeo)}, Δtex +${String(dTex)} after 4 on/off rounds × 3 phases)`
+                      : `LEAK (Δgeo +${String(dGeo)}, Δtex +${String(dTex)})`;
+                  if (!checks.xrayResourcesBounded.startsWith('ok')) {
+                    failures.push(
+                      `explore @ ${viewport.name}: X-Ray toggling leaked WebGL resources ${JSON.stringify({ before, after })}`,
+                    );
+                  }
+                }
               }
 
               // FOV stays inside the contract range across every mode.
