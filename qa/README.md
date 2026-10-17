@@ -39,6 +39,32 @@ Live in-browser screencast paths on this host write blank constant-luminance
 WebM files (verified), so the screen-level capture is the honest route to a
 smooth real-time recording. Requires an interactive Windows desktop.
 
+### Evidence X-Ray checks (KYN-08)
+
+The `/explore` pass also drives the full click-to-claim-to-evidence path:
+X-Ray toggle → real rendered overlays (live probe), world invariance across
+camera switches + scrubbing during X-Ray, before/after phase redraw, the
+inspector sentence with the computed values verbatim, provenance +
+interpretation labels, source frame IDs, frame navigation seeking, keyboard
+`X`/`I`/Escape — plus `explore-xray-*.png` captures per viewport.
+
+## `qa:record:xray` (scripts/record-xray-live.ts)
+
+KYN-08's interaction evidence: a continuous, real-time capture of the full
+Evidence X-Ray path — overhead → play → `X` activates the overlays → before/
+after/both phases → Show evidence → source frame IDs → Go to before frame →
+Back to replay → X-Ray off → broadcast — `qa/video/xray-screencast.mp4`
+(+ `.webm` twin). Captured from the **browser compositor's own frame stream**
+(CDP `Page.startScreencast`): every frame is the exact composited page,
+WebGL canvas included. On this host screen-level capture is unavailable (the
+operator's desktop covers every screen region, and gdigrab's PrintWindow
+window capture returns black for Chrome's GPU surfaces), and occlusion
+throttling is disabled (`--disable-backgrounding-occluded-windows` +
+`--disable-features=CalculateNativeWinOcclusion`) so compositing continues
+at full rate while covered. This run: 14.3 s, 302 frames at a measured
+21.2 fps, adjacent-frame motion Δ9.9 Y-units (ffmpeg-verified), inside the
+8–15 s envelope.
+
 ## `qa:record:camera` (scripts/record-camera-live.ts)
 
 KYN-07's rig evidence: a continuous 30 fps gdigrab screencast of the camera

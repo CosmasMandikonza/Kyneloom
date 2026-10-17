@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadGoldenMatch } from '@/lib/match-fixture';
+import { buildEvidenceProjection } from '@/lib/evidence-data';
 import { buildSceneData } from '@/lib/scene-data';
 import { ReplayStage } from './replay-stage';
 
@@ -24,6 +25,7 @@ afterEach(() => {
 async function renderStage(): Promise<HTMLElement> {
   const golden = await loadGoldenMatch();
   const scene = buildSceneData(golden);
+  const evidence = buildEvidenceProjection(golden);
   expect(scene).not.toBeNull();
   // requestAnimationFrame does not exist in this jsdom setup the way the
   // transport loop expects; polyfill deterministically.
@@ -45,7 +47,7 @@ async function renderStage(): Promise<HTMLElement> {
       onchange: null,
     } as unknown as MediaQueryList;
   });
-  render(<ReplayStage scene={scene!} />);
+  render(<ReplayStage scene={scene!} evidence={evidence!} />);
   return screen.getByRole('region', { name: 'Living Replay stage' });
 }
 

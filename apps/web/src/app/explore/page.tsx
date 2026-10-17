@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { loadGoldenMatch } from '@/lib/match-fixture';
+import { buildEvidenceProjection } from '@/lib/evidence-data';
 import { buildSceneData } from '@/lib/scene-data';
 import { ReplayStage } from './replay-stage';
 import './explore.css';
@@ -21,11 +22,12 @@ export const metadata: Metadata = {
 export default async function ExplorePage() {
   const golden = await loadGoldenMatch();
   const scene = buildSceneData(golden);
+  const evidence = buildEvidenceProjection(golden);
 
   return (
     <main id="main-content" className="explore">
       {scene !== null ? (
-        <ReplayStage scene={scene} />
+        <ReplayStage scene={scene} evidence={evidence} />
       ) : (
         <section className="explore__meta panel" role="note">
           <p className="chip chip--not-implemented">Fixture unavailable</p>

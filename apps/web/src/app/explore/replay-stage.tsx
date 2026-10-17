@@ -19,6 +19,9 @@ import {
   type ReplayEngine,
 } from './scene/scene-context';
 import { LivingReplayCanvas, type SceneQuality } from './scene/living-replay';
+import { XrayOverlay, type XrayPhase } from './scene/xray-overlay';
+import { EvidenceInspector } from './evidence-inspector';
+import { validateEvidenceProjection, type EvidenceProjection } from '@/lib/evidence-data';
 import { Fallback2D } from './scene/fallback-2d';
 
 /**
@@ -64,6 +67,7 @@ type LensId = 'fan' | 'analyst' | 'accessible';
 
 export interface ReplayStageProps {
   readonly scene: SceneData;
+  readonly evidence: EvidenceProjection;
 }
 
 /**
@@ -71,7 +75,7 @@ export interface ReplayStageProps {
  * stage truthfully (explicit notice, no transport) rather than playing a
  * plausible-but-false replay built from invented defaults.
  */
-export function ReplayStage({ scene }: ReplayStageProps) {
+export function ReplayStage({ scene, evidence }: ReplayStageProps) {
   let timeline: ReturnType<typeof sceneTimeline> | null = null;
   let invalidReason: string | null = null;
   try {
@@ -91,11 +95,12 @@ export function ReplayStage({ scene }: ReplayStageProps) {
       </section>
     );
   }
-  return <ReplayStageInner scene={scene} timeline={timeline} />;
+  return <ReplayStageInner scene={scene} evidence={evidence} timeline={timeline} />;
 }
 
 function ReplayStageInner({
   scene,
+  evidence,
   timeline,
 }: ReplayStageProps & { timeline: ReturnType<typeof sceneTimeline> }) {
   const modeGroupId = useId();
@@ -129,6 +134,15 @@ function ReplayStageInner({
   const [view, setView] = useState<'3d' | '2d'>('3d');
   const [selected, setSelected] = useState<string | null>(null);
   const [quality, setQuality] = useState<SceneQuality>('high');
+  // Evidence X-Ray: validated projection only — a corrupt payload disables
+  // the lens truthfully rather than drawing fabricated evidence.
+  const evidenceSafe = useMemo(() => validateEvidenceProjection(evidence), [evidence]);
+  const [xrayActive, setXrayActive] = useState(false);
+  const [xrayPhase, setXrayPhase] = useState<XrayPhase>('both');
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [inspectorReturnMs, setInspectorReturnMs] = useState(scene.initialFocusMs);
+  const xrayAvailable = evidenceSafe?.status === 'verified';
 
   const clockRef = useRef<HTMLSpanElement>(null);
   const sliderRef = useRef<HTMLInputElement>(null);
@@ -221,7 +235,8 @@ function ReplayStageInner({
   }, [engine, scene.events, momentWindow]);
 
   // Keyboard transport on the stage: arrows step frames, space toggles
-  // play, digits 1–6 select cameras, Escape exits directed/orbit mode.
+  // play, digits 1–6 select cameras, X toggles Evidence X-Ray, I opens the
+  // inspector, Escape exits directed/orbit mode and closes the inspector.
   const onStageKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
     const target = event.target as HTMLElement;
     // Escape is a GLOBAL exit: leaving the directed sequence (or free orbit)
@@ -231,7 +246,18 @@ function ReplayStageInner({
         event.preventDefault();
         setCamera('broadcast');
       }
+      if (inspectorOpen) setInspectorOpen(false);
       return;
+    }
+    if (event.key.toLowerCase() === 'x' && xrayAvailable) {
+      event.preventDefault();
+      setXrayActive((current) => !current);
+    } else if (event.key.toLowerCase() === 'i' && xrayActive) {
+      event.preventDefault();
+      setInspectorOpen((current) => {
+        if (!current) setInspectorReturnMs(engineRef.current.playheadMs);
+        return !current;
+      });
     }
     if (target.closest('button, input, a, select')) return;
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
@@ -291,7 +317,12 @@ function ReplayStageInner({
         {/* The canvas region. data-scene-mount marks where the R3F Canvas goes. */}
         <div className="stage__canvas scene-stage" data-scene-mount="">
           {view === '3d' ? (
-            <LivingReplayCanvas runtime={runtime} cameraMode={camera} quality={quality} />
+            <LivingReplayCanvas runtime={runtime} cameraMode={camera} quality={quality}>
+              <XrayOverlay
+                evidence={evidenceSafe ?? evidence}
+                state={{ active: xrayActive, phase: xrayPhase }}
+              />
+            </LivingReplayCanvas>
           ) : (
             <Fallback2D runtime={runtime} reason="user-choice" />
           )}
@@ -341,6 +372,64 @@ function ReplayStageInner({
                 );
               })}
             </div>
+            <span id={`${modeGroupId}-label}-xray`} className="stage__mode-caption">
+              Evidence
+            </span>
+            <div className="stage__mode-group" role="group" aria-label="Evidence X-Ray">
+              <button
+                type="button"
+                className="stage__mode-btn stage__mode-btn--xray"
+                aria-pressed={xrayActive}
+                disabled={!xrayAvailable}
+                title={
+                  xrayAvailable
+                    ? 'Reveal the measured defender–striker separation behind the run (X)'
+                    : 'Evidence X-Ray unavailable — the measurement failed verification for this moment'
+                }
+                onClick={() => {
+                  setXrayActive((current) => !current);
+                  if (!xrayActive) setInspectorOpen(false);
+                }}
+              >
+                X-Ray
+              </button>
+              {xrayActive && xrayAvailable ? (
+                <>
+                  {(['before', 'after', 'both'] as const).map((phase) => (
+                    <button
+                      key={phase}
+                      type="button"
+                      className="stage__mode-btn"
+                      aria-pressed={xrayPhase === phase}
+                      title={
+                        phase === 'before'
+                          ? 'Separation at the start of the measured interval'
+                          : phase === 'after'
+                            ? 'Separation at the end of the measured interval'
+                            : 'Show both states for comparison'
+                      }
+                      onClick={() => setXrayPhase(phase)}
+                    >
+                      {phase === 'before' ? 'Before' : phase === 'after' ? 'After' : 'Both'}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="stage__mode-btn stage__mode-btn--inspect"
+                    aria-pressed={inspectorOpen}
+                    title="Show how this number was calculated (I)"
+                    onClick={() => {
+                      setInspectorOpen((current) => {
+                        if (!current) setInspectorReturnMs(engineRef.current.playheadMs);
+                        return !current;
+                      });
+                    }}
+                  >
+                    Show evidence
+                  </button>
+                </>
+              ) : null}
+            </div>
             {camera === 'directed' ? (
               <button
                 type="button"
@@ -384,6 +473,30 @@ function ReplayStageInner({
               ))}
             </div>
           </div>
+
+          {/* Evidence X-Ray inspector — compact, contextual, collapsible. */}
+          <EvidenceInspector
+            evidence={evidenceSafe ?? evidence}
+            open={inspectorOpen}
+            sourcesExpanded={sourcesExpanded}
+            onToggleSources={() => setSourcesExpanded((current) => !current)}
+            onCollapse={() => setInspectorOpen(false)}
+            onSeek={(ms) => {
+              setPlaying(false);
+              setPlayhead(ms);
+            }}
+            onReturn={(ms) => {
+              setPlayhead(ms);
+              setInspectorOpen(false);
+            }}
+            returnMs={inspectorReturnMs}
+          />
+          {view === '2d' && xrayActive && evidenceSafe?.status === 'verified' ? (
+            <p className="stage__xray-2d mono" data-xray-2d="separation">
+              X-RAY · {evidenceSafe.evidence.separationBeforeM.toFixed(3)} m →{' '}
+              {evidenceSafe.evidence.separationAfterM.toFixed(3)} m · measured, not interpretation
+            </p>
+          ) : null}
 
           {/* Scene status — bottom right, minimal */}
           <p className="stage__status mono" aria-label="Scene status">
