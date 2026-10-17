@@ -147,6 +147,20 @@ function ReplayStageInner({
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<PlaybackSpeed>(1);
   const [camera, setCamera] = useState<CameraMode>('broadcast');
+  const [enteredFromOrb, setEnteredFromOrb] = useState(false);
+
+  // KYN-09 handoff: arriving from the landing's orb transition (?enter=orb)
+  // settles through the same damped rig — one beat of the tactical overhead
+  // the fragments just assembled, then the broadcast camera. Playhead and
+  // canonical checkpoint are untouched; direct /explore visits are too.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('enter') !== 'orb') return;
+    setEnteredFromOrb(true);
+    setCamera('overhead');
+    const timer = window.setTimeout(() => setCamera('broadcast'), 1300);
+    return () => window.clearTimeout(timer);
+  }, []);
   const [lens, setLens] = useState<LensId>('fan');
   const [view, setView] = useState<'3d' | '2d'>('3d');
   const [selected, setSelected] = useState<string | null>(null);
@@ -426,6 +440,7 @@ function ReplayStageInner({
         aria-label="Living Replay stage"
         onKeyDown={onStageKeyDown}
         tabIndex={-1}
+        data-enter={enteredFromOrb ? 'orb' : undefined}
       >
         {/* The canvas region. data-scene-mount marks where the R3F Canvas goes. */}
         <div className="stage__canvas scene-stage" data-scene-mount="">

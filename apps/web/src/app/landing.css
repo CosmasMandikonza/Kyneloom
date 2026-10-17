@@ -1,4 +1,4 @@
-/* Landing — editorial cinematic entry (KYN-05). */
+/* Landing — orb→stadium cinematic entry (KYN-05 shell, KYN-09 encounter). */
 
 .landing {
   min-height: 100dvh;
@@ -9,82 +9,147 @@
   min-height: 100svh;
   display: flex;
   align-items: center;
+  justify-content: center;
   overflow: hidden;
-  background:
-    radial-gradient(130% 100% at 80% -10%, rgba(81, 215, 189, 0.08), transparent 55%),
-    radial-gradient(90% 70% at 10% 110%, rgba(174, 152, 247, 0.05), transparent 60%), var(--ink-950);
+  background: var(--ink-950);
 }
 
-/* Abstract pitch geometry: touchlines, halfway line, center circle — the
-   proportions the real 3D pitch will occupy. Decorative, aria-hidden. */
-.landing__pitchlines {
+/* The single WebGL canvas owns the whole stage visually; the editorial
+   layer floats above it. The canvas NEVER intercepts pointer events — the
+   orb reads pointer position from the window, so the CTA and links stay
+   clickable everywhere (Issue #9: no invisible pointer-capturing surface). */
+.landing__canvas-layer {
   position: absolute;
   inset: 0;
-  opacity: 0.85;
-  background:
-    linear-gradient(
-      to right,
-      transparent calc(50% - 1px),
-      var(--line) calc(50% - 1px),
-      var(--line) calc(50% + 1px),
-      transparent calc(50% + 1px)
-    ),
-    linear-gradient(
-      to right,
-      color-mix(in srgb, var(--line) 80%, transparent) 0,
-      color-mix(in srgb, var(--line) 80%, transparent) 1px,
-      transparent 1px
-    ),
-    linear-gradient(
-      to right,
-      transparent calc(100% - 1px),
-      color-mix(in srgb, var(--line) 80%, transparent) calc(100% - 1px)
-    );
-  background-size:
-    100% 100%,
-    1px 18%,
-    1px 18%;
-  background-position:
-    center,
-    calc(16.5% - 0.5px) center,
-    calc(83.5% + 0.5px) center;
-  background-repeat: no-repeat;
-  mask-image: radial-gradient(85% 70% at 50% 50%, #000 32%, transparent 100%);
-  -webkit-mask-image: radial-gradient(85% 70% at 50% 50%, #000 32%, transparent 100%);
+  pointer-events: none;
 }
 
-.landing__pitchlines::after {
-  content: '';
+.landing__canvas-layer .landing__canvas {
   position: absolute;
-  top: 50%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* WebGL-unavailable poster: a quiet CSS echo of the orb so the page still
+   composes — the CTA navigates directly, no cinematic claims. */
+.landing__poster {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 90% at 50% 38%, rgba(81, 215, 189, 0.07), transparent 60%), var(--ink-950);
+}
+
+.landing__poster-orb {
+  position: absolute;
+  top: 38%;
   left: 50%;
-  width: min(24vw, 22rem);
+  width: min(30vw, 20rem);
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
-  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(81, 215, 189, 0.45) inset;
-}
-
-.landing__glow {
-  position: absolute;
-  bottom: -30%;
-  left: 50%;
-  width: 70vw;
-  height: 45vh;
-  transform: translateX(-50%);
-  background: radial-gradient(closest-side, rgba(81, 215, 189, 0.1), transparent 70%);
-  filter: blur(10px);
+  background: radial-gradient(
+    circle at 38% 32%,
+    rgba(198, 249, 231, 0.5),
+    rgba(81, 215, 189, 0.28) 42%,
+    rgba(11, 40, 48, 0.9) 78%
+  );
+  box-shadow:
+    0 0 90px rgba(81, 215, 189, 0.22),
+    0 0 0 1px rgba(81, 215, 189, 0.25) inset;
 }
 
 .landing__content {
   position: relative;
+  z-index: 2;
   width: 100%;
   max-width: 44rem;
-  /* Extra bottom padding keeps the facts panel clear of the scroll cue. */
   padding: calc(var(--header-h) + var(--space-8)) var(--space-5) var(--space-9);
   margin-inline: auto;
-  text-align: center;
+  text-align: left;
+  /* Asymmetric editorial: the orb anchors right, the words own the left. */
+  margin-left: max(var(--space-6), 8vw);
+  margin-right: auto;
+  transition:
+    opacity 520ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 520ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Choreography fades the editorial layer (except the CTA) so the fragment
+   field carries the frame; the CTA itself remains present and clickable. */
+[data-phase='intro'] .landing__content,
+[data-phase='fragments'] .landing__content,
+[data-phase='pitch_reveal'] .landing__content {
+  opacity: 0;
+  transform: translateY(-1.2rem);
+  pointer-events: none;
+}
+[data-phase='intro'] .landing__actions,
+[data-phase='fragments'] .landing__actions,
+[data-phase='pitch_reveal'] .landing__actions {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+[data-phase='idle'] .landing__actions,
+[data-phase='fallback'] .landing__actions {
+  opacity: 1;
+}
+
+.landing__phase {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--space-8) + 2.5rem);
+  transform: translateX(-50%);
+  margin: 0;
+  font-size: var(--step--1);
+  letter-spacing: 0.3em;
+  color: var(--mint-500);
+  text-shadow: 0 0 24px rgba(81, 215, 189, 0.45);
+  white-space: nowrap;
+}
+
+.landing__fallback-note {
+  margin: var(--space-4) auto 0;
+  max-width: 34rem;
+  color: var(--amber-400);
+  font-size: var(--step-0);
+}
+
+/* Skip Intro — always reachable, never traps the user mid-choreography. */
+.landing__skip {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 3;
+  padding: 0.55rem 1rem;
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.landing__skip:hover,
+.landing__skip:focus-visible {
+  color: var(--mint-500);
+  border-color: color-mix(in srgb, var(--mint-500) 55%, transparent);
+}
+
+.landing__cta:focus-visible,
+.landing__skip:focus-visible,
+.landing .btn:focus-visible {
+  outline: 2px solid var(--mint-500);
+  outline-offset: 3px;
 }
 
 .landing__eyebrow {
@@ -111,8 +176,8 @@
 }
 
 .landing__lede {
-  margin: 0 auto var(--space-6);
-  max-width: 36rem;
+  margin: 0 0 var(--space-6);
+  max-width: 34rem;
   color: var(--text-muted);
   font-size: var(--step-1);
   line-height: 1.55;
@@ -122,7 +187,7 @@
 .landing__actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-3);
   margin-bottom: var(--space-7);
 }
@@ -130,8 +195,9 @@
 .landing__facts {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-5) var(--space-7);
+  max-width: 40rem;
   margin: 0;
   padding: var(--space-4) var(--space-5);
   background: var(--surface-glass);
@@ -181,6 +247,58 @@
   width: 1px;
   height: 2.5rem;
   background: linear-gradient(to bottom, var(--mint-500), transparent);
+}
+
+@media (max-width: 48rem) {
+  .landing__content {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 100svh;
+    padding-bottom: calc(var(--space-8) + 3rem);
+    text-align: left;
+    /* Reset the desktop asymmetric margins — stacked composition, no
+       horizontal overflow (width is 100% of the stage). */
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .landing__title {
+    font-size: var(--step-5);
+  }
+  .landing__lede {
+    font-size: var(--step-0);
+    margin-inline: 0;
+  }
+  .landing__actions {
+    justify-content: flex-start;
+  }
+  .landing__facts {
+    justify-content: flex-start;
+    text-align: left;
+  }
+  .landing__skip {
+    right: var(--space-3);
+    bottom: calc(var(--space-3) + 0.5rem);
+  }
+  .landing__phase {
+    bottom: auto;
+    top: calc(var(--header-h) + var(--space-4));
+    left: var(--space-4);
+    transform: none;
+  }
+}
+
+/* Reduced motion: instant states, no editorial slide, no phase pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .landing__content {
+    transition: none;
+  }
+  [data-phase='intro'] .landing__content,
+  [data-phase='fragments'] .landing__content,
+  [data-phase='pitch_reveal'] .landing__content {
+    opacity: 0;
+    transform: none;
+  }
 }
 
 /* Chapters */
