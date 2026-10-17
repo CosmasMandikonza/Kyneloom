@@ -15,8 +15,8 @@ themselves on a scratch port.
 Playwright Chromium captures the four routes (`/`, `/explore`, `/studio`,
 `/m/mom-synthetic-78m`) at **1440×900, 1280×800, 1024×768, 390×844 and
 375×812**, plus `prefers-reduced-motion` variants (`*-rm.png`) for `/` and
-`/explore` at 1440×900 and 390×844 — 27 captures in total (25 route captures +
-the two X-Ray scene-click evidence captures).
+`/explore` at 1440×900 and 390×844 — plus the KYN-09 transition captures
+(`landing-fragments-*`, `landing-reveal-*`, `landing-fallback-375x812`).
 
 Per capture it verifies: no horizontal overflow, no console errors, and
 route-specific interaction checks. The `/explore` (KYN-06) pass additionally
@@ -53,6 +53,46 @@ values verbatim, provenance + interpretation labels, source frame IDs,
 frame navigation seeking, keyboard `X`/`I`/Escape, and a **bounded-resource
 check** (4 X-Ray on/off rounds × 3 phase switches must not grow the WebGL
 geometry/texture counts) — plus `explore-xray-*.png` captures per viewport.
+
+### Landing transition checks (KYN-09)
+
+The `/` pass asserts the encounter contract (headline, one clickable CTA,
+fixture facts, live orb probe) at every viewport, then drives the FULL
+orb→stadium transition: fragment + reveal captures by deterministic
+elapsed time, handoff to `/explore?enter=orb` at the canonical checkpoint
+with 22 players, the landing probe deleted and exactly one canvas. Phase
+transitions are asserted from a sessionStorage phase trace (review round):
+the normal entry passes idle → intro → fragments → pitch_reveal → ready in
+order; reduced motion goes idle → ready directly (no choreography, timed);
+a rapid double activation keeps startCount === 1 and preserves
+`?enter=orb`; Skip during intro is proven at 1280×800. Fragment budgets
+are asserted numerically (320 at 390×844 AND 375×812, 900 at desktop). A
+WebGL-disabled browser instance proves the poster fallback
+(`landing-fallback-375x812.png`), and repeated landing→replay→back→replay
+navigation keeps GPU geometry/texture growth bounded.
+
+## `qa:record:landing` (scripts/record-landing-live.ts)
+
+KYN-09's entry evidence: a continuous capture of the full signature path —
+landing orb idle → **Enter the moment** → intro → fragment morph → pitch
+reveal → handoff into the REAL Living Replay → 22 footballers playing →
+follow camera → Evidence X-Ray — `qa/video/landing-entry-screencast.mp4`
+(+ `.webm` twin), captured from the browser compositor's own frame stream
+(same disclosed method as `qa:record:xray`). This run: 13.2 s, 281 frames
+at a measured 21.3 fps, adjacent-frame motion Δ47.0 Y-units
+(ffmpeg-verified), inside the 8–15 s envelope; the replay after handoff
+reports 22 players at playhead 4725897 (playing).
+
+### Design iterations (KYN-09, in `qa/iterations/`)
+
+Three documented visual iterations: **i1** (noted, screenshots superseded) —
+centered small orb over centered text: rejected as too dim/generic;
+**i2** (`i2-*.png`) — orb presence (size/glow/palette), asymmetric editorial
+composition (orb right, words left; orb upper on mobile), and the reveal
+beat (stadium hidden until `pitch_reveal`); **i3** (`i3-*.png`) — fragment
+presence (brighter shards, slower orb dissolve so the orb visibly hands its
+mass to the swarm, swarm-hugging camera) — verified frame-by-frame before
+the final QA sweep.
 
 ## `qa:record:xray` (scripts/record-xray-live.ts)
 

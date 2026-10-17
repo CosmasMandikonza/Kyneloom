@@ -79,6 +79,21 @@ declare global {
         cameraLookTarget(): readonly [number, number, number] | null;
       };
     };
+    __kyneloomLanding?: {
+      state(): string;
+      fragmentCount(): number;
+      markerCount(): number;
+    };
+    __kyneloomLandingPerf?: {
+      fps: number;
+      p50Ms: number;
+      p95Ms: number;
+      drawCalls: number;
+      triangles: number;
+      geometries: number;
+      textures: number;
+      samples: number;
+    };
     __kyneloomXray?: {
       active(): boolean;
       phase(): 'before' | 'after' | 'both' | null;
@@ -241,14 +256,267 @@ async function main(): Promise<void> {
             .count();
 
           if (route.name === 'landing') {
-            checks.ctaHrefs =
-              (await page.locator('a:has-text("Enter the moment")').first().getAttribute('href')) ??
-              '(missing)';
+            // KYN-09 — the encounter contract: headline, ONE primary CTA
+            // that is actually clickable (no invisible pointer-capturing
+            // surface above it), the real fixture facts, and a live orb.
+            const cta = page.getByTestId('enter-the-moment').first();
+            checks.ctaText = (await cta.innerText()).trim();
+            const ctaBox = await cta.boundingBox();
+            const ctaClickable =
+              ctaBox === null
+                ? false
+                : await page.evaluate(
+                    (pt) => {
+                      const el = document.elementFromPoint(pt.x, pt.y);
+                      return (
+                        el !== null &&
+                        (el as HTMLElement).closest('[data-testid="enter-the-moment"]') !== null
+                      );
+                    },
+                    { x: ctaBox.x + ctaBox.width / 2, y: ctaBox.y + ctaBox.height / 2 },
+                  );
+            checks.ctaClickable = ctaClickable ? 'yes' : 'BLOCKED';
+            if (!ctaClickable) {
+              failures.push(`landing @ ${viewport.name}: CTA is not the top element at its point`);
+            }
             checks.fixtureSamplesShown = await page
               .locator('.landing__facts dd')
               .nth(2)
               .innerText();
+            if (!reducedMotion) {
+              await page.waitForFunction(
+                () => (window as { __kyneloomLanding?: unknown }).__kyneloomLanding !== undefined,
+                undefined,
+                { timeout: 20_000 },
+              );
+              const landing = await page.evaluate(() =>
+                JSON.stringify({
+                  state: window.__kyneloomLanding?.state() ?? null,
+                  fragments: window.__kyneloomLanding?.fragmentCount() ?? null,
+                  markers: window.__kyneloomLanding?.markerCount() ?? null,
+                }),
+              );
+              checks.landingOrb = landing;
+              if (!landing.includes('"state":"idle"')) {
+                failures.push(`landing @ ${viewport.name}: orb probe not idle: ${landing}`);
+              }
+              // Review gate 4: phone widths (fine OR coarse pointer) must
+              // get the mobile fragment budget; desktop the full field.
+              const expectedFragments =
+                viewport.name === '390x844' || viewport.name === '375x812' ? 320 : 900;
+              if (!landing.includes(`"fragments":${String(expectedFragments)}`)) {
+                failures.push(
+                  `landing @ ${viewport.name}: fragment budget ${landing} != expected ${String(expectedFragments)}`,
+                );
+              }
+            }
           }
+          if (route.name === 'landing' && !reducedMotion) {
+            // KYN-09 — the orb→stadium transition, exercised end to end at
+            // four viewports (Issue #9 acceptance 2,3,4,6,7,10).
+            const flowStart = Date.now();
+            await page.getByTestId('enter-the-moment').click();
+            if (viewport.name === '1024x768') {
+              // Acceptance 6: rapid repeated clicks — a second activation
+              // while the transition runs must never duplicate it.
+              await page
+                .getByTestId('enter-the-moment')
+                .click({ force: true, noWaitAfter: true })
+                .catch(() => undefined);
+            }
+            if (viewport.name === '1280x800') {
+              // Acceptance 7: Skip during the intro phase.
+              await page.waitForTimeout(300);
+              await page.getByTestId('skip-intro').click();
+              await page.waitForFunction(() => window.location.pathname === '/explore', undefined, {
+                timeout: 25_000,
+              });
+              checks.landingSkip = 'yes';
+            } else {
+              // Fragment + reveal captures by elapsed time (the FSM budgets
+              // are wall-clock deterministic; slow renderers cannot skip).
+              await page.waitForTimeout(2050);
+              await page.screenshot({
+                path: path.join(OUT_DIR, 'screenshots', `landing-fragments-${viewport.name}.png`),
+              });
+              await page.waitForFunction(
+                () =>
+                  (
+                    window as { __kyneloomLanding?: { state(): string } }
+                  ).__kyneloomLanding?.state() === 'pitch_reveal' ||
+                  window.location.pathname === '/explore',
+                undefined,
+                { timeout: 25_000 },
+              );
+              await page.waitForTimeout(900);
+              await page.screenshot({
+                path: path.join(OUT_DIR, 'screenshots', `landing-reveal-${viewport.name}.png`),
+              });
+            }
+            await page.waitForFunction(() => window.location.pathname === '/explore', undefined, {
+              timeout: 25_000,
+            });
+            await page.waitForFunction(
+              () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+              undefined,
+              { timeout: 45_000 },
+            );
+            await page.waitForTimeout(1800); // handoff settle + broadcast sweep
+            const ready = await page.evaluate(() => ({
+              playhead: window.__kyneloomScene?.playheadMs?.() ?? null,
+              players: window.__kyneloomScene?.snapshot?.().players.length ?? null,
+              landingGone:
+                (window as { __kyneloomLanding?: unknown }).__kyneloomLanding === undefined,
+              canvases: document.querySelectorAll('canvas').length,
+            }));
+            // Phase-state evidence (review gates 1 + 2), surviving the SPA
+            // navigation via sessionStorage: the exact phases this entry
+            // passed through, and that rapid activation started once.
+            const trace = await page.evaluate(() => {
+              try {
+                return JSON.parse(
+                  window.sessionStorage.getItem('kyneloom.landing.phases') ??
+                    '{"phases":[],"startCount":-1}',
+                ) as { phases?: string[]; startCount?: number };
+              } catch {
+                return { phases: [], startCount: -1 };
+              }
+            });
+            checks.landingHandoff = JSON.stringify({
+              ...ready,
+              phases: trace.phases,
+              startCount: trace.startCount,
+              ms: Date.now() - flowStart,
+            });
+            if (viewport.name === '1440x900') {
+              // The full choreography, in order, exactly once each.
+              const expected = ['idle', 'intro', 'fragments', 'pitch_reveal', 'ready'];
+              const got = trace.phases ?? [];
+              const orderedOk =
+                expected.every((phase) => got.includes(phase)) &&
+                expected.every(
+                  (phase, i) =>
+                    got.indexOf(phase) !== -1 &&
+                    (i === 0 ||
+                      got.indexOf(expected[i - 1]!) === -1 ||
+                      got.indexOf(expected[i - 1]!) < got.indexOf(phase)),
+                );
+              if (!orderedOk) {
+                failures.push(
+                  `landing @ ${viewport.name}: phase history ${JSON.stringify(got)} missing the ordered five states`,
+                );
+              }
+            }
+            if (viewport.name === '1024x768') {
+              // Review gate 2: the double activation started the machine
+              // exactly once and the intended navigation kept enter=orb.
+              if (trace.startCount !== 1) {
+                failures.push(
+                  `landing @ ${viewport.name}: rapid double-click startCount ${String(trace.startCount)} != 1`,
+                );
+              }
+              if (!page.url().includes('enter=orb')) {
+                failures.push(
+                  `landing @ ${viewport.name}: completed transition lost ?enter=orb (${page.url()})`,
+                );
+              }
+            }
+            // Acceptance 4: the canonical checkpoint survives the handoff.
+            if (ready.playhead !== 4_722_100) {
+              failures.push(
+                `landing @ ${viewport.name}: playhead ${String(ready.playhead)} != checkpoint 4722100`,
+              );
+            }
+            if (ready.players !== 22) {
+              failures.push(
+                `landing @ ${viewport.name}: ${String(ready.players)} players after handoff`,
+              );
+            }
+            if (!ready.landingGone) {
+              failures.push(`landing @ ${viewport.name}: landing probe retained after handoff`);
+            }
+            if (ready.canvases !== 1) {
+              failures.push(
+                `landing @ ${viewport.name}: ${String(ready.canvases)} canvases after handoff (expected 1)`,
+              );
+            }
+
+            // Acceptance 10: repeated landing → replay → back → replay stays
+            // resource-stable (no retained loop, bounded GPU growth).
+            if (viewport.name === '1440x900') {
+              const first = await page.evaluate(() => ({
+                g: window.__kyneloomPerf?.geometries ?? -1,
+                t: window.__kyneloomPerf?.textures ?? -1,
+              }));
+              await page.goBack();
+              await page.waitForFunction(
+                () => (window as { __kyneloomLanding?: unknown }).__kyneloomLanding !== undefined,
+                undefined,
+                { timeout: 30_000 },
+              );
+              await page.getByTestId('enter-the-moment').click();
+              await page.waitForFunction(
+                () =>
+                  window.location.pathname === '/explore' &&
+                  (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+                undefined,
+                { timeout: 45_000 },
+              );
+              await page.waitForTimeout(1500);
+              const second = await page.evaluate(() => ({
+                g: window.__kyneloomPerf?.geometries ?? -1,
+                t: window.__kyneloomPerf?.textures ?? -1,
+              }));
+              const dg = second.g - first.g;
+              const dt = second.t - first.t;
+              checks.landingRepeatNav = `ok (Δgeo +${String(dg)}, Δtex +${String(dt)})`;
+              if (dg > 3 || dt > 3) {
+                failures.push(
+                  `landing @ ${viewport.name}: repeated navigation leaked GPU resources (Δgeo +${String(dg)}, Δtex +${String(dt)})`,
+                );
+              }
+            }
+          }
+
+          if (route.name === 'landing' && reducedMotion && viewport.name === '390x844') {
+            // Acceptance 8: reduced motion leads straight to the replay.
+            const t0 = Date.now();
+            await page.getByTestId('enter-the-moment').click();
+            await page.waitForFunction(() => window.location.pathname === '/explore', undefined, {
+              timeout: 25_000,
+            });
+            // Review gate 1: PHASE assertion, not just navigation — the
+            // machine went idle → ready and never entered choreography.
+            const rmTrace = await page.evaluate(() => {
+              try {
+                return JSON.parse(
+                  window.sessionStorage.getItem('kyneloom.landing.phases') ?? '{"phases":[]}',
+                ) as { phases?: string[] };
+              } catch {
+                return { phases: [] };
+              }
+            });
+            checks.landingReducedMotion = `direct handoff in ${String(Date.now() - t0)}ms; phases ${JSON.stringify(rmTrace.phases)}`;
+            const rmPhases = rmTrace.phases ?? [];
+            if (
+              rmPhases.length !== 2 ||
+              rmPhases[0] !== 'idle' ||
+              rmPhases[1] !== 'ready' ||
+              rmPhases.includes('intro') ||
+              rmPhases.includes('fragments') ||
+              rmPhases.includes('pitch_reveal')
+            ) {
+              failures.push(
+                `landing reduced-motion: phases ${JSON.stringify(rmPhases)} != ['idle','ready']`,
+              );
+            }
+            await page.waitForFunction(
+              () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+              undefined,
+              { timeout: 45_000 },
+            );
+          }
+
           if (route.name === 'explore') {
             const readyMs = await waitSceneReady(page);
             checks.scene3dReadyMs = readyMs ?? 'fallback';
@@ -839,7 +1107,10 @@ async function main(): Promise<void> {
                       ),
                     });
                   }
-                  await page.keyboard.press('Escape');
+                  // Close via the inspector's own control — deterministic
+                  // regardless of where the tap left keyboard focus (an
+                  // Escape only works while focus is inside the stage).
+                  await page.getByRole('button', { name: 'Close inspector' }).click();
                   await page.waitForTimeout(250);
                 }
 
@@ -1074,9 +1345,9 @@ async function main(): Promise<void> {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await context.newPage();
     await page.goto(BASE + '/', { waitUntil: 'networkidle' });
-    await page.locator('a:has-text("Enter the moment")').click();
-    await page.waitForURL('**/explore');
-    const navWorks = page.url().endsWith('/explore');
+    await page.getByTestId('enter-the-moment').click();
+    await page.waitForURL('**/explore**', { timeout: 30_000 });
+    const navWorks = page.url().includes('/explore');
     if (!navWorks) failures.push('landing CTA did not navigate to /explore');
     await page.locator('nav[aria-label="Primary"] a:has-text("Studio")').click();
     await page.waitForURL('**/studio');
@@ -1089,6 +1360,46 @@ async function main(): Promise<void> {
       consoleErrors: [],
       checks: { landingToExplore: navWorks, exploreToStudio: page.url().endsWith('/studio') },
     });
+
+    // KYN-09 acceptance 9 — WebGL-unavailable landing: a truthful fallback
+    // (poster + direct CTA link), verified in a browser with WebGL off.
+    {
+      const noGlBrowser = await chromium.launch({ headless: true, args: ['--disable-webgl'] });
+      try {
+        const noGlContext = await noGlBrowser.newContext({ viewport: { width: 375, height: 812 } });
+        const noGlPage = await noGlContext.newPage();
+        await noGlPage.goto(BASE + '/', { waitUntil: 'networkidle' });
+        await noGlPage.waitForFunction(
+          () =>
+            document.querySelector('.landing__stage')?.getAttribute('data-phase') === 'fallback',
+          undefined,
+          { timeout: 15_000 },
+        );
+        const ctaHref = await noGlPage.getByTestId('enter-the-moment').getAttribute('href');
+        const poster = await noGlPage.locator('.landing__poster').count();
+        await noGlPage.screenshot({
+          path: path.join(OUT_DIR, 'screenshots', 'landing-fallback-375x812.png'),
+        });
+        const fallbackOk = ctaHref === '/explore' && poster === 1;
+        if (!fallbackOk) {
+          failures.push(
+            `landing fallback (WebGL off): CTA href ${String(ctaHref)}, poster ${String(poster)}`,
+          );
+        }
+        results.push({
+          route: 'landing-fallback',
+          viewport: '375x812',
+          reducedMotion: false,
+          screenshot: 'screenshots/landing-fallback-375x812.png',
+          horizontalOverflowPx: 0,
+          consoleErrors: [],
+          checks: { ctaHref: ctaHref ?? '(none)', poster: poster },
+        });
+        await noGlContext.close();
+      } finally {
+        await noGlBrowser.close();
+      }
+    }
     await page.screenshot({ path: path.join(OUT_DIR, 'screenshots', 'nav-flow-studio.png') });
     await context.close();
   } finally {

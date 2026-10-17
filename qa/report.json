@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T13:11:58.172Z",
+  "generatedAt": "2026-10-17T20:51:55.361Z",
   "viewports": [
     "1440x900",
     "1280x800",
@@ -13,7 +13,7 @@
     "/studio",
     "/m/mom-synthetic-78m"
   ],
-  "captures": 25,
+  "captures": 26,
   "failures": [],
   "results": [
     {
@@ -26,8 +26,12 @@
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
         "focusables": 7,
-        "ctaHrefs": "/explore",
-        "fixtureSamplesShown": "5,129"
+        "ctaText": "Enter the moment\n→",
+        "ctaClickable": "yes",
+        "fixtureSamplesShown": "5,129",
+        "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":21473}",
+        "landingRepeatNav": "ok (Δgeo +0, Δtex +0)"
       }
     },
     {
@@ -40,7 +44,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 3067,
+        "scene3dReadyMs": 3084,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -77,7 +81,7 @@
         "xrayKeyboard": "yes",
         "xrayResourcesBounded": "ok (Δgeo +0, Δtex +0 after 4 on/off rounds × 3 phases)",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":1002.5,\"p95Ms\":1080.4,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":1021.9,\"p95Ms\":1093.4,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -118,7 +122,8 @@
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
         "focusables": 7,
-        "ctaHrefs": "/explore",
+        "ctaText": "Enter the moment\n→",
+        "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129"
       }
     },
@@ -132,7 +137,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 3055,
+        "scene3dReadyMs": 3083,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -153,8 +158,12 @@
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
         "focusables": 7,
-        "ctaHrefs": "/explore",
-        "fixtureSamplesShown": "5,129"
+        "ctaText": "Enter the moment\n→",
+        "ctaClickable": "yes",
+        "fixtureSamplesShown": "5,129",
+        "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
+        "landingSkip": "yes",
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"ready\"],\"startCount\":1,\"ms\":10494}"
       }
     },
     {
@@ -167,7 +176,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 2875,
+        "scene3dReadyMs": 2915,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -203,7 +212,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":959.1,\"p95Ms\":1020.8,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":969.7,\"p95Ms\":1011.2,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -244,8 +253,11 @@
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
         "focusables": 7,
-        "ctaHrefs": "/explore",
-        "fixtureSamplesShown": "5,129"
+        "ctaText": "Enter the moment\n→",
+        "ctaClickable": "yes",
+        "fixtureSamplesShown": "5,129",
+        "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":22410}"
       }
     },
     {
@@ -258,7 +270,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 2709,
+        "scene3dReadyMs": 2743,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -294,7 +306,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":917.3,\"p95Ms\":981.7,\"drawCalls\":150,\"triangles\":608104,\"geometries\":43,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":946.6,\"p95Ms\":997.6,\"drawCalls\":149,\"triangles\":608056,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -335,8 +347,11 @@
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
         "focusables": 7,
-        "ctaHrefs": "/explore",
-        "fixtureSamplesShown": "5,129"
+        "ctaText": "Enter the moment\n→",
+        "ctaClickable": "yes",
+        "fixtureSamplesShown": "5,129",
+        "landingOrb": "{\"state\":\"idle\",\"fragments\":320,\"markers\":23}",
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":9017}"
       }
     },
     {
@@ -349,7 +364,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 1384,
+        "scene3dReadyMs": 1389,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -365,9 +380,9 @@
         "ballMeshAtSource": "exact",
         "ballSpinDeterministic": "identical",
         "playerYawDeterministic": "identical",
-        "cameraOverheadConverged": "yes 0.1/91.9/0.1",
+        "cameraOverheadConverged": "yes 0.0/91.9/0.1",
         "cameraFollowConverged": "yes 5.0/4.6/8.9",
-        "cameraKeeperConverged": "yes 41.2/2.8/5.7",
+        "cameraKeeperConverged": "yes 41.3/2.8/5.7",
         "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
         "directedSeekDeterministic": "identical",
         "escapeExitsDirected": "true",
@@ -385,7 +400,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":2,\"p50Ms\":406.8,\"p95Ms\":528,\"drawCalls\":79,\"triangles\":303976,\"geometries\":37,\"textures\":47,\"samples\":240}",
+        "perf": "{\"fps\":2,\"p50Ms\":484.9,\"p95Ms\":523.7,\"drawCalls\":79,\"triangles\":303976,\"geometries\":37,\"textures\":47,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -426,8 +441,10 @@
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
         "focusables": 7,
-        "ctaHrefs": "/explore",
-        "fixtureSamplesShown": "5,129"
+        "ctaText": "Enter the moment\n→",
+        "ctaClickable": "yes",
+        "fixtureSamplesShown": "5,129",
+        "landingReducedMotion": "direct handoff in 2261ms; phases [\"idle\",\"ready\"]"
       }
     },
     {
@@ -440,7 +457,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 1384,
+        "scene3dReadyMs": 1256,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -461,8 +478,11 @@
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
         "focusables": 7,
-        "ctaHrefs": "/explore",
-        "fixtureSamplesShown": "5,129"
+        "ctaText": "Enter the moment\n→",
+        "ctaClickable": "yes",
+        "fixtureSamplesShown": "5,129",
+        "landingOrb": "{\"state\":\"idle\",\"fragments\":320,\"markers\":23}",
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":8501}"
       }
     },
     {
@@ -475,7 +495,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 26,
-        "scene3dReadyMs": 2113,
+        "scene3dReadyMs": 2203,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -503,7 +523,7 @@
         "xrayOverlaysRendered": "yes (3 lines + label)",
         "xrayWorldInvariant": "identical",
         "xrayPhaseSwitch": "yes (2)",
-        "xraySceneClick": "yes (click @ 338,248, candidate 0/10)",
+        "xraySceneClick": "yes (click @ 338,247, candidate 0/10)",
         "inspectorSentence": "exact values",
         "inspectorDelta": "exact",
         "inspectorInterpretation": "labeled hypothesis",
@@ -511,7 +531,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":697.1,\"p95Ms\":774.2,\"drawCalls\":130,\"triangles\":607544,\"geometries\":39,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":707.7,\"p95Ms\":780.6,\"drawCalls\":131,\"triangles\":607576,\"geometries\":39,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -552,6 +572,18 @@
       "checks": {
         "landingToExplore": true,
         "exploreToStudio": true
+      }
+    },
+    {
+      "route": "landing-fallback",
+      "viewport": "375x812",
+      "reducedMotion": false,
+      "screenshot": "screenshots/landing-fallback-375x812.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "ctaHref": "/explore",
+        "poster": 1
       }
     }
   ]

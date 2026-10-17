@@ -837,3 +837,26 @@
     display: none;
   }
 }
+
+/* KYN-09 — arriving from the landing orb: the stage rises out of the
+   fragment reveal (a short luminous fade; reduced motion gets none). */
+@keyframes stage-enter-orb {
+  from {
+    opacity: 0;
+    transform: scale(1.035);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.stage[data-enter='orb'] .stage__canvas {
+  animation: stage-enter-orb 760ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage[data-enter='orb'] .stage__canvas {
+    animation: none;
+  }
+}
