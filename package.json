@@ -2,7 +2,7 @@
   "name": "kyneloom",
   "private": true,
   "version": "0.0.0",
-  "description": "Kyneloom \u2014 the evidence-native experience engine for interactive sports. Repository foundation (KYN-01).",
+  "description": "Kyneloom — the evidence-native experience engine for interactive sports. Repository foundation (KYN-01).",
   "type": "module",
   "packageManager": "pnpm@10.34.7",
   "engines": {
@@ -27,7 +27,10 @@
     "qa:record:live": "tsx scripts/record-replay-live.ts",
     "qa:record:camera": "tsx scripts/record-camera-live.ts",
     "qa:record:xray": "tsx scripts/record-xray-live.ts",
-    "qa:record:landing": "tsx scripts/record-landing-live.ts"
+    "qa:record:landing": "tsx scripts/record-landing-live.ts",
+    "moments:previews": "tsx scripts/generate-moment-previews.ts",
+    "qa:record:gallery": "tsx scripts/record-gallery-live.ts",
+    "moments:perf": "tsx scripts/measure-gallery-perf.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

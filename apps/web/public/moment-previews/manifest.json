@@ -1,0 +1,138 @@
+{
+  "schemaVersion": "1.0",
+  "generator": "kyneloom-preview-pipeline/2",
+  "method": "Playwright capture of the live R3F WebGL canvas on /explore?moment=<catalogId>, paused at each chapter’s validated focus timestamp, deliberate camera per entry, rig converged before capture; floating stage chrome display:none’d for a clean plate — scene pixels are the untouched product renderer",
+  "matchId": "synthetic-derby-01",
+  "generatedAt": "2026-10-18T06:17:46.983Z",
+  "fixture": {
+    "seed": 24017,
+    "generatorVersion": "fixture-engine-v1",
+    "eventsSha256": "sha256:c18196de449df3a7098d69872512606403e5ed546a3544faedb95bf2bc3e6e97",
+    "trackingSha256": "sha256:4276fb09ec030f6d9c974f524f27f35350b1176ffc7e11676e33fd52d01ee4bd"
+  },
+  "capture": {
+    "viewport": {
+      "width": 1280,
+      "height": 1240
+    },
+    "browser": "chromium",
+    "headless": true
+  },
+  "previews": [
+    {
+      "catalogId": "ia-00-invisible-assist",
+      "file": "ia-00-invisible-assist.png",
+      "focusMs": 4720500,
+      "camera": "follow",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-01-possession-settles",
+      "file": "ia-01-possession-settles.png",
+      "focusMs": 4717000,
+      "camera": "overhead",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-02-run-develops",
+      "file": "ia-02-run-develops.png",
+      "focusMs": 4721200,
+      "camera": "overhead",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-03-measured-checkpoint",
+      "file": "ia-03-measured-checkpoint.png",
+      "focusMs": 4722100,
+      "camera": "overhead",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-04-top-speed",
+      "file": "ia-04-top-speed.png",
+      "focusMs": 4723400,
+      "camera": "overhead",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-05-lane-opens",
+      "file": "ia-05-lane-opens.png",
+      "focusMs": 4724000,
+      "camera": "broadcast",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-06-pass-in-flight",
+      "file": "ia-06-pass-in-flight.png",
+      "focusMs": 4725100,
+      "camera": "overhead",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-07-reception",
+      "file": "ia-07-reception.png",
+      "focusMs": 4726200,
+      "camera": "broadcast",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-08-setting-the-strike",
+      "file": "ia-08-setting-the-strike.png",
+      "focusMs": 4727000,
+      "camera": "overhead",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-09-the-strike",
+      "file": "ia-09-the-strike.png",
+      "focusMs": 4727800,
+      "camera": "overhead",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-10-the-equalizer",
+      "file": "ia-10-the-equalizer.png",
+      "focusMs": 4728300,
+      "camera": "directed",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-11-aftermath",
+      "file": "ia-11-aftermath.png",
+      "focusMs": 4729000,
+      "camera": "broadcast",
+      "width": 1280,
+      "height": 704
+    },
+    {
+      "catalogId": "ia-12-last-tracked-frame",
+      "file": "ia-12-last-tracked-frame.png",
+      "focusMs": 4731000,
+      "camera": "broadcast",
+      "width": 1280,
+      "height": 704
+    }
+  ],
+  "motion": {
+    "catalogId": "ia-00-invisible-assist",
+    "file": "ia-00-motion.mp4",
+    "poster": "ia-00-invisible-assist.png",
+    "fromMs": 4720500,
+    "toMs": 4724000,
+    "camera": "follow",
+    "measuredFps": 36.85,
+    "headed": true,
+    "method": "continuous browser-compositor frame capture (CDP Page.startScreencast) of the playing scene — genuine motion from accepted tracking, assembled with ffmpeg"
+  }
+}
