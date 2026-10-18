@@ -1,4 +1,6 @@
+import { separationFromTimeline } from '@kyneloom/match-core';
 import type { GoldenMatchStatus, GoldenStoryFacts } from './match-fixture';
+import { SEPARATION_INPUT } from './evidence-data';
 import type { SceneTeamId } from './scene-data';
 
 /**
@@ -83,11 +85,26 @@ export interface MomentCatalog {
   readonly featured: MomentCatalogEntry;
   readonly chapters: readonly MomentCatalogEntry[];
   /**
+   * The AUTHORITATIVE defender–striker separation measurement — the output
+   * of the same versioned `separationFromTimeline` metric Evidence X-Ray
+   * renders (one canonical number across the product). Null only when the
+   * metric itself is not computable for this fixture.
+   */
+  readonly separation: CatalogSeparationMetric | null;
+  /**
    * The metadata's generator-recorded story facts (release speeds, authored
    * measurement summary), or null when the block is absent. Distances are
    * cross-checked against computed tracking values by buildMomentCatalog.
    */
   readonly story: GoldenStoryFacts | null;
+}
+
+/** Gallery-facing view of the verified SeparationEvidence metric. */
+export interface CatalogSeparationMetric {
+  readonly beforeM: number;
+  readonly afterM: number;
+  readonly deltaM: number;
+  readonly algorithmVersion: string;
 }
 
 export type MomentSelection =
@@ -517,24 +534,53 @@ export function buildMomentCatalog(golden: GoldenMatchStatus): MomentCatalog | n
     }
   }
 
+  // The featured presentation, built from a spec so the hook can be
+  // interpolated from the authoritative metric below.
+  const featuredSpec: ChapterSpec = {
+    catalogId: 'ia-00-invisible-assist',
+    focusMs: MEASURED_INTERVAL_MS[0],
+    eventId: null,
+    playerFocusId: RUNNER,
+    title: 'The Invisible Assist',
+    // {delta} is interpolated from the AUTHORITATIVE separationFromTimeline
+    // metric — never a second hardcoded constant.
+    hook: 'One run nobody passed to. While it unfolds, the measured defender–striker gap opens by {delta} — then the pass, the strike, the equalizer. The chapters below replay what the sources recorded; how much the run itself caused is interpretation.',
+    tag: 'Featured chapter',
+    previewCamera: 'follow',
+    facts: (c) => ({
+      separationM: distance(
+        c.at(DEFENDER, MEASURED_INTERVAL_MS[0]),
+        c.at(STRIKER, MEASURED_INTERVAL_MS[0]),
+      ),
+      scoreLine: c.scoreAt(MEASURED_INTERVAL_MS[0]),
+    }),
+  };
+
+  // The AUTHORITATIVE separation measurement: the same versioned metric
+  // Evidence X-Ray renders (separationFromTimeline over the reducer's own
+  // timeline) — one canonical number across gallery, hero and inspector.
+  const separationResult = separationFromTimeline(golden.data.projected.timeline, SEPARATION_INPUT);
+  const separation: CatalogSeparationMetric | null = separationResult.ok
+    ? {
+        beforeM: separationResult.evidence.separationBeforeM,
+        afterM: separationResult.evidence.separationAfterM,
+        deltaM: separationResult.evidence.deltaM,
+        algorithmVersion: separationResult.evidence.algorithmVersion,
+      }
+    : null;
+  const featuredHook =
+    separation !== null
+      ? featuredSpec.hook.replace('{delta}', `${separation.deltaM.toFixed(3)} m`)
+      : featuredSpec.hook.replace(
+          'the measured defender–striker gap opens by {delta} — ',
+          'the defender–striker gap changes — ',
+        );
+
   const featured: MomentCatalogEntry = {
     ...buildEntry(
       {
-        catalogId: 'ia-00-invisible-assist',
-        focusMs: MEASURED_INTERVAL_MS[0],
-        eventId: null,
-        playerFocusId: RUNNER,
-        title: 'The Invisible Assist',
-        hook: 'One run nobody passed to. While it unfolds, the measured defender–striker gap opens by 14.037 m — then the pass, the strike, the equalizer. The chapters below replay what the sources recorded; how much the run itself caused is interpretation.',
-        tag: 'Featured chapter',
-        previewCamera: 'follow',
-        facts: (c) => ({
-          separationM: distance(
-            c.at(DEFENDER, MEASURED_INTERVAL_MS[0]),
-            c.at(STRIKER, MEASURED_INTERVAL_MS[0]),
-          ),
-          scoreLine: c.scoreAt(MEASURED_INTERVAL_MS[0]),
-        }),
+        ...featuredSpec,
+        hook: featuredHook,
       },
       null,
       matchId,
@@ -556,7 +602,14 @@ export function buildMomentCatalog(golden: GoldenMatchStatus): MomentCatalog | n
     throw new Error('chapter focus timestamps are not distinct');
   }
 
-  return { matchId, windowMs: goldenWindowMs, featured, chapters, story: golden.data.story };
+  return {
+    matchId,
+    windowMs: goldenWindowMs,
+    featured,
+    chapters,
+    separation,
+    story: golden.data.story,
+  };
 }
 
 export type MomentCatalogStatus =

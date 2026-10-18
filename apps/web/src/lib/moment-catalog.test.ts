@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadGoldenMatch, type GoldenMatchStatus } from './match-fixture';
+import { buildEvidenceProjection } from './evidence-data';
 import { SEPARATION_INPUT } from './evidence-data';
 import {
   buildMomentCatalog,
@@ -276,6 +277,37 @@ describe('featured editorial truth (review round 2: interpretation ≠ causation
     expect(hook).not.toContain('draws the defender');
     expect(hook).not.toContain('opens the lane');
     // The measured delta remains the grounded fact.
-    expect(hook).toContain('14.037');
+    expect(hook).toContain('14.038 m');
+  });
+});
+
+describe('canonical separation metric agreement (review round 3, gate B)', () => {
+  it('derives the featured delta from the same versioned metric Evidence X-Ray renders', async () => {
+    const golden = await loadGoldenMatch();
+    if (!golden.ok) throw new Error('fixture unavailable');
+    const catalog = buildMomentCatalog(golden);
+    if (catalog === null) throw new Error('catalog null');
+    expect(catalog.separation).not.toBeNull();
+    // The published metric values (KYN-04/KYN-08, separation-v1).
+    expect(catalog.separation?.beforeM.toFixed(3)).toBe('6.306');
+    expect(catalog.separation?.afterM.toFixed(3)).toBe('20.344');
+    expect(catalog.separation?.deltaM.toFixed(3)).toBe('14.038');
+
+    // Agreement with the VERIFIED Evidence X-Ray projection the inspector
+    // displays — one canonical number, no second calculator.
+    const projection = buildEvidenceProjection(golden);
+    expect(projection.status).toBe('verified');
+    if (projection.status === 'verified') {
+      expect(catalog.separation?.deltaM).toBe(projection.evidence.deltaM);
+      expect(catalog.separation?.beforeM).toBe(projection.evidence.separationBeforeM);
+      expect(catalog.separation?.afterM).toBe(projection.evidence.separationAfterM);
+      expect(catalog.separation?.algorithmVersion).toBe(projection.evidence.algorithmVersion);
+      // The metadata's generator-recorded delta (14.037) is NOT displayed.
+    }
+    // The hook interpolates the canonical metric value.
+    expect(catalog.featured.hook).toContain('14.038 m');
+    expect(catalog.featured.hook).not.toContain('14.037');
+    // Interpretation labeling survives the interpolation.
+    expect(catalog.featured.hook).toContain('interpretation');
   });
 });

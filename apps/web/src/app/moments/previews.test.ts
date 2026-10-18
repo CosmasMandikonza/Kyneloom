@@ -35,8 +35,8 @@ async function bindings() {
     matchId: golden.data.matchId,
     seed: golden.data.seed,
     generatorVersion: golden.data.generatorVersion,
-    eventsSha256: golden.data.integrity?.events ?? null,
-    trackingSha256: golden.data.integrity?.tracking ?? null,
+    eventsSha256: golden.data.contentDigests.events,
+    trackingSha256: golden.data.contentDigests.tracking,
   };
   const catalogBinding: PreviewCatalogBinding = {
     entries,
@@ -264,5 +264,94 @@ describe('loadPreviewBook (raw loader hardening)', () => {
     ) as { integrity?: { events?: string; tracking?: string } };
     expect(raw.fingerprint?.eventsSha256).toBe(metadata.integrity?.events ?? null);
     expect(raw.fingerprint?.trackingSha256).toBe(metadata.integrity?.tracking ?? null);
+  });
+});
+
+describe('source digest verification (review round 3, gate A)', () => {
+  it('computes content digests that match the canonical fixture attestation', async () => {
+    const golden = await loadGoldenMatch();
+    if (!golden.ok) throw new Error('fixture unavailable');
+    // The convention (sha256 of canonicalJsonStringify) reproduces the
+    // committed metadata's own claims, and the verified attestation stands.
+    expect(golden.data.integrity).toEqual(golden.data.contentDigests);
+    const metadata = JSON.parse(
+      readFileSync('tests/fixtures/generated/synthetic-derby-01/metadata.json', 'utf-8'),
+    ) as { integrity?: { events?: string; tracking?: string } };
+    expect(golden.data.contentDigests.events).toBe(metadata.integrity?.events);
+    expect(golden.data.contentDigests.tracking).toBe(metadata.integrity?.tracking);
+  });
+
+  it('withholds previews when a source sample changes without a metadata update', async () => {
+    // Canonical truth FIRST (before the env override redirects the loader).
+    const canonical = await loadGoldenMatch();
+    if (!canonical.ok) throw new Error('fixture unavailable');
+    const canonicalTrackingDigest = canonical.data.contentDigests.tracking;
+    const catalog = buildMomentCatalog(canonical);
+    if (catalog === null) throw new Error('catalog null');
+    const entries = new Map<string, { focusMs: number; camera: string }>();
+    for (const entry of [catalog.featured, ...catalog.chapters]) {
+      entries.set(entry.catalogId, { focusMs: entry.focusMs, camera: entry.previewCamera });
+    }
+    const catalogBinding: PreviewCatalogBinding = {
+      entries,
+      featuredId: catalog.featured.catalogId,
+      windowMs: catalog.windowMs,
+    };
+
+    // Scratch copy of the canonical fixture with ONE valid tracking sample
+    // mutated and metadata left untouched: formerly metadata+manifest still
+    // carried the old matching strings; now the computed digest diverges
+    // and the binder must fail closed.
+    const root = mkdtempSync(path.join(tmpdir(), 'kyneloom-mutated-'));
+    const dst = path.join(root, 'generated', 'synthetic-derby-01');
+    const src = path.join('tests', 'fixtures', 'generated', 'synthetic-derby-01');
+    mkdirSync(dst, { recursive: true });
+    for (const file of ['events.json', 'metadata.json']) {
+      writeFileSync(path.join(dst, file), readFileSync(path.join(src, file)));
+    }
+    const lines = readFileSync(path.join(src, 'tracking.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((line) => line.trim() !== '');
+    const mutated = JSON.parse(lines[0] as string) as { xM: number };
+    mutated.xM += 0.01; // a valid, parseable sample — content changed
+    lines[0] = JSON.stringify(mutated);
+    writeFileSync(path.join(dst, 'tracking.jsonl'), `${lines.join('\n')}\n`);
+
+    const previousEnv = process.env['KYNELOOM_FIXTURES_DIR'];
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      process.env['KYNELOOM_FIXTURES_DIR'] = root;
+      const mutatedGolden = await loadGoldenMatch();
+      expect(mutatedGolden.ok).toBe(true); // the replay itself survives
+      if (mutatedGolden.ok) {
+        // Computed digest diverges from the untouched metadata claim…
+        expect(mutatedGolden.data.contentDigests.tracking).not.toBe(canonicalTrackingDigest);
+        // …so the attestation is downgraded to unverified (logged)…
+        expect(mutatedGolden.data.integrity).toBeNull();
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('does not match'));
+        // …and the preview manifest (which still claims the ORIGINAL
+        // digests) no longer binds anything — stale previews withheld.
+        const raw = loadPreviewBook(); // the committed, unmodified manifest
+        expect(raw.fingerprint?.trackingSha256).toBe(canonicalTrackingDigest);
+        const book = bindPreviewBook(
+          raw,
+          {
+            matchId: mutatedGolden.data.matchId,
+            seed: mutatedGolden.data.seed,
+            generatorVersion: mutatedGolden.data.generatorVersion,
+            eventsSha256: mutatedGolden.data.contentDigests.events,
+            trackingSha256: mutatedGolden.data.contentDigests.tracking,
+          },
+          catalogBinding,
+        );
+        expect(book.byId.size).toBe(0);
+        expect(book.motion).toBeNull();
+      }
+    } finally {
+      if (previousEnv === undefined) delete process.env['KYNELOOM_FIXTURES_DIR'];
+      else process.env['KYNELOOM_FIXTURES_DIR'] = previousEnv;
+      rmSync(root, { recursive: true, force: true });
+      vi.restoreAllMocks();
+    }
   });
 });

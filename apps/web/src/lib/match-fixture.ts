@@ -1,8 +1,14 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { projectMatch, type ProjectedMatch } from '@kyneloom/match-core';
-import type { MatchEvent, MatchState, TrackingSample } from '@kyneloom/contracts';
+import {
+  canonicalJsonStringify,
+  type MatchEvent,
+  type MatchState,
+  type TrackingSample,
+} from '@kyneloom/contracts';
 
 /**
  * Server-side bridge from the committed golden fixture to the authoritative
@@ -75,9 +81,21 @@ export interface GoldenMatchData {
    */
   readonly story: GoldenStoryFacts | null;
   /**
-   * The metadata's content hashes for events/tracking — the revision
-   * fingerprint derived artifacts (previews) must match. Null when the
-   * block is absent; consumers treat unverifiable provenance accordingly.
+   * ACTUAL SHA-256 digests of the parsed events and tracking content
+   * currently loaded — `sha256:canonicalJsonStringify(...)` per the
+   * repository's canonical hashing convention (scripts/generate-fixture.ts,
+   * tests/golden-fixture.test.ts). These are computed, never claimed: the
+   * preview binder compares manifest hashes against THESE, so a source
+   * mutation without a metadata update cannot keep stale previews bound.
+   */
+  readonly contentDigests: GoldenFixtureIntegrity;
+  /**
+   * The metadata's content-hash attestation, VERIFIED against
+   * `contentDigests`. Null when the metadata carries no integrity block OR
+   * when its claim disagrees with the loaded content (a server-side
+   * diagnostic is logged; the replay itself never depended on the
+   * attestation, so it is not torn down by a stale claim — derived
+   * artifacts bind to the computed digests instead).
    */
   readonly integrity: GoldenFixtureIntegrity | null;
 }
@@ -369,6 +387,30 @@ export async function loadGoldenMatch(): Promise<GoldenMatchStatus> {
   try {
     const checkpointMs = metadata.goldenCheckpointMs;
     const end = projected.matchStateAt(metadata.sampling.goldenWindowMs[1] + 1);
+    // ACTUAL content digests of what was loaded (the same convention
+    // scripts/generate-fixture.ts writes and tests/golden-fixture.test.ts
+    // verifies): sha256 over canonicalJsonStringify of the parsed arrays.
+    const contentDigests: GoldenFixtureIntegrity = {
+      events: sha256Canonical(events),
+      tracking: sha256Canonical(tracking),
+    };
+    // The metadata attestation only counts when it matches the content it
+    // claims to attest. A mismatch logs server-side and downgrades to
+    // "unverified" — the replay itself never depended on the claim.
+    const claimed = parseFixtureIntegrity(metadata.integrity);
+    const integrity =
+      claimed !== null &&
+      claimed.events === contentDigests.events &&
+      claimed.tracking === contentDigests.tracking
+        ? claimed
+        : (() => {
+            if (claimed !== null) {
+              console.warn(
+                '[kyneloom:fixture] metadata integrity claim does not match the loaded content — attestation treated as unverified (derived artifacts bind to computed digests)',
+              );
+            }
+            return null;
+          })();
     return {
       ok: true,
       data: {
@@ -385,7 +427,8 @@ export async function loadGoldenMatch(): Promise<GoldenMatchStatus> {
         sampleCount: metadata.sampling.sampleCount,
         projected,
         story: parseGoldenStory(metadata.golden),
-        integrity: parseFixtureIntegrity(metadata.integrity),
+        contentDigests,
+        integrity,
       },
     };
   } catch (error) {
@@ -396,6 +439,11 @@ export async function loadGoldenMatch(): Promise<GoldenMatchStatus> {
       dir,
     );
   }
+}
+
+/** The repository's canonical digest: `sha256:canonicalJsonStringify(v)`. */
+function sha256Canonical(value: unknown): string {
+  return `sha256:${createHash('sha256').update(canonicalJsonStringify(value)).digest('hex')}`;
 }
 
 function resolveWorkspaceFixturesRoot(): string {

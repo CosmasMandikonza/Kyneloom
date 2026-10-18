@@ -257,11 +257,15 @@ async function main(): Promise<void> {
   const catalog = buildMomentCatalog(golden);
   if (catalog === null) throw new Error('catalog could not be built');
   const entries = [catalog.featured, ...catalog.chapters];
+  // Provenance fingerprints are the COMPUTED digests of the source the
+  // captures were taken against (verified by loadGoldenMatch), never a
+  // raw metadata claim.
+  const sourceDigests = {
+    events: golden.data.contentDigests.events,
+    tracking: golden.data.contentDigests.tracking,
+  };
 
   mkdirSync(OUT_DIR, { recursive: true });
-  const metadata = JSON.parse(
-    readFileSync('tests/fixtures/generated/synthetic-derby-01/metadata.json', 'utf-8'),
-  ) as { integrity?: { events?: string; tracking?: string } };
 
   const stopServer = await startServer();
   try {
@@ -378,8 +382,8 @@ async function main(): Promise<void> {
         fixture: {
           seed: golden.data.seed,
           generatorVersion: golden.data.generatorVersion,
-          eventsSha256: metadata.integrity?.events ?? null,
-          trackingSha256: metadata.integrity?.tracking ?? null,
+          eventsSha256: sourceDigests.events,
+          trackingSha256: sourceDigests.tracking,
         },
         capture: { viewport: CAPTURE_VIEWPORT, browser: chromium.name(), headless: true },
         previews,

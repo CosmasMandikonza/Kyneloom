@@ -71,6 +71,7 @@ async function galleryProps(overrides: { previews?: 'none' | 'first-only' } = {}
       generatorVersion: golden.data.generatorVersion,
       windowMs: catalog.windowMs,
       story: catalog.story as GoldenStoryFacts | null,
+      separationMetric: catalog.separation,
       previewMethod: 'test-method',
     } as const,
     catalog,

@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from 'react';
 import { formatMatchClock } from '@/lib/clock';
 import type { GoldenStoryFacts } from '@/lib/match-fixture';
-import type { MomentCatalogEntry } from '@/lib/moment-catalog';
+import type { CatalogSeparationMetric, MomentCatalogEntry } from '@/lib/moment-catalog';
 import { FeaturedMoment } from './featured-moment';
 import { MomentCard } from './moment-card';
 import { tiltRegistry } from './tilt';
@@ -27,6 +27,7 @@ export interface MomentGalleryProps {
   readonly generatorVersion: string | null;
   readonly windowMs: readonly [number, number];
   readonly story: GoldenStoryFacts | null;
+  readonly separationMetric: CatalogSeparationMetric | null;
   readonly previewMethod: string | null;
 }
 
@@ -106,6 +107,7 @@ export function MomentGallery(props: MomentGalleryProps) {
         preview={props.featuredPreview}
         motion={props.motion}
         story={props.story}
+        separationMetric={props.separationMetric}
         seed={props.seed}
       />
 

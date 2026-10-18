@@ -55,8 +55,11 @@ export default async function MomentsPage() {
             matchId: golden.data.matchId,
             seed: golden.data.seed,
             generatorVersion: golden.data.generatorVersion,
-            eventsSha256: golden.data.integrity?.events ?? null,
-            trackingSha256: golden.data.integrity?.tracking ?? null,
+            // COMPUTED digests of the loaded source — never the metadata's
+            // own claim, so a content mutation without a metadata update
+            // cannot keep stale previews bound.
+            eventsSha256: golden.data.contentDigests.events,
+            trackingSha256: golden.data.contentDigests.tracking,
           },
           catalogBinding(catalog),
         )
@@ -106,6 +109,7 @@ export default async function MomentsPage() {
         generatorVersion={golden.ok ? golden.data.generatorVersion : null}
         windowMs={catalog.windowMs}
         story={catalog.story}
+        separationMetric={catalog.separation}
         previewMethod={book.method}
       />
     </main>

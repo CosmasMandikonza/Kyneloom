@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { formatMatchClock } from '@/lib/clock';
 import type { GoldenStoryFacts } from '@/lib/match-fixture';
-import type { MomentCatalogEntry } from '@/lib/moment-catalog';
+import type { CatalogSeparationMetric, MomentCatalogEntry } from '@/lib/moment-catalog';
 import { exploreHrefFor } from '@/lib/moment-catalog';
 import type { MotionRecord, PreviewRecord } from './previews';
 import { createTiltController } from './tilt';
@@ -24,10 +24,18 @@ export interface FeaturedMomentProps {
   readonly preview: PreviewRecord | null;
   readonly motion: MotionRecord | null;
   readonly story: GoldenStoryFacts | null;
+  readonly separationMetric: CatalogSeparationMetric | null;
   readonly seed: number | null;
 }
 
-export function FeaturedMoment({ entry, preview, motion, story, seed }: FeaturedMomentProps) {
+export function FeaturedMoment({
+  entry,
+  preview,
+  motion,
+  story,
+  separationMetric,
+  seed,
+}: FeaturedMomentProps) {
   const mediaRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -156,28 +164,33 @@ export function FeaturedMoment({ entry, preview, motion, story, seed }: Featured
         <p className="featured__hook">{entry.hook}</p>
 
         <dl className="featured__facts mono">
-          {separation !== undefined && story !== null ? (
+          {separationMetric !== null ? (
             <>
               <div>
                 <dt>Separation</dt>
                 <dd>
-                  {story.decoyRun.separationBeforeM.toFixed(3)} →{' '}
-                  {story.decoyRun.separationAfterM.toFixed(3)} m (+
-                  {story.decoyRun.separationDeltaM.toFixed(3)})
+                  {separationMetric.beforeM.toFixed(3)} → {separationMetric.afterM.toFixed(3)} m (+
+                  {separationMetric.deltaM.toFixed(3)})
                 </dd>
               </div>
-              <div>
-                <dt>Pass</dt>
-                <dd>
-                  {story.pass.distanceM.toFixed(3)} m · release {story.pass.speedMps.toFixed(3)} m/s
-                </dd>
-              </div>
-              <div>
-                <dt>Strike</dt>
-                <dd>
-                  {story.shot.distanceM.toFixed(3)} m · release {story.shot.speedMps.toFixed(3)} m/s
-                </dd>
-              </div>
+              {story !== null ? (
+                <>
+                  <div>
+                    <dt>Pass</dt>
+                    <dd>
+                      {story.pass.distanceM.toFixed(3)} m · release {story.pass.speedMps.toFixed(3)}{' '}
+                      m/s
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Strike</dt>
+                    <dd>
+                      {story.shot.distanceM.toFixed(3)} m · release {story.shot.speedMps.toFixed(3)}{' '}
+                      m/s
+                    </dd>
+                  </div>
+                </>
+              ) : null}
             </>
           ) : (
             <div>
@@ -187,8 +200,10 @@ export function FeaturedMoment({ entry, preview, motion, story, seed }: Featured
           )}
         </dl>
         <p className="featured__facts-note">
-          Distances cross-checked against accepted tracking; release speeds are generator-recorded
-          values from the committed fixture metadata.
+          Separation from the versioned Evidence X-Ray metric (
+          {separationMetric?.algorithmVersion ?? 'unavailable'}) over exact source frames; distances
+          cross-checked against accepted tracking; release speeds are generator-recorded values from
+          the committed fixture metadata.
         </p>
         <p className="featured__interpretation" data-featured-interpretation="">
           <span className="mono featured__interpretation-tag">Interpretation</span>
