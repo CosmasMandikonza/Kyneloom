@@ -48,6 +48,12 @@ export interface GoldenStoryFacts {
   };
 }
 
+/** The committed metadata's `integrity` block (content hashes), when present. */
+export interface GoldenFixtureIntegrity {
+  readonly events: string;
+  readonly tracking: string;
+}
+
 export interface GoldenMatchData {
   readonly matchId: string;
   readonly seed: number;
@@ -68,6 +74,12 @@ export interface GoldenMatchData {
    * generator's release parameters, not frame-derived averages.
    */
   readonly story: GoldenStoryFacts | null;
+  /**
+   * The metadata's content hashes for events/tracking — the revision
+   * fingerprint derived artifacts (previews) must match. Null when the
+   * block is absent; consumers treat unverifiable provenance accordingly.
+   */
+  readonly integrity: GoldenFixtureIntegrity | null;
 }
 
 export type GoldenMatchStatus =
@@ -85,6 +97,7 @@ interface GoldenFixtureMetadata {
   readonly goldenCheckpointMs: number;
   readonly scoreTimeline: readonly { atMs: number; score: string }[];
   readonly golden: unknown;
+  readonly integrity: unknown;
 }
 
 const TRUTHFUL_TAIL = 'The surfaces below render truthful empty states; nothing is fabricated.';
@@ -174,7 +187,21 @@ function parseFixtureMetadata(raw: string): GoldenFixtureMetadata {
     goldenCheckpointMs: record['goldenCheckpointMs'] as number,
     scoreTimeline: scoreTimeline as { atMs: number; score: string }[],
     golden: record['golden'],
+    integrity: record['integrity'],
   };
+}
+
+/**
+ * Structurally validate the metadata's `integrity` block (content hashes).
+ * Null when absent or not two sha256-looking strings — never half-parsed.
+ */
+function parseFixtureIntegrity(raw: unknown): GoldenFixtureIntegrity | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const record = raw as Record<string, unknown>;
+  const looksLikeSha256 = (value: unknown): value is string =>
+    typeof value === 'string' && /^sha256:[0-9a-f]{64}$/.test(value);
+  if (!looksLikeSha256(record['events']) || !looksLikeSha256(record['tracking'])) return null;
+  return { events: record['events'], tracking: record['tracking'] };
 }
 
 /**
@@ -358,6 +385,7 @@ export async function loadGoldenMatch(): Promise<GoldenMatchStatus> {
         sampleCount: metadata.sampling.sampleCount,
         projected,
         story: parseGoldenStory(metadata.golden),
+        integrity: parseFixtureIntegrity(metadata.integrity),
       },
     };
   } catch (error) {

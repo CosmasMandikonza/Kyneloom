@@ -147,13 +147,18 @@ interface ChapterSpec {
   readonly hook: string;
   readonly tag: string;
   readonly previewCamera: MomentCamera;
-  readonly facts: (ctx: FactContext) => MomentFacts;
+  /** Spec-level facts may carry null (absent score) — omitted centrally. */
+  readonly facts: (ctx: FactContext) => RawMomentFacts;
 }
+
+/** Optional facts with null allowed: absence before sanitization. */
+type RawMomentFacts = { readonly [K in keyof MomentFacts]?: MomentFacts[K] | null };
 
 interface FactContext {
   readonly at: (entityId: string, tMs: number) => SamplePoint;
   readonly speed: (entityId: string, tMs: number) => number | null;
-  readonly scoreAt: (tMs: number) => string;
+  /** Null when the fixture carries no score timeline (never a fabricated 0-0). */
+  readonly scoreAt: (tMs: number) => string | null;
   readonly goalMs: number;
 }
 
@@ -188,7 +193,7 @@ const CHAPTER_SPECS: readonly ChapterSpec[] = [
     eventId: null,
     playerFocusId: RUNNER,
     title: 'The follower hesitates',
-    hook: 'home-11’s decoy run is 0.7 s old. away-03 has actually closed on home-09 — the commitment has not happened yet.',
+    hook: 'home-11’s off-ball run is 0.7 s old. away-03 has actually closed on home-09 — the commitment has not happened yet.',
     tag: 'Off-ball run',
     previewCamera: 'overhead',
     facts: (c) => ({
@@ -374,14 +379,29 @@ function buildEntry(
     sourceStatus: 'synthetic',
     evidenceContext: inInterval ? 'measured-window' : 'outside-window',
     previewCamera: spec.previewCamera,
-    facts: spec.facts(ctx),
+    facts: omitNullFacts(spec.facts(ctx)),
     team,
   };
 }
 
+/**
+ * Absent optional facts are OMITTED, not null: a missing scoreLine must
+ * read as "no source fact", never as a value a consumer might print.
+ */
+function omitNullFacts(facts: RawMomentFacts): MomentFacts {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(facts)) {
+    if (value !== null && value !== undefined) result[key] = value;
+  }
+  return result as MomentFacts;
+}
+
 function scoreAtFactory(scoreTimeline: readonly { atMs: number; score: string }[]) {
-  return (tMs: number): string => {
-    let current = scoreTimeline[0]?.score ?? '0-0';
+  return (tMs: number): string | null => {
+    // No source timeline → no score fact. A fabricated '0-0' would assert a
+    // match state the fixture never recorded.
+    if (scoreTimeline.length === 0) return null;
+    let current: string | null = null;
     for (const entry of scoreTimeline) {
       if (entry.atMs <= tMs) current = entry.score;
       else break;
@@ -505,7 +525,7 @@ export function buildMomentCatalog(golden: GoldenMatchStatus): MomentCatalog | n
         eventId: null,
         playerFocusId: RUNNER,
         title: 'The Invisible Assist',
-        hook: 'One run nobody passed to. It draws the defender, opens the lane and ends in the equalizer — every step below is measured, not narrated.',
+        hook: 'One run nobody passed to. While it unfolds, the measured defender–striker gap opens by 14.037 m — then the pass, the strike, the equalizer. The chapters below replay what the sources recorded; how much the run itself caused is interpretation.',
         tag: 'Featured chapter',
         previewCamera: 'follow',
         facts: (c) => ({
@@ -537,6 +557,41 @@ export function buildMomentCatalog(golden: GoldenMatchStatus): MomentCatalog | n
   }
 
   return { matchId, windowMs: goldenWindowMs, featured, chapters, story: golden.data.story };
+}
+
+export type MomentCatalogStatus =
+  | { readonly ok: true; readonly catalog: MomentCatalog }
+  | { readonly ok: false; readonly reason: 'unavailable' | 'invalid'; readonly message: string };
+
+const CATALOG_INVALID_MESSAGE =
+  'The moment catalog failed validation against the fixture — the gallery below shows its truthful unavailable state instead of chapters that cannot be grounded. Nothing is fabricated.';
+
+/**
+ * Route-boundary wrapper (review round 2): buildMomentCatalog INTENTIONALLY
+ * throws on incomplete tracking coverage, a missing in-window goal, or a
+ * metadata/tracking contradiction. That fail-closed contract is correct —
+ * but a server route must never turn it into a 500. This wrapper converts
+ * construction failures into a typed status: technical diagnostics go to
+ * the server log only, callers render honest unavailable states, and the
+ * default /explore replay (which does not depend on the catalog) keeps
+ * working.
+ */
+export function buildMomentCatalogSafe(golden: GoldenMatchStatus): MomentCatalogStatus {
+  if (!golden.ok) {
+    return { ok: false, reason: golden.reason, message: golden.message };
+  }
+  try {
+    const catalog = buildMomentCatalog(golden);
+    if (catalog === null) {
+      // Unreachable after the ok-guard, but the null contract is honored.
+      return { ok: false, reason: 'unavailable', message: CATALOG_INVALID_MESSAGE };
+    }
+    return { ok: true, catalog };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error(`[kyneloom:catalog] catalog construction failed: ${detail}`);
+    return { ok: false, reason: 'invalid', message: CATALOG_INVALID_MESSAGE };
+  }
 }
 
 /**

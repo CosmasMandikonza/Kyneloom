@@ -173,10 +173,14 @@ export function createTiltController(
       wake();
     },
     setEngaged(engaged) {
+      if (engaged === state.engaged) return;
       state.engaged = engaged;
       wake();
     },
     setVisible(visible) {
+      // No-op transitions never wake the loop: a freshly mounted, visible
+      // card has resting springs and must not schedule a frame at all.
+      if (visible === state.visible) return;
       state.visible = visible;
       wake();
     },

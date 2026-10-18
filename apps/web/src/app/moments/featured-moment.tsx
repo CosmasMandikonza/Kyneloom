@@ -190,6 +190,11 @@ export function FeaturedMoment({ entry, preview, motion, story, seed }: Featured
           Distances cross-checked against accepted tracking; release speeds are generator-recorded
           values from the committed fixture metadata.
         </p>
+        <p className="featured__interpretation" data-featured-interpretation="">
+          <span className="mono featured__interpretation-tag">Interpretation</span>
+          That the decoy run drew the defender and opened the lane is a tactical reading of the
+          measured separation — the tracking proves the space and the event order, not the cause.
+        </p>
 
         <div className="featured__actions">
           <Link href={exploreHrefFor(entry)} className="btn btn--primary featured__cta">

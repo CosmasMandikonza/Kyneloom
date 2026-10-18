@@ -10,7 +10,7 @@
  * non-zero on any failed check.
  */
 import { execSync, spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
@@ -1785,14 +1785,30 @@ async function main(): Promise<void> {
         undefined,
         { timeout: 20_000 },
       );
+      // Freshly mounted cards each wake ONE settle frame (the visibility
+      // observer confirms them, springs are already at rest, the loop
+      // retires next tick). The leak property is that everything SETTLES to
+      // zero — an instantaneous read would race those one-frame loops.
+      const settledToZero = await page
+        .waitForFunction(
+          () =>
+            (
+              window as { __kyneloomMoments?: { activeTiltLoops(): number } }
+            ).__kyneloomMoments?.activeTiltLoops() === 0,
+          undefined,
+          { timeout: 5000, polling: 120 },
+        )
+        .then(() => true)
+        .catch(() => false);
       const leakState = await page.evaluate(() => ({
         canvases: document.querySelectorAll('canvas').length,
         cards: document.querySelectorAll('.mcard').length,
         images: document.querySelectorAll('.mcard__image').length,
         tiltLoops: window.__kyneloomMoments!.activeTiltLoops(),
       }));
-      checks.seamRepeatNav = JSON.stringify(leakState);
+      checks.seamRepeatNav = JSON.stringify({ ...leakState, settledToZero });
       if (
+        !settledToZero ||
         leakState.canvases !== 0 ||
         leakState.cards !== 12 ||
         leakState.images !== 12 ||
@@ -1852,6 +1868,137 @@ async function main(): Promise<void> {
         await noGlContext.close();
       } finally {
         await noGlBrowser.close();
+      }
+    }
+
+    // KYN-10 review round 2 — degraded-fixture route safety: a fixture that
+    // LOADS but fails catalog validation (here: the ia-12 chapter's focus
+    // frame removed from a scratch copy; the default checkpoint keeps full
+    // 23-entity coverage) must render honest states on BOTH routes — never
+    // a server error — and the default /explore replay must survive intact.
+    {
+      const degradedPort = 3185;
+      const degradedBase = `http://127.0.0.1:${degradedPort}`;
+      const scratchRoot = path.join(OUT_DIR, '.degraded-fixture');
+      const degradedDir = path.join(scratchRoot, 'generated', 'synthetic-derby-01');
+      rmSync(scratchRoot, { recursive: true, force: true });
+      mkdirSync(degradedDir, { recursive: true });
+      const sourceDir = path.resolve('tests', 'fixtures', 'generated', 'synthetic-derby-01');
+      copyFileSync(path.join(sourceDir, 'events.json'), path.join(degradedDir, 'events.json'));
+      copyFileSync(path.join(sourceDir, 'metadata.json'), path.join(degradedDir, 'metadata.json'));
+      const keptLines = readFileSync(path.join(sourceDir, 'tracking.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((line) => {
+          const trimmed = line.trim();
+          if (trimmed === '') return false;
+          try {
+            return (JSON.parse(trimmed) as { sampleTimeMs: number }).sampleTimeMs !== 4_731_000;
+          } catch {
+            return false;
+          }
+        });
+      writeFileSync(path.join(degradedDir, 'tracking.jsonl'), `${keptLines.join('\n')}\n`);
+
+      const degradedServer = spawn(
+        'pnpm',
+        ['--filter', '@kyneloom/web', 'start', '--port', String(degradedPort)],
+        { shell: true, stdio: 'pipe', env: { ...process.env, KYNELOOM_FIXTURES_DIR: scratchRoot } },
+      );
+      const degradedStop = async (): Promise<void> => {
+        spawn('taskkill', ['/F', '/T', '/PID', String(degradedServer.pid)], { stdio: 'ignore' });
+        await new Promise((r) => setTimeout(r, 800));
+      };
+      try {
+        const deadline = Date.now() + 60_000;
+        for (;;) {
+          try {
+            const res = await fetch(degradedBase, { signal: AbortSignal.timeout(1500) });
+            if (res.ok) break;
+          } catch {
+            /* not up yet */
+          }
+          if (Date.now() > deadline) throw new Error('degraded server did not start');
+          await new Promise((r) => setTimeout(r, 700));
+        }
+        const degradedContext = await browser.newContext({
+          viewport: { width: 1280, height: 800 },
+        });
+        const degradedPage = await degradedContext.newPage();
+        const degradedErrors: string[] = [];
+        degradedPage.on('console', (msg) => {
+          if (msg.type() === 'error') degradedErrors.push(msg.text());
+        });
+
+        const momentsRes = await degradedPage.goto(`${degradedBase}/moments`, {
+          waitUntil: 'load',
+        });
+        const catalogUnavailable = await degradedPage
+          .locator('.moments__empty')
+          .innerText()
+          .catch(() => '');
+        await degradedPage.screenshot({
+          path: path.join(OUT_DIR, 'screenshots', 'moments-degraded-1280x800.png'),
+        });
+
+        const exploreRes = await degradedPage.goto(`${degradedBase}/explore`, {
+          waitUntil: 'load',
+        });
+        await degradedPage.waitForFunction(
+          () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+          undefined,
+          { timeout: 45_000 },
+        );
+        await degradedPage.waitForTimeout(800);
+        const replayState = await degradedPage.evaluate(() => ({
+          playhead: window.__kyneloomScene!.playheadMs(),
+          players: window.__kyneloomScene!.snapshot().players.length,
+        }));
+        // A selection attempted against the invalid catalog degrades to the
+        // honest notice — still no server error.
+        const selectionRes = await degradedPage.goto(
+          `${degradedBase}/explore?moment=ia-03-measured-checkpoint`,
+          { waitUntil: 'load' },
+        );
+        const noticeShown = await degradedPage
+          .locator('[data-unknown-moment]')
+          .first()
+          .isVisible()
+          .catch(() => false);
+
+        const degradedOk =
+          momentsRes?.status() === 200 &&
+          catalogUnavailable.toLowerCase().includes('catalog unavailable') &&
+          exploreRes?.status() === 200 &&
+          replayState.playhead === 4_722_100 &&
+          replayState.players === 22 &&
+          selectionRes?.status() === 200 &&
+          noticeShown &&
+          degradedErrors.length === 0;
+        if (!degradedOk) {
+          failures.push(
+            `degraded fixture: moments ${String(momentsRes?.status())}, explore ${String(exploreRes?.status())}, replay ${JSON.stringify(replayState)}, notice ${String(noticeShown)}, console errors ${String(degradedErrors.length)}`,
+          );
+        }
+        results.push({
+          route: 'moments-degraded',
+          viewport: '1280x800',
+          reducedMotion: false,
+          screenshot: 'screenshots/moments-degraded-1280x800.png',
+          horizontalOverflowPx: 0,
+          consoleErrors: degradedErrors,
+          checks: {
+            momentsStatus: momentsRes?.status() ?? 0,
+            catalogUnavailable: catalogUnavailable.toLowerCase().includes('catalog unavailable'),
+            exploreStatus: exploreRes?.status() ?? 0,
+            defaultReplay: JSON.stringify(replayState),
+            selectionStatus: selectionRes?.status() ?? 0,
+            selectionNotice: noticeShown,
+          },
+        });
+        await degradedContext.close();
+      } finally {
+        await degradedStop();
+        rmSync(scratchRoot, { recursive: true, force: true });
       }
     }
     await page.screenshot({ path: path.join(OUT_DIR, 'screenshots', 'nav-flow-studio.png') });

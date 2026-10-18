@@ -173,8 +173,31 @@
   color: var(--text-muted);
   font-size: var(--step--1);
   opacity: 0.75;
-  margin: 0 0 var(--space-5);
+  margin: 0 0 var(--space-3);
   max-width: 60ch;
+}
+
+/* Tactical causality is an interpretation, not a tracked fact — labeled in
+   amber, the same hypothesis semantics Evidence X-Ray uses. */
+.featured__interpretation {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border-left: 2px solid color-mix(in srgb, var(--amber-400) 65%, transparent);
+  color: var(--text-muted);
+  font-size: var(--step--1);
+  line-height: 1.55;
+  max-width: 62ch;
+}
+
+.featured__interpretation-tag {
+  flex: none;
+  color: var(--amber-400);
+  font-size: 0.62rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
 }
 
 .featured__actions {
