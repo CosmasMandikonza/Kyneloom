@@ -28,6 +28,7 @@ const VIEWPORTS = [
 
 const ROUTES = [
   { name: 'landing', path: '/' },
+  { name: 'moments', path: '/moments' },
   { name: 'explore', path: '/explore' },
   { name: 'studio', path: '/studio' },
   { name: 'moment', path: '/m/mom-synthetic-78m' },
@@ -110,6 +111,15 @@ declare global {
       geometries: number;
       textures: number;
       samples: number;
+    };
+    __kyneloomMoments?: {
+      count(): number;
+      ids(): string[];
+      focusMs(): number[];
+      previewStatuses(): Record<string, string>;
+      motionActive(): boolean;
+      activeTiltLoops(): number;
+      reducedMotion(): boolean;
     };
   }
 }
@@ -227,6 +237,8 @@ async function main(): Promise<void> {
       for (const reducedMotion of [false, true]) {
         // Reduced-motion variants cover the two scene-bearing surfaces at
         // mobile + one desktop width (documented in qa/README.md).
+        // Reduced-motion variants cover the scene-bearing surfaces plus the
+        // gallery at mobile + one desktop width (documented in qa/README.md).
         if (reducedMotion && !['390x844', '1440x900'].includes(viewport.name)) continue;
         const context = await browser.newContext({
           viewport: { width: viewport.width, height: viewport.height },
@@ -236,7 +248,7 @@ async function main(): Promise<void> {
         });
         const page = await context.newPage();
         for (const route of ROUTES) {
-          if (reducedMotion && !['landing', 'explore'].includes(route.name)) continue;
+          if (reducedMotion && !['landing', 'explore', 'moments'].includes(route.name)) continue;
           const consoleErrors: string[] = [];
           page.on('console', (msg) => {
             if (msg.type() === 'error') consoleErrors.push(msg.text());
@@ -1310,6 +1322,216 @@ async function main(): Promise<void> {
               }
             }
           }
+          if (route.name === 'moments') {
+            // KYN-10 — the gallery contract: a real catalog (≥12 distinct
+            // chapters with distinct source timestamps), real scene-derived
+            // previews, semantic links to the seam, no WebGL here, and honest
+            // reduced-motion/touch behavior.
+            await page.waitForFunction(
+              () => (window as { __kyneloomMoments?: unknown }).__kyneloomMoments !== undefined,
+              undefined,
+              { timeout: 20_000 },
+            );
+            const probe = await page.evaluate(() => ({
+              count: window.__kyneloomMoments!.count(),
+              ids: window.__kyneloomMoments!.ids(),
+              focusMs: window.__kyneloomMoments!.focusMs(),
+              previews: window.__kyneloomMoments!.previewStatuses(),
+              reduced: window.__kyneloomMoments!.reducedMotion(),
+            }));
+            checks.momentsCount = probe.count;
+            checks.momentsDistinctIds = new Set(probe.ids).size;
+            checks.momentsDistinctFocus = new Set(probe.focusMs).size;
+            checks.momentsReducedMotion = probe.reduced;
+            if (probe.count < 12 || new Set(probe.ids).size !== probe.count) {
+              failures.push(
+                `moments @ ${viewport.name}: catalog has ${probe.count} chapters / ${new Set(probe.ids).size} distinct ids`,
+              );
+            }
+            if (new Set(probe.focusMs).size !== probe.count) {
+              failures.push(`moments @ ${viewport.name}: chapter focus timestamps not distinct`);
+            }
+            // Every rendered card is a semantic link to the seam with its own
+            // catalog id and focus; the featured CTA resolves too.
+            const cards = page.locator('.mcard');
+            checks.momentsCards = await cards.count();
+            if (checks.momentsCards !== probe.count) {
+              failures.push(
+                `moments @ ${viewport.name}: ${checks.momentsCards} cards != ${probe.count} catalog chapters`,
+              );
+            }
+            const hrefs = await page.evaluate(() =>
+              Array.from(document.querySelectorAll<HTMLAnchorElement>('.mcard')).map((a) =>
+                a.getAttribute('href'),
+              ),
+            );
+            const hrefOk =
+              hrefs.length === probe.count &&
+              hrefs.every((href, i) => href === `/explore?moment=${probe.ids[i]}`);
+            checks.momentsHrefs = hrefOk ? 'exact' : 'MISMATCH';
+            if (!hrefOk) failures.push(`moments @ ${viewport.name}: card hrefs do not match ids`);
+            checks.momentsFeaturedCta =
+              (await page.locator('.featured__cta').getAttribute('href')) ===
+              '/explore?moment=ia-00-invisible-assist';
+            if (!checks.momentsFeaturedCta) {
+              failures.push(`moments @ ${viewport.name}: featured CTA href wrong`);
+            }
+            // Real scene previews: every preview image loads and they are
+            // distinct files (no repeated placeholder).
+            const images = await page.evaluate(() =>
+              Array.from(document.querySelectorAll<HTMLImageElement>('.mcard__image')).map(
+                (img) => ({
+                  src: img.getAttribute('src'),
+                  ok: img.complete && img.naturalWidth > 8,
+                }),
+              ),
+            );
+            checks.momentsPreviewsLoaded = `${images.filter((i) => i.ok).length}/${images.length}`;
+            checks.momentsPreviewsDistinct = new Set(images.map((i) => i.src)).size;
+            const renderedExpected = Object.values(probe.previews).filter(
+              (s) => s === 'rendered',
+            ).length;
+            if (renderedExpected > 0 && images.filter((i) => i.ok).length < renderedExpected) {
+              failures.push(
+                `moments @ ${viewport.name}: only ${images.filter((i) => i.ok).length}/${renderedExpected} preview images loaded`,
+              );
+            }
+            if (images.length > 1 && new Set(images.map((i) => i.src)).size !== images.length) {
+              failures.push(`moments @ ${viewport.name}: repeated preview src among cards`);
+            }
+            // The gallery owns NO WebGL contexts.
+            checks.momentsCanvases = await page.locator('canvas').count();
+            if (checks.momentsCanvases !== 0) {
+              failures.push(
+                `moments @ ${viewport.name}: ${checks.momentsCanvases} canvases on the gallery (expected 0)`,
+              );
+            }
+            // Spine: 12 real locator controls wired to chapters.
+            checks.momentsSpineNodes = await page.locator('.moments__spine-node').count();
+            if (checks.momentsSpineNodes !== probe.count) {
+              failures.push(
+                `moments @ ${viewport.name}: spine has ${checks.momentsSpineNodes} nodes != ${probe.count}`,
+              );
+            }
+            // Featured motion preview present (video or poster fallback).
+            checks.momentsFeaturedMedia =
+              (await page.locator('.featured__video').count()) === 1 ? 'present' : 'MISSING';
+            if (checks.momentsFeaturedMedia !== 'present') {
+              failures.push(`moments @ ${viewport.name}: featured media missing`);
+            }
+
+            if (!reducedMotion) {
+              // Hover reveal (fine pointers only): pointer onto a card lifts
+              // it (data-tilt-active) and uncovers the hook; moving away
+              // settles and leaves ZERO live tilt loops (no sustained rAF).
+              if (viewport.name !== '390x844' && viewport.name !== '375x812') {
+                const card = cards.first();
+                await card.scrollIntoViewIfNeeded();
+                const box = await card.boundingBox();
+                if (box !== null) {
+                  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.3, {
+                    steps: 6,
+                  });
+                  await page.waitForTimeout(500);
+                  checks.momentsHoverTilt =
+                    (await card.getAttribute('data-tilt-active')) === 'true' ? 'yes' : 'NO';
+                  if (checks.momentsHoverTilt !== 'yes') {
+                    failures.push(`moments @ ${viewport.name}: hover did not engage tilt`);
+                  }
+                  const hookOpacity = await page.evaluate(() => {
+                    const hook = document.querySelector('.mcard__hook') as HTMLElement | null;
+                    return hook === null ? -1 : Number(getComputedStyle(hook).opacity);
+                  });
+                  checks.momentsHoverReveal =
+                    hookOpacity > 0.9 ? 'visible' : `opacity ${String(hookOpacity)}`;
+                  if (hookOpacity <= 0.9) {
+                    failures.push(
+                      `moments @ ${viewport.name}: hook not revealed on hover (opacity ${String(hookOpacity)})`,
+                    );
+                  }
+                  if (viewport.name === '1440x900') {
+                    await page.screenshot({
+                      path: path.join(OUT_DIR, 'screenshots', 'moments-hover-1440x900.png'),
+                    });
+                  }
+                  // Sweep across every card, then leave the grid entirely.
+                  for (let i = 0; i < probe.count; i += 1) {
+                    const b = await cards.nth(i).boundingBox();
+                    if (b !== null) {
+                      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 2 });
+                    }
+                  }
+                  await page.mouse.move(8, 8, { steps: 4 });
+                  await page.waitForTimeout(1200);
+                  const loops = await page.evaluate(() =>
+                    window.__kyneloomMoments!.activeTiltLoops(),
+                  );
+                  checks.momentsTiltLoopsAfterLeave = loops;
+                  if (loops !== 0) {
+                    failures.push(
+                      `moments @ ${viewport.name}: ${loops} tilt rAF loops still alive after pointer left`,
+                    );
+                  }
+                }
+              }
+              // Motion preview pauses when scrolled out of view.
+              const video = page.locator('.featured__video').first();
+              if (
+                (await video.count()) === 1 &&
+                (await video.evaluate((el) => el.tagName)) === 'VIDEO'
+              ) {
+                await page.locator('#chapters').scrollIntoViewIfNeeded();
+                await page.waitForTimeout(1200);
+                checks.momentsMotionOffscreenPaused = await video.evaluate(
+                  (el) => (el as HTMLVideoElement).paused,
+                );
+                if (checks.momentsMotionOffscreenPaused !== true) {
+                  failures.push(
+                    `moments @ ${viewport.name}: featured motion kept playing offscreen`,
+                  );
+                }
+              }
+            } else {
+              // Reduced motion: discovery fully intact, zero spatial card
+              // animation (sweep the grid; no tilt loops may ever start).
+              const card = cards.first();
+              await card.scrollIntoViewIfNeeded();
+              const box = await card.boundingBox();
+              if (box !== null) {
+                await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.3, {
+                  steps: 4,
+                });
+                await page.waitForTimeout(600);
+                checks.momentsReducedTiltStatic = await page.evaluate(() =>
+                  window.__kyneloomMoments!.activeTiltLoops(),
+                );
+                if (checks.momentsReducedTiltStatic !== 0) {
+                  failures.push(
+                    `moments reduced-motion @ ${viewport.name}: tilt loops started (${checks.momentsReducedTiltStatic})`,
+                  );
+                }
+              }
+              checks.momentsReducedCardsStillLinks = (await cards.count()) === probe.count;
+            }
+            // Mobile (no hover): a real touch tap on a card activates the
+            // seam — the same navigation hover would drive on desktop.
+            if (viewport.name === '390x844') {
+              const first = cards.first();
+              await first.scrollIntoViewIfNeeded();
+              const box = await first.boundingBox();
+              if (box !== null) {
+                await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height * 0.4);
+                await page.waitForURL('**/explore?moment=**', { timeout: 20_000 }).then(
+                  () => undefined,
+                  () => undefined,
+                );
+                checks.momentsTouchNavigation = page.url().includes('/explore?moment=');
+                if (!checks.momentsTouchNavigation) {
+                  failures.push(`moments @ 390x844: touch tap did not open the replay`);
+                }
+              }
+            }
+          }
           if (route.name === 'studio') {
             checks.disabledPublish = await page
               .locator('button:has-text("Publish")[disabled]')
@@ -1360,6 +1582,206 @@ async function main(): Promise<void> {
       consoleErrors: [],
       checks: { landingToExplore: navWorks, exploreToStudio: page.url().endsWith('/studio') },
     });
+
+    // KYN-10 — the gallery→replay selection seam, exercised end to end:
+    // two genuinely different cards open DIFFERENT correct playheads with
+    // the canonical player/ball positions at those times; direct URLs work;
+    // unknown/malformed ids fail safely; the default route is unchanged;
+    // repeated navigation leaks nothing; keyboard activates cards.
+    {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const page = await context.newPage();
+      const consoleErrors: string[] = [];
+      page.on('console', (msg) => {
+        if (msg.type() === 'error') consoleErrors.push(msg.text());
+      });
+      const checks: Record<string, boolean | number | string> = {};
+
+      const openCardAndAssert = async (
+        catalogId: string,
+        expectedFocusMs: number,
+        ballTruth: { xM: number; yM: number; zM: number },
+      ): Promise<void> => {
+        await page.goto(`${BASE}/moments`, { waitUntil: 'load' });
+        await page.locator(`[data-catalog-id="${catalogId}"]`).scrollIntoViewIfNeeded();
+        await page.locator(`[data-catalog-id="${catalogId}"]`).click();
+        await page.waitForURL(`**/explore?moment=${catalogId}`, { timeout: 30_000 });
+        await page.waitForFunction(
+          () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+          undefined,
+          { timeout: 45_000 },
+        );
+        await page.waitForTimeout(600);
+        const snap = await page.evaluate(() => window.__kyneloomScene!.snapshot());
+        const ballOk =
+          snap.ball !== null &&
+          Math.abs(snap.ball.xM - ballTruth.xM) < 0.001 &&
+          Math.abs(snap.ball.yM - ballTruth.yM) < 0.001 &&
+          Math.abs(snap.ball.zM - ballTruth.zM) < 0.001 &&
+          snap.ball.exact === true;
+        if (snap.playheadMs !== expectedFocusMs || snap.players.length !== 22 || !ballOk) {
+          failures.push(
+            `moments seam ${catalogId}: playhead ${String(snap.playheadMs)} (want ${String(expectedFocusMs)}), players ${String(snap.players.length)}, ball ${JSON.stringify(snap.ball)}`,
+          );
+        }
+      };
+      // Chapter 1 (window open) and chapter 10 (the goal): two genuinely
+      // different cards → different correct source times with golden ball
+      // truth at each (fixture seed 24017 exact frames).
+      await openCardAndAssert('ia-01-possession-settles', 4_717_000, {
+        xM: 5.156,
+        yM: 2.498,
+        zM: 0.11,
+      });
+      await openCardAndAssert('ia-10-the-equalizer', 4_728_300, {
+        xM: 52.4,
+        yM: -2,
+        zM: 0.11,
+      });
+      checks.seamTwoCardsDistinct = 'ok';
+
+      // The chapter chip names the selection on the stage.
+      checks.seamChapterChip = await page.locator('[data-chapter-chip]').first().innerText();
+
+      // Direct navigation to a valid catalog selection.
+      await page.goto(`${BASE}/explore?moment=ia-04-top-speed`, { waitUntil: 'load' });
+      await page.waitForFunction(
+        () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+        undefined,
+        { timeout: 45_000 },
+      );
+      const directPlayhead = await page.evaluate(() => window.__kyneloomScene!.playheadMs());
+      checks.seamDirectNav =
+        directPlayhead === 4_723_400 ? 'ok' : `WRONG ${String(directPlayhead)}`;
+      if (directPlayhead !== 4_723_400) {
+        failures.push(`seam direct nav: playhead ${String(directPlayhead)} != 4723400`);
+      }
+
+      // Honest evidence context (KYN-10): X-Ray at a chapter OUTSIDE the
+      // measured interval shows the contextual note; jumping grounds it.
+      await page.getByRole('button', { name: 'X-Ray' }).click();
+      await page.waitForTimeout(700);
+      checks.seamEvidenceNote = (await page.locator('[data-evidence-context]').first().isVisible())
+        ? 'shown'
+        : 'MISSING';
+      if (checks.seamEvidenceNote !== 'shown') {
+        failures.push('seam: outside-interval evidence note did not appear');
+      }
+      await page.getByRole('button', { name: 'Go to measured interval' }).click();
+      await page.waitForTimeout(600);
+      const afterSeek = await page.evaluate(() => ({
+        playhead: window.__kyneloomScene!.playheadMs(),
+        noteHidden: (document.querySelector('[data-evidence-context]') as HTMLElement | null)
+          ?.hidden,
+      }));
+      checks.seamEvidenceJump = JSON.stringify(afterSeek);
+      if (afterSeek.playhead !== 4_720_500 || afterSeek.noteHidden !== true) {
+        failures.push(`seam evidence jump: ${checks.seamEvidenceJump}`);
+      }
+      await page.getByRole('button', { name: 'X-Ray' }).click(); // off
+
+      // Unknown and malformed catalog ids fail safely: honest notice, the
+      // default checkpoint stays authoritative, page stays healthy.
+      for (const bad of ['does-not-exist', '%3Cscript%3Ealert(1)%3C%2Fscript%3E']) {
+        await page.goto(`${BASE}/explore?moment=${bad}`, { waitUntil: 'load' });
+        await page.waitForFunction(
+          () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+          undefined,
+          { timeout: 45_000 },
+        );
+        const state = await page.evaluate(() => ({
+          notice: document.querySelector('[data-unknown-moment]') !== null,
+          playhead: window.__kyneloomScene!.playheadMs(),
+        }));
+        checks[`seamRejects(${bad.slice(0, 14)})`] = JSON.stringify(state);
+        if (!state.notice || state.playhead !== 4_722_100) {
+          failures.push(`seam rejection ${bad}: ${JSON.stringify(state)}`);
+        }
+      }
+
+      // The default route is unchanged by all of this.
+      await page.goto(`${BASE}/explore`, { waitUntil: 'load' });
+      await page.waitForFunction(
+        () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+        undefined,
+        { timeout: 45_000 },
+      );
+      const defaultPlayhead = await page.evaluate(() => window.__kyneloomScene!.playheadMs());
+      checks.seamDefaultExplore =
+        defaultPlayhead === 4_722_100 ? 'checkpoint' : String(defaultPlayhead);
+      if (defaultPlayhead !== 4_722_100) {
+        failures.push(`default /explore playhead ${String(defaultPlayhead)} != 4722100`);
+      }
+
+      // Keyboard activation: Tab reaches the first card; Enter opens it.
+      await page.goto(`${BASE}/moments`, { waitUntil: 'load' });
+      await page.locator('.moments__title').focus(); // deterministic Tab start
+      let cardFocused = false;
+      for (let i = 0; i < 30 && !cardFocused; i += 1) {
+        await page.keyboard.press('Tab');
+        cardFocused = await page.evaluate(
+          () => document.activeElement?.classList.contains('mcard') ?? false,
+        );
+      }
+      checks.seamKeyboardTab = cardFocused;
+      if (!cardFocused) {
+        failures.push('seam keyboard: Tab never reached a moment card');
+      } else {
+        const focusVisible = await page.evaluate(() => {
+          const el = document.activeElement as HTMLElement | null;
+          return el !== null && getComputedStyle(el).outlineStyle !== 'none';
+        });
+        checks.seamKeyboardFocusVisible = focusVisible;
+        if (!focusVisible) failures.push('seam keyboard: focus ring not visible on card');
+        await page.keyboard.press('Enter');
+        await page.waitForURL('**/explore?moment=**', { timeout: 30_000 });
+        checks.seamKeyboardEnter = page.url().includes('/explore?moment=');
+        if (!checks.seamKeyboardEnter) {
+          failures.push('seam keyboard: Enter did not open the selected moment');
+        }
+      }
+
+      // Repeated navigation leaks neither canvases nor previews nor loops.
+      for (let round = 0; round < 3; round += 1) {
+        await page.goto(`${BASE}/moments`, { waitUntil: 'load' });
+        await page.locator('.mcard').first().click();
+        await page.waitForURL('**/explore?moment=**', { timeout: 30_000 });
+      }
+      await page.goto(`${BASE}/moments`, { waitUntil: 'load' });
+      await page.waitForFunction(
+        () => (window as { __kyneloomMoments?: unknown }).__kyneloomMoments !== undefined,
+        undefined,
+        { timeout: 20_000 },
+      );
+      const leakState = await page.evaluate(() => ({
+        canvases: document.querySelectorAll('canvas').length,
+        cards: document.querySelectorAll('.mcard').length,
+        images: document.querySelectorAll('.mcard__image').length,
+        tiltLoops: window.__kyneloomMoments!.activeTiltLoops(),
+      }));
+      checks.seamRepeatNav = JSON.stringify(leakState);
+      if (
+        leakState.canvases !== 0 ||
+        leakState.cards !== 12 ||
+        leakState.images !== 12 ||
+        leakState.tiltLoops !== 0
+      ) {
+        failures.push(`seam repeated navigation leaked: ${checks.seamRepeatNav}`);
+      }
+      if (consoleErrors.length > 0) {
+        failures.push(`moments seam console errors: ${consoleErrors.length}`);
+      }
+      results.push({
+        route: 'moments-seam',
+        viewport: '1440x900',
+        reducedMotion: false,
+        screenshot: 'screenshots/moments-1440x900.png',
+        horizontalOverflowPx: 0,
+        consoleErrors,
+        checks,
+      });
+      await context.close();
+    }
 
     // KYN-09 acceptance 9 — WebGL-unavailable landing: a truthful fallback
     // (poster + direct CTA link), verified in a browser with WebGL off.

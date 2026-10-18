@@ -140,3 +140,41 @@ After a passing run, the operator inspects the screenshots and the video
 personally and iterates the design, then re-runs until the review is clean.
 `report.json` records the machine-readable results, including the perf probe
 readings and ready timings per viewport.
+
+### Moment gallery checks (KYN-10)
+
+`/moments` joins the capture matrix with its own acceptance set: the live
+probe (`__kyneloomMoments`) reports ≥ 12 chapters with distinct ids and
+distinct source timestamps; every rendered card is a semantic link whose
+href matches its catalog id; every preview image loads with a distinct src
+(no repeated placeholder); the route owns zero canvases; the timeline spine
+exposes one locator control per chapter; hover engages the tilt and reveals
+the hook on fine pointers, a full pointer sweep across all cards followed by
+leaving the grid ends with ZERO live tilt rAF loops; the featured motion
+preview pauses when scrolled offscreen; reduced motion keeps discovery fully
+functional with no spatial animation; and a real touch tap on 390×844 opens
+the replay without hover (`moments-touch`). A dedicated `moments-seam`
+section drives card→scene truth end to end: two different cards open
+different correct playheads with exact ball truth at each frame
+(4717000 → 5.156, 2.498, 0.11; 4728300 → 52.4, −2, 0.11), direct
+`/explore?moment=<id>` works, unknown/malformed ids render the honest
+notice with the default checkpoint intact, Tab/Enter keyboard activation
+works with a visible focus ring, Evidence X-Ray outside the measured
+interval shows the contextual note and its seek lands on 4720500, and three
+moments→explore→moments rounds leak nothing.
+
+## `moments:previews` and `qa:record:gallery` (KYN-10)
+
+`pnpm moments:previews` (scripts/generate-moment-previews.ts) generates the
+gallery's imagery from the REAL product: the live Living Replay opened at
+each chapter's validated timestamp, deliberate camera per entry, rig
+converged, floating chrome hidden for a clean plate, canvas captured
+(`apps/web/public/moment-previews/*.png` + provenance `manifest.json`). The
+featured motion preview is a continuous compositor capture of the playing
+scene (headed GPU; headless fallback) assembled with ffmpeg.
+`pnpm qa:record:gallery` (scripts/record-gallery-live.ts) records the
+continuous discovery journey — gallery → featured → hover/tilt → different
+chapter → 3D replay at its timestamp → camera change → honest evidence
+context → inspector → back to replay — into
+`qa/video/gallery-screencast.mp4` (+ `.webm` twin), same honesty rules as
+the other recorders.
