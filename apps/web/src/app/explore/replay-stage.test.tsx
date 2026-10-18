@@ -99,7 +99,14 @@ describe('ReplayStage truthfully enabled controls', () => {
     await enterAnalyst();
     const radios = cameraRadios();
     const labels = [...radios].map((radio) => radio.textContent?.trim());
-    expect(labels).toEqual(['Broadcast', 'Overhead', 'Follow', 'Keeper', 'Orbit', 'Directed']);
+    expect(labels).toEqual([
+      'Broadcast',
+      'Overhead',
+      'Follow',
+      'Goalkeeper',
+      'Free orbit',
+      'Directed',
+    ]);
     for (const radio of radios) {
       expect(radio.disabled).toBe(false); // the authored manifest track is valid
     }

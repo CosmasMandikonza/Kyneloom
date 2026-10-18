@@ -4,11 +4,7 @@ import { buildSceneData } from './scene-data';
 import { buildEvidenceProjection } from './evidence-data';
 import { sceneTimeline } from './scene-client';
 import { createFrameCache } from '@/app/explore/scene/scene-context';
-import {
-  describeSpatialState,
-  fanExplanation,
-  transcriptEntries,
-} from './lens-selectors';
+import { describeSpatialState, fanExplanation, transcriptEntries } from './lens-selectors';
 
 /**
  * KYN-11 selector truth tests: every presentation is DERIVED from the same

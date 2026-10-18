@@ -400,9 +400,15 @@ function ReplayStageInner({
   useEffect(() => {
     const onSceneSelect = (event: Event): void => {
       const entityId = (event as CustomEvent<string | null>).detail;
-      flushSync(() => {
+      try {
+        flushSync(() => {
+          onSelect(entityId);
+        });
+      } catch {
+        // A nested flushSync (another bridge already flushing in this
+        // pointerdown) must never take the scene down — commit plain.
         onSelect(entityId);
-      });
+      }
     };
     window.addEventListener(SCENE_SELECT_EVENT, onSceneSelect);
     return () => window.removeEventListener(SCENE_SELECT_EVENT, onSceneSelect);
@@ -438,12 +444,39 @@ function ReplayStageInner({
   // click-to-select work for mouse, touch and synthetic test input at every
   // camera distance. Tapping empty pitch clears the selection.
   const SELECT_TOLERANCE_PX = 30;
+  /** Pointer travel above this (px) marks a drag, not a selection tap. */
+  const DRAG_THRESHOLD_PX = 6;
   useEffect(() => {
+    let downX = 0;
+    let downY = 0;
     const onDownSelect = (event: PointerEvent): void => {
+      downX = event.clientX;
+      downY = event.clientY;
+    };
+    const onUpSelect = (event: PointerEvent): void => {
       const target = event.target as Element | null;
       if (target?.closest?.('button, input, a, select, label')) return;
       const canvas = target?.closest?.('canvas');
       if (canvas === null || canvas === undefined) return;
+      // A drag (orbit rotate/pan, scrubbing) is not a selection tap.
+      if (Math.hypot(event.clientX - downX, event.clientY - downY) > DRAG_THRESHOLD_PX) return;
+      // Measured X-Ray geometry wins over selection: a press on the
+      // evidence itself opens the inspector (its own handler).
+      const rect = canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      if (xrayActiveRef.current) {
+        const probe = (
+          window as unknown as {
+            __kyneloomXray?: {
+              hitSegmentsScreen(): { x1: number; y1: number; x2: number; y2: number }[];
+            };
+          }
+        ).__kyneloomXray;
+        for (const seg of probe?.hitSegmentsScreen() ?? []) {
+          if (distanceToSegmentPx(px, py, seg) <= HIT_TOLERANCE_PX) return;
+        }
+      }
       const project = (
         window as unknown as {
           __kyneloomScene?: {
@@ -454,9 +487,6 @@ function ReplayStageInner({
         }
       ).__kyneloomScene?.visual?.projectWorld;
       if (project === undefined) return;
-      const rect = canvas.getBoundingClientRect();
-      const px = event.clientX - rect.left;
-      const py = event.clientY - rect.top;
       const frame = getFrame(engine.playheadMs);
       let bestId: string | null = null;
       let bestDistance = Number.POSITIVE_INFINITY;
@@ -465,14 +495,14 @@ function ReplayStageInner({
         if (sample === undefined) continue;
         const [wx, wy, wz] = pitchToThree({ xM: sample.xM, yM: sample.yM, zM: sample.zM });
         const screen = project(wx, wy, wz);
-        const distance = screen === null ? Number.POSITIVE_INFINITY : Math.hypot(screen[0] - px, screen[1] - py);
+        if (screen === null) continue;
+        const distance = Math.hypot(screen[0] - px, screen[1] - py);
         if (distance <= SELECT_TOLERANCE_PX && distance < bestDistance) {
           bestDistance = distance;
           bestId = player.entityId;
         }
       }
-      const next =
-        bestId === null ? null : selected === bestId ? null : bestId;
+      const next = bestId === null ? null : selected === bestId ? null : bestId;
       // Route through a DOM CustomEvent: updates called directly from
       // native capture-phase listeners do not reliably commit on this
       // stack for synthetic pointer input — the same finding that shaped
@@ -481,7 +511,11 @@ function ReplayStageInner({
       window.dispatchEvent(new CustomEvent(SCENE_SELECT_EVENT, { detail: next }));
     };
     document.addEventListener('pointerdown', onDownSelect, { capture: true });
-    return () => document.removeEventListener('pointerdown', onDownSelect, { capture: true });
+    document.addEventListener('pointerup', onUpSelect, { capture: true });
+    return () => {
+      document.removeEventListener('pointerdown', onDownSelect, { capture: true });
+      document.removeEventListener('pointerup', onUpSelect, { capture: true });
+    };
   }, [engine, getFrame, onSelect, scene.players, selected]);
 
   useEffect(() => {

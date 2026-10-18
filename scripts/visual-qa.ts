@@ -78,6 +78,7 @@ declare global {
         cameraWorldPosition(): readonly [number, number, number] | null;
         cameraFov(): number | null;
         cameraLookTarget(): readonly [number, number, number] | null;
+        projectWorld?(x: number, y: number, z: number): readonly [number, number] | null;
       };
     };
     __kyneloomLanding?: {
@@ -1315,7 +1316,7 @@ async function main(): Promise<void> {
                 }
 
                 // Inspector: computed values verbatim + provenance + frames.
-                await page.getByRole('button', { name: 'Show evidence' }).click();
+                await page.getByRole('button', { name: 'Source evidence' }).click();
                 await page.waitForTimeout(300);
                 const sentence = await page.getByTestId('evidence-sentence').innerText();
                 const deltaChip = await page.getByTestId('evidence-delta').innerText();
@@ -1863,7 +1864,10 @@ async function main(): Promise<void> {
       // Honest evidence context (KYN-10): the note must NOT appear while
       // INSIDE the measured interval (ia-04 at 78:43.4 is inside), then at
       // the equalizer (78:48.3, outside) X-Ray shows the contextual note
-      // and jumping grounds the playhead on the interval.
+      // and jumping grounds the playhead on the interval. KYN-11: the X-Ray
+      // affordance lives in the Analyst rail — switch there first.
+      await page.getByRole('radio', { name: 'Analyst', exact: true }).click();
+      await page.waitForTimeout(400);
       await page.getByRole('button', { name: 'X-Ray' }).click();
       await page.waitForTimeout(700);
       const noteInsideInterval = await page.locator('[data-evidence-context]').first().isVisible();

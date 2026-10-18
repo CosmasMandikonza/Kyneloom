@@ -45,8 +45,8 @@ const CAMERAS: readonly { id: CameraMode; label: string }[] = [
   { id: 'broadcast', label: 'Broadcast' },
   { id: 'overhead', label: 'Overhead' },
   { id: 'follow', label: 'Follow' },
-  { id: 'goalkeeper', label: 'Keeper' },
-  { id: 'orbit', label: 'Orbit' },
+  { id: 'goalkeeper', label: 'Goalkeeper' },
+  { id: 'orbit', label: 'Free orbit' },
   { id: 'directed', label: 'Directed' },
 ];
 

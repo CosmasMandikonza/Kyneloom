@@ -133,7 +133,7 @@ async function main(): Promise<void> {
     await page.getByRole('button', { name: 'Show X-Ray' }).click();
     await page.waitForTimeout(800);
     const analystXray = await measureFrames(page, 5000);
-    await page.getByRole('button', { name: 'Show X-Ray' }).click();
+    await page.getByRole('button', { name: /X-Ray on/ }).click();
     await page.getByRole('radio', { name: 'Accessible', exact: true }).click();
     await page.waitForTimeout(1200);
     const accessible = await measureFrames(page, 5000);

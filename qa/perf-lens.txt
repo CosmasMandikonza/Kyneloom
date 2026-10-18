@@ -1,0 +1,11 @@
+
+KYN-11 lens performance (headed GPU Chromium)
+  UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36
+  GPU: ANGLE (Intel, Intel(R) Arc(TM) 140V GPU (8GB) (0x000064A0) Direct3D11 vs_5_0 ps_5_0, D3D11)
+  fan 5s:        301 frames · p50 16.7ms · p95 16.9ms · max 17.5ms · ~60fps
+  analyst 5s:    301 frames · p50 16.7ms · p95 16.8ms · max 17ms · ~60fps
+  analyst+xray:  301 frames · p50 16.7ms · p95 16.9ms · ~60fps
+  accessible 5s: 301 frames · p50 16.7ms · p95 16.9ms · ~60fps
+  description cadence (4s window): {"updates":0,"minGapMs":null}
+  lifecycle before: {"canvases":1,"listeners":-1,"perf":{"geometries":40,"textures":49}}
+  lifecycle after 15 switches: {"canvases":1,"listeners":-1,"perf":{"geometries":40,"textures":49}}

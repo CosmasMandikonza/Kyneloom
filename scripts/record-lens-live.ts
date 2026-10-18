@@ -150,15 +150,19 @@ async function main(): Promise<void> {
     await page.waitForTimeout(2600);
     await page.locator('.stage__play').click(); // pause mid-run
     await page.waitForTimeout(500);
-    // Select the winger: the follow camera centers the decoy run by
-    // default, so a click at the canvas center lands on home-11.
-    await page.keyboard.press('3');
-    await page.waitForTimeout(1100);
+    // Select the winger deterministically: click home-11's live projection.
     const target = await page.evaluate(() => {
       const canvas = document.querySelector('canvas');
-      if (canvas === null) return null;
+      const scene = window.__kyneloomScene;
+      if (canvas === null || scene === undefined) return null;
+      const snap = scene.snapshot();
+      const player = snap.players.find((q) => q.entityId === 'home-11');
+      const project = scene.visual?.projectWorld;
+      if (player === undefined || project === undefined) return null;
+      const screen = project(player.xM, player.zM, -player.yM);
+      if (screen === null) return null;
       const box = canvas.getBoundingClientRect();
-      return { x: box.left + box.width / 2, y: box.top + box.height * 0.55 };
+      return { x: box.left + screen[0], y: box.top + screen[1] };
     });
     if (target !== null) {
       await page.mouse.click(target.x, target.y);

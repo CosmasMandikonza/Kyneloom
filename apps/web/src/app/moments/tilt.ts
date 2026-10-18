@@ -47,7 +47,6 @@ interface Spring {
   velocity: number;
 }
 
-
 export interface TiltController {
   /** Pointer position normalized to −1..1 relative to the card center. */
   pointer(nx: number, ny: number): void;
