@@ -23,6 +23,12 @@ export interface SceneVisualProbe {
   readonly cameraFov?: () => number | null;
   /** Active camera look-target [x, y, z] (orbit pan target in orbit mode). */
   readonly cameraLookTarget?: () => readonly [number, number, number] | null;
+  /**
+   * Project a world point to canvas-local CSS pixels [x, y], or null when
+   * behind the camera. Powers the reliable projected-nearest-player
+   * selection path (KYN-11) and QA hit tests.
+   */
+  readonly projectWorld?: (x: number, y: number, z: number) => readonly [number, number] | null;
 }
 
 const probes = new Map<string, SceneVisualProbe>();
@@ -41,6 +47,7 @@ export function sceneVisual(): SceneVisualProbe {
     cameraFov: () => first('cameraFov') as number | null,
     cameraLookTarget: () => first('cameraLookTarget'),
     ballQuaternion: () => first('ballQuaternion'),
+    projectWorld: probeFunction('projectWorld'),
     playerYaw: (entityId) => {
       for (const probe of probes.values()) {
         if (probe.playerYaw !== undefined) {
@@ -52,6 +59,15 @@ export function sceneVisual(): SceneVisualProbe {
     },
     cameraWorldPosition: () => first('cameraWorldPosition'),
   };
+}
+
+/** Returns a probe METHOD itself (for functions needing arguments). */
+function probeFunction<K extends keyof SceneVisualProbe>(key: K): SceneVisualProbe[K] {
+  for (const probe of probes.values()) {
+    const fn = probe[key];
+    if (typeof fn === 'function') return fn as SceneVisualProbe[K];
+  }
+  return (() => null) as SceneVisualProbe[K];
 }
 
 function first<K extends keyof SceneVisualProbe>(

@@ -24,6 +24,7 @@ import { XrayOverlay, type XrayPhase, SCENE_OPEN_INSPECTOR_EVENT } from './scene
 import { EvidenceInspector } from './evidence-inspector';
 import { validateEvidenceProjection, type EvidenceProjection } from '@/lib/evidence-data';
 import { MEASURED_INTERVAL_MS } from '@/lib/moment-catalog';
+import { pitchToThree } from '@kyneloom/contracts';
 import { LENS_IDS, readStoredLens, storeLens, type LensId } from '@/lib/lens';
 import { Fallback2D } from './scene/fallback-2d';
 import { LensDock } from './lens-dock';
@@ -71,6 +72,9 @@ const SPEED_LABELS: Record<PlaybackSpeed, string> = {
 
 /** Pointer/touch hit tolerance around the projected measured segments. */
 const HIT_TOLERANCE_PX = 14;
+
+/** DOM bridge event for projected player selection (see handler below). */
+const SCENE_SELECT_EVENT = 'kyneloom:scene-select';
 
 function distanceToSegmentPx(
   px: number,
@@ -390,6 +394,20 @@ function ReplayStageInner({
     return () => window.removeEventListener(SCENE_OPEN_INSPECTOR_EVENT, onSceneOpen);
   }, [openInspector]);
 
+  // Selection bridge: the capture-phase projected hit-test dispatches
+  // SCENE_SELECT_EVENT; committing inside the React root with flushSync is
+  // the pattern this stack reliably honors for synthetic pointer input.
+  useEffect(() => {
+    const onSceneSelect = (event: Event): void => {
+      const entityId = (event as CustomEvent<string | null>).detail;
+      flushSync(() => {
+        onSelect(entityId);
+      });
+    };
+    window.addEventListener(SCENE_SELECT_EVENT, onSceneSelect);
+    return () => window.removeEventListener(SCENE_SELECT_EVENT, onSceneSelect);
+  }, [onSelect]);
+
   // DOM hit-test path for scene→inspector: pointer/touch DOWN anywhere on
   // the canvas within HIT_TOLERANCE_PX of a projected measured segment
   // opens the inspector. A plain DOM listener in this React root commits
@@ -412,6 +430,60 @@ function ReplayStageInner({
       lastClickDetailRef.current > 0 && Date.now() - lastPointerdownAtRef.current > 150,
     [],
   );
+  // KYN-11 reliable player selection: pointer/touch DOWN on the canvas
+  // selects the projected-nearest player within a generous tolerance. The
+  // R3F pick cylinders are raycast-accurate but only ~10 px at broadcast
+  // distance — practically unclickable; this DOM-projected path (same
+  // pattern as the X-Ray hit-test above, same authoritative frame) makes
+  // click-to-select work for mouse, touch and synthetic test input at every
+  // camera distance. Tapping empty pitch clears the selection.
+  const SELECT_TOLERANCE_PX = 30;
+  useEffect(() => {
+    const onDownSelect = (event: PointerEvent): void => {
+      const target = event.target as Element | null;
+      if (target?.closest?.('button, input, a, select, label')) return;
+      const canvas = target?.closest?.('canvas');
+      if (canvas === null || canvas === undefined) return;
+      const project = (
+        window as unknown as {
+          __kyneloomScene?: {
+            visual?: {
+              projectWorld?: (x: number, y: number, z: number) => readonly [number, number] | null;
+            };
+          };
+        }
+      ).__kyneloomScene?.visual?.projectWorld;
+      if (project === undefined) return;
+      const rect = canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      const frame = getFrame(engine.playheadMs);
+      let bestId: string | null = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const player of scene.players) {
+        const sample = frame.positions.get(player.entityId);
+        if (sample === undefined) continue;
+        const [wx, wy, wz] = pitchToThree({ xM: sample.xM, yM: sample.yM, zM: sample.zM });
+        const screen = project(wx, wy, wz);
+        const distance = screen === null ? Number.POSITIVE_INFINITY : Math.hypot(screen[0] - px, screen[1] - py);
+        if (distance <= SELECT_TOLERANCE_PX && distance < bestDistance) {
+          bestDistance = distance;
+          bestId = player.entityId;
+        }
+      }
+      const next =
+        bestId === null ? null : selected === bestId ? null : bestId;
+      // Route through a DOM CustomEvent: updates called directly from
+      // native capture-phase listeners do not reliably commit on this
+      // stack for synthetic pointer input — the same finding that shaped
+      // the KYN-08 scene→inspector path. The bridge below flushes inside
+      // the React root.
+      window.dispatchEvent(new CustomEvent(SCENE_SELECT_EVENT, { detail: next }));
+    };
+    document.addEventListener('pointerdown', onDownSelect, { capture: true });
+    return () => document.removeEventListener('pointerdown', onDownSelect, { capture: true });
+  }, [engine, getFrame, onSelect, scene.players, selected]);
+
   useEffect(() => {
     const onDown = (event: PointerEvent): void => {
       // Every real interaction begins with a pointerdown; browsers

@@ -46,7 +46,10 @@ async function main(): Promise<void> {
     await page.screenshot({ path: `${OUT}/analyst-inspector-${viewport.name}.png` });
 
     // ACCESSIBLE — description + transcript panel.
-    await page.getByRole('button', { name: 'Close inspector' }).click().catch(() => undefined);
+    await page
+      .getByRole('button', { name: 'Close inspector' })
+      .click()
+      .catch(() => undefined);
     await page.getByRole('radio', { name: 'Accessible' }).click();
     await page.waitForTimeout(900);
     await page.screenshot({ path: `${OUT}/accessible-${viewport.name}.png` });
