@@ -96,7 +96,10 @@ const EVENT_LABELS: Record<string, string> = {
   goal: 'GOAL',
 };
 
-export function buildSceneData(golden: GoldenMatchStatus): SceneData | null {
+export function buildSceneData(
+  golden: GoldenMatchStatus,
+  options: { readonly initialFocusMs?: number } = {},
+): SceneData | null {
   if (!golden.ok) return null;
 
   const origins: string[] = [];
@@ -176,13 +179,24 @@ export function buildSceneData(golden: GoldenMatchStatus): SceneData | null {
 
   const windowStart = golden.data.goldenWindowMs[0];
   const windowEnd = golden.data.goldenWindowMs[1];
+  // KYN-10 selection seam: a catalog-resolved focus timestamp may move the
+  // INITIAL playhead (and nothing else). Values outside the window are
+  // ignored — the checkpoint stays authoritative — so a malformed query can
+  // never push the scene outside tracked data.
+  const requestedFocus =
+    options.initialFocusMs !== undefined &&
+    Number.isFinite(options.initialFocusMs) &&
+    options.initialFocusMs >= windowStart &&
+    options.initialFocusMs <= windowEnd
+      ? options.initialFocusMs
+      : golden.data.checkpointMs;
   return {
     matchId: golden.data.matchId,
     schemaVersion: golden.data.projected.acceptedTracking[0]?.schemaVersion ?? '1.0',
     seed: golden.data.seed,
     windowMs: golden.data.goldenWindowMs,
     checkpointMs: golden.data.checkpointMs,
-    initialFocusMs: golden.data.checkpointMs,
+    initialFocusMs: requestedFocus,
     teams: { home: HOME_TEAM, away: AWAY_TEAM },
     players,
     ballEntityId: 'ball',

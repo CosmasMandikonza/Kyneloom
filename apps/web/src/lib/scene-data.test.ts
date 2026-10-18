@@ -174,3 +174,25 @@ describe('pitchToThree is the only axis conversion', () => {
     expect(pitchToThree([1, 2, 3])).toEqual([1, 3, -2]);
   });
 });
+
+describe('initial focus override (KYN-10 selection seam)', () => {
+  it('moves the initial playhead to a catalog timestamp inside the window', async () => {
+    const golden = await loadGoldenMatch();
+    if (!golden.ok) return;
+    const scene = buildSceneData(golden, { initialFocusMs: 4_728_300 });
+    expect(scene?.initialFocusMs).toBe(4_728_300);
+    // The checkpoint itself is untouched — Reset still lands on canonical truth.
+    expect(scene?.checkpointMs).toBe(golden.data.checkpointMs);
+  });
+
+  it('ignores out-of-window, non-finite and missing overrides (checkpoint stays authoritative)', async () => {
+    const golden = await loadGoldenMatch();
+    if (!golden.ok) return;
+    for (const value of [4_716_999, 4_731_001, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(buildSceneData(golden, { initialFocusMs: value })?.initialFocusMs).toBe(
+        golden.data.checkpointMs,
+      );
+    }
+    expect(buildSceneData(golden)?.initialFocusMs).toBe(golden.data.checkpointMs);
+  });
+});

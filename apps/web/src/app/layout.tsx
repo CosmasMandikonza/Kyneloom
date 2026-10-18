@@ -22,6 +22,7 @@ export const viewport: Viewport = {
 
 const NAV_ITEMS = [
   { href: '/', label: 'Home' },
+  { href: '/moments', label: 'Moments' },
   { href: '/explore', label: 'Explore' },
   { href: '/studio', label: 'Studio' },
 ] as const;
