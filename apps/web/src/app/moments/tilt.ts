@@ -1,4 +1,7 @@
 /**
+import { stepSpring } from '@/lib/spring';
+
+export { stepSpring };
  * KYN-10 card tilt controller — bounded, spring-smoothed pointer depth.
  *
  * Mechanics ADAPTED (not copied) from React Bits `TiltedCard` at commit
@@ -17,6 +20,10 @@
  * it), and visibility gating is the caller's responsibility.
  */
 
+import { stepSpring } from '@/lib/spring';
+
+// Re-exported for the existing tilt tests; the shared home is lib/spring.
+export { stepSpring };
 export interface TiltSettings {
   /** Maximum pointer-relative rotation in degrees (≥ 0). */
   readonly amplitudeDeg: number;
@@ -40,34 +47,6 @@ interface Spring {
   velocity: number;
 }
 
-/**
- * Advance one spring toward its target by dt seconds using fixed 1/240 s
- * sub-steps (frame-rate independent). Returns true while the spring is
- * still meaningfully moving — that is the caller's "keep the loop alive"
- * signal. (Adapted from the upstream integrator; same math, exported here
- * so tests can prove settling.)
- */
-export function stepSpring(
-  spring: Spring,
-  target: number,
-  omega: number,
-  zeta: number,
-  dt: number,
-): boolean {
-  const steps = Math.max(1, Math.ceil(dt / (1 / 240)));
-  const h = dt / steps;
-  for (let index = 0; index < steps; index += 1) {
-    spring.velocity +=
-      (omega * omega * (target - spring.value) - 2 * zeta * omega * spring.velocity) * h;
-    spring.value += spring.velocity * h;
-  }
-  const settled = Math.abs(target - spring.value) < 0.001 && Math.abs(spring.velocity) < 0.01;
-  if (settled) {
-    spring.value = target;
-    spring.velocity = 0;
-  }
-  return !settled;
-}
 
 export interface TiltController {
   /** Pointer position normalized to −1..1 relative to the card center. */

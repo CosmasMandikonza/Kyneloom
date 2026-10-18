@@ -20,6 +20,8 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  // Lens preference persistence is REAL (sessionStorage) — isolate tests.
+  window.sessionStorage?.removeItem('kyneloom.lens');
 });
 
 async function renderStage(): Promise<HTMLElement> {
@@ -55,6 +57,12 @@ function slider(): HTMLInputElement {
   return screen.getByRole('slider', { name: 'Moment playhead' }) as HTMLInputElement;
 }
 
+function cameraRadios(): NodeListOf<HTMLButtonElement> {
+  return screen
+    .getByRole('radiogroup', { name: 'Camera (analyst)' })
+    .querySelectorAll('[role="radio"]') as NodeListOf<HTMLButtonElement>;
+}
+
 describe('ReplayStage stage shell', () => {
   it('renders the canvas mount region and the 2D fallback under jsdom', async () => {
     await renderStage();
@@ -75,19 +83,23 @@ describe('ReplayStage stage shell', () => {
 });
 
 describe('ReplayStage truthfully enabled controls', () => {
+  /** KYN-11: camera controls live in the Analyst rail — switch there first. */
+  async function enterAnalyst(): Promise<void> {
+    fireEvent.click(screen.getByRole('radio', { name: 'Analyst' }));
+  }
+
+  function cameraRadios(): NodeListOf<HTMLButtonElement> {
+    return screen
+      .getByRole('radiogroup', { name: 'Camera (analyst)' })
+      .querySelectorAll('[role="radio"]') as NodeListOf<HTMLButtonElement>;
+  }
+
   it('has six ENABLED camera modes incl. goalkeeper and directed', async () => {
     await renderStage();
-    const group = screen.getByRole('radiogroup', { name: 'Camera' });
-    const radios = group.querySelectorAll('[role="radio"]') as NodeListOf<HTMLButtonElement>;
+    await enterAnalyst();
+    const radios = cameraRadios();
     const labels = [...radios].map((radio) => radio.textContent?.trim());
-    expect(labels).toEqual([
-      'Broadcast',
-      'Overhead',
-      'Follow',
-      'Goalkeeper',
-      'Free orbit',
-      'Directed',
-    ]);
+    expect(labels).toEqual(['Broadcast', 'Overhead', 'Follow', 'Keeper', 'Orbit', 'Directed']);
     for (const radio of radios) {
       expect(radio.disabled).toBe(false); // the authored manifest track is valid
     }
@@ -97,11 +109,9 @@ describe('ReplayStage truthfully enabled controls', () => {
 
   it('selects cameras with the 1–6 keyboard shortcuts and Esc exits directed', async () => {
     const stage = await renderStage();
-    const radios = () =>
-      screen
-        .getByRole('radiogroup', { name: 'Camera' })
-        .querySelectorAll('[role="radio"]') as NodeListOf<HTMLButtonElement>;
-    fireEvent.keyDown(stage, { key: '4' }); // Goalkeeper
+    await enterAnalyst();
+    const radios = () => cameraRadios();
+    fireEvent.keyDown(stage, { key: '4' }); // Keeper
     expect(radios()[3]!.getAttribute('aria-checked')).toBe('true');
     fireEvent.keyDown(stage, { key: '6' }); // Directed — the guided sequence
     expect(radios()[5]!.getAttribute('aria-checked')).toBe('true');
@@ -113,10 +123,8 @@ describe('ReplayStage truthfully enabled controls', () => {
 
   it('keeps the player selection across camera changes', async () => {
     const stage = await renderStage();
-    const radios = () =>
-      screen
-        .getByRole('radiogroup', { name: 'Camera' })
-        .querySelectorAll('[role="radio"]') as NodeListOf<HTMLButtonElement>;
+    await enterAnalyst();
+    const radios = () => cameraRadios();
     fireEvent.keyDown(stage, { key: '3' }); // Follow — selection chip appears
     fireEvent.keyDown(stage, { key: '2' }); // Overhead
     fireEvent.keyDown(stage, { key: '5' }); // Free orbit
@@ -164,11 +172,20 @@ describe('ReplayStage truthfully enabled controls', () => {
     await waitFor(() => expect(slider().value).toBe('4722100'));
   });
 
-  it('Accessible lens switches to the 2D tactical view', async () => {
+  it('Accessible lens adds the panel WITHOUT changing the view; 2D is an explicit opt-in', async () => {
     await renderStage();
     const accessible = screen.getByRole('radio', { name: 'Accessible' });
     fireEvent.click(accessible);
     expect(accessible.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByTestId('accessible-panel')).toBeDefined();
+    // KYN-11 invariant: the lens switch did NOT change the view. Under
+    // jsdom the 3D canvas degrades to the WebGL-unavailable fallback from
+    // the start — the switch must leave that reason untouched (a forced 2D
+    // switch would show 'user-choice').
+    expect(
+      document.querySelector('[data-scene-fallback]')?.getAttribute('data-scene-fallback'),
+    ).toBe('webgl-unavailable');
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to the 2D tactical view' }));
     expect(document.querySelector('[data-scene-fallback="user-choice"]')).not.toBeNull();
   });
 });
@@ -176,10 +193,12 @@ describe('ReplayStage truthfully enabled controls', () => {
 describe('Evidence X-Ray (KYN-08)', () => {
   it('full button path: X-Ray → Show evidence → sources → frame navigation → back to replay', async () => {
     await renderStage();
-    const xray = screen.getByRole('button', { name: 'X-Ray' });
+    // KYN-11: the X-Ray affordances live in the Analyst rail.
+    fireEvent.click(screen.getByRole('radio', { name: 'Analyst' }));
+    const xray = screen.getByRole('button', { name: 'Show X-Ray' });
     fireEvent.click(xray);
     expect(xray.getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Show evidence' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Source evidence' }));
     const sentence = await screen.findByTestId('evidence-sentence');
     expect(sentence.textContent).toContain('6.306');
     expect(sentence.textContent).toContain('20.344');
@@ -197,9 +216,10 @@ describe('Evidence X-Ray (KYN-08)', () => {
   });
 
   it('scene evidence is clickable: the 2D measurement line opens the inspector', async () => {
-    await renderStage();
-    fireEvent.click(screen.getByRole('button', { name: 'X-Ray' }));
+    const stage = await renderStage();
+    fireEvent.keyDown(stage, { key: 'x' });
     fireEvent.click(screen.getByRole('radio', { name: 'Accessible' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to the 2D tactical view' }));
     const line = document.querySelector('[data-xray-2d="separation"]');
     expect(line).not.toBeNull();
     expect(line!.textContent).toContain('6.306 m → 20.344 m');
@@ -209,10 +229,10 @@ describe('Evidence X-Ray (KYN-08)', () => {
   });
 
   it('keyboard X/I/Escape drive the same path', async () => {
-    await renderStage();
-    const stage = screen.getByRole('region', { name: 'Living Replay stage' });
+    const stage = await renderStage();
     fireEvent.keyDown(stage, { key: 'x' });
-    expect(screen.getByRole('button', { name: 'X-Ray' }).getAttribute('aria-pressed')).toBe('true');
+    // KYN-11: the phase chips (and the overlay probe) prove X-Ray is live.
+    expect(document.querySelector('.stage__xray-phases')).not.toBeNull();
     fireEvent.keyDown(stage, { key: 'i' });
     expect(await screen.findByTestId('evidence-sentence')).toBeTruthy();
     fireEvent.keyDown(stage, { key: 'Escape' });
@@ -253,7 +273,123 @@ describe('Evidence X-Ray (KYN-08)', () => {
         }}
       />,
     );
-    const xray = screen.getByRole('button', { name: 'X-Ray' });
-    expect((xray as HTMLButtonElement).disabled).toBe(true);
+    // KYN-11: in the Analyst rail the measurement section renders the
+    // honest unavailable state instead of a button that could lie.
+    fireEvent.click(screen.getByRole('radio', { name: 'Analyst' }));
+    const unavailable = screen.getByTestId('rail-measure-unavailable');
+    expect(unavailable.textContent).toContain('Not available from this source');
+    expect(unavailable.textContent).toContain('verification failed');
+    expect(screen.queryByRole('button', { name: 'Show X-Ray' })).toBeNull();
+  });
+});
+
+describe('KYN-11 — lens perspectives over one football truth', () => {
+  it('defaults to Fan: dock present, Explain discoverable, no analyst chrome', async () => {
+    await renderStage();
+    expect(screen.getByRole('radio', { name: 'Fan' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByTestId('fan-explain')).toBeDefined();
+    expect(screen.queryByTestId('analyst-rail')).toBeNull();
+    expect(screen.queryByTestId('accessible-panel')).toBeNull();
+  });
+
+  it('Fan → Analyst → Accessible → Fan preserves playhead, selection and camera exactly', async () => {
+    const stage = await renderStage();
+    // Establish a distinctive state: seek, select a lens of the action.
+    fireEvent.input(slider(), { target: { value: '4723400' } });
+    await waitFor(() => expect(slider().value).toBe('4723400'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Analyst' }));
+    fireEvent.keyDown(stage, { key: '3' }); // Follow camera (analyst rail active)
+    const before = {
+      playhead: slider().value,
+      camera: cameraRadios()[2]!.getAttribute('aria-checked'),
+    };
+    for (const next of ['accessible', 'fan', 'analyst', 'accessible', 'fan'] as const) {
+      fireEvent.click(
+        screen.getByRole('radio', {
+          name: next === 'fan' ? 'Fan' : next === 'analyst' ? 'Analyst' : 'Accessible',
+        }),
+      );
+      await waitFor(() => expect(slider().value).toBe(before.playhead));
+    }
+    // Back to analyst to read the camera state: unchanged through every switch.
+    fireEvent.click(screen.getByRole('radio', { name: 'Analyst' }));
+    expect(cameraRadios()[2]!.getAttribute('aria-checked')).toBe(before.camera);
+    expect(slider().value).toBe(before.playhead);
+  });
+
+  it('the Accessible panel renders real transcript entries and a live description', async () => {
+    await renderStage();
+    fireEvent.click(screen.getByRole('radio', { name: 'Accessible' }));
+    const transcript = screen.getByTestId('transcript');
+    for (const id of ['evt-0007', 'evt-0042', 'evt-0009', 'evt-0010']) {
+      expect(transcript.textContent).toContain(id);
+    }
+    // The description is generated from the sampled state at the current
+    // playhead (default checkpoint 4722100 → ball 21.2).
+    const description = await screen.findByTestId('spatial-description');
+    await waitFor(() => expect(description.textContent).toContain('78:42.1'));
+    expect(description.textContent).toContain('21.2');
+    // Seek from the transcript: clicking the goal entry moves the playhead.
+    fireEvent.click(screen.getByRole('button', { name: /GOAL · 78:48.3|Goal · 78:48.3/ }));
+    await waitFor(() => expect(slider().value).toBe('4728300'));
+  });
+
+  it('Explain switches to the Analyst presentation at the same instant', async () => {
+    await renderStage();
+    fireEvent.input(slider(), { target: { value: '4722100' } });
+    fireEvent.click(screen.getByTestId('fan-explain'));
+    expect(screen.getByTestId('analyst-rail')).toBeDefined();
+    expect(slider().value).toBe('4722100');
+    const measure = screen.getByTestId('rail-measure');
+    expect(measure.textContent).toContain('6.306');
+    expect(measure.textContent).toContain('20.344');
+    expect(measure.textContent).toContain('14.038');
+  });
+
+  it('keyboard L cycles lenses without touching the transport', async () => {
+    const stage = await renderStage();
+    fireEvent.input(slider(), { target: { value: '4726000' } });
+    for (const expected of ['analyst', 'accessible', 'fan']) {
+      fireEvent.keyDown(stage, { key: 'l' });
+      expect(
+        screen
+          .getByRole('radio', {
+            name: expected === 'fan' ? 'Fan' : expected === 'analyst' ? 'Analyst' : 'Accessible',
+          })
+          .getAttribute('aria-checked'),
+      ).toBe('true');
+      expect(slider().value).toBe('4726000');
+    }
+  });
+
+  it('remembers the lens only as a session presentation preference (malformed reverts to Fan)', async () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+      removeItem: (key: string) => store.delete(key),
+    });
+    await renderStage();
+    fireEvent.click(screen.getByRole('radio', { name: 'Analyst' }));
+    expect(store.get('kyneloom.lens')).toBe('analyst');
+    // A corrupted preference can only ever mean Fan.
+    store.set('kyneloom.lens', '{"role":"producer"}');
+    cleanup();
+    await renderStage();
+    expect(screen.getByRole('radio', { name: 'Fan' }).getAttribute('aria-checked')).toBe('true');
+    vi.unstubAllGlobals();
+  });
+
+  it('repeated lens switching spawns no duplicate transport or panels', async () => {
+    await renderStage();
+    for (let round = 0; round < 4; round += 1) {
+      fireEvent.click(screen.getByRole('radio', { name: 'Analyst' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'Accessible' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'Fan' }));
+    }
+    expect(screen.getAllByTestId('lens-dock')).toHaveLength(1);
+    expect(document.querySelectorAll('.stage__transport')).toHaveLength(1);
+    expect(screen.queryByTestId('analyst-rail')).toBeNull();
+    expect(screen.queryByTestId('accessible-panel')).toBeNull();
   });
 });

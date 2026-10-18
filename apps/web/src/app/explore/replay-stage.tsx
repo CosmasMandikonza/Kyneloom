@@ -24,7 +24,11 @@ import { XrayOverlay, type XrayPhase, SCENE_OPEN_INSPECTOR_EVENT } from './scene
 import { EvidenceInspector } from './evidence-inspector';
 import { validateEvidenceProjection, type EvidenceProjection } from '@/lib/evidence-data';
 import { MEASURED_INTERVAL_MS } from '@/lib/moment-catalog';
+import { LENS_IDS, readStoredLens, storeLens, type LensId } from '@/lib/lens';
 import { Fallback2D } from './scene/fallback-2d';
+import { LensDock } from './lens-dock';
+import { AnalystRail } from './analyst-rail';
+import { AccessiblePanel } from './accessible-panel';
 
 /**
  * The Living Replay stage (KYN-05 shell, KYN-06 engine).
@@ -64,8 +68,6 @@ const SPEED_LABELS: Record<PlaybackSpeed, string> = {
   1: '1×',
   2: '2×',
 };
-
-type LensId = 'fan' | 'analyst' | 'accessible';
 
 /** Pointer/touch hit tolerance around the projected measured segments. */
 const HIT_TOLERANCE_PX = 14;
@@ -135,8 +137,6 @@ function ReplayStageInner({
   timeline,
   chapterTitle,
 }: ReplayStageProps & { timeline: ReturnType<typeof sceneTimeline> }) {
-  const modeGroupId = useId();
-  const lensGroupId = useId();
   const speedGroupId = useId();
 
   const momentWindow = useMemo(
@@ -176,8 +176,28 @@ function ReplayStageInner({
     const timer = window.setTimeout(() => setCamera('broadcast'), 1300);
     return () => window.clearTimeout(timer);
   }, []);
+  // KYN-11 lens presentation state. Fan is the SSR/hydration default; the
+  // remembered session preference (presentation ONLY — never positions,
+  // metrics or anything authorization-shaped) is read in an effect after
+  // mount, so server and client markup match. Switching a lens NEVER
+  // touches the engine: no playhead, playback, camera or selection writes.
   const [lens, setLens] = useState<LensId>('fan');
   const [view, setView] = useState<'3d' | '2d'>('3d');
+  useEffect(() => {
+    const stored = readStoredLens(window.sessionStorage);
+    if (stored !== 'fan') setLens(stored);
+  }, []);
+  const selectLens = useCallback((next: LensId): void => {
+    setLens(next);
+    storeLens(window.sessionStorage, next);
+  }, []);
+  const cycleLens = useCallback((): void => {
+    setLens((current) => {
+      const next = LENS_IDS[(LENS_IDS.indexOf(current) + 1) % LENS_IDS.length] ?? 'fan';
+      storeLens(window.sessionStorage, next);
+      return next;
+    });
+  }, []);
   const [selected, setSelected] = useState<string | null>(null);
   const [quality, setQuality] = useState<SceneQuality>('high');
   // Evidence X-Ray: validated projection only — a corrupt payload disables
@@ -321,6 +341,10 @@ function ReplayStageInner({
     if (event.key.toLowerCase() === 'x' && xrayAvailable) {
       event.preventDefault();
       setXrayActive((current) => !current);
+    } else if (event.key.toLowerCase() === 'l') {
+      // KYN-11: cycle the viewing lens (presentation only — L).
+      event.preventDefault();
+      cycleLens();
     } else if (event.key.toLowerCase() === 'i' && xrayActive) {
       event.preventDefault();
       setInspectorOpen((current) => {
@@ -439,24 +463,31 @@ function ReplayStageInner({
     [scene, engine, getFrame, selected, onSelect],
   );
 
+  // Clearly-labeled QA/debug hook (not user-facing): the presentation-side
+  // state Playwright needs for the KYN-11 lens invariants.
+  useEffect(() => {
+    const hook = window as unknown as Record<string, unknown>;
+    hook['__kyneloomLens'] = {
+      lens: (): string => lens,
+      playheadMs: (): number => engine.playheadMs,
+      selected: (): string | null => selected,
+      camera: (): string => camera,
+      view: (): string => view,
+    };
+    return () => {
+      delete hook['__kyneloomLens'];
+    };
+  }, [lens, engine, selected, camera, view]);
+
   const onSliderInput = (event: React.FormEvent<HTMLInputElement>): void => {
     const value = Number((event.target as HTMLInputElement).value);
     if (Number.isFinite(value)) setPlayhead(value);
   };
 
-  const applyLens = (nextLens: LensId): void => {
-    setLens(nextLens);
-    if (nextLens === 'fan') {
-      setView('3d');
-      setCamera('broadcast');
-    } else if (nextLens === 'analyst') {
-      setView('3d');
-      setCamera('overhead');
-    } else {
-      // Accessible lens: the same timeline, no WebGL dependency.
-      setView('2d');
-    }
-  };
+  // KYN-11 invariant: lens switching has NO applyLens side effects anymore —
+  // no camera reset, no forced 2D, no playhead seek. The user's viewpoint,
+  // transport and selection survive every switch; lens-recommended framings
+  // are explicit opt-ins (the rail's camera group, the panel's 2D button).
 
   const selectedPlayer =
     selected !== null ? scene.players.find((player) => player.entityId === selected) : undefined;
@@ -527,140 +558,109 @@ function ReplayStageInner({
             </button>
           </div>
 
-          {/* Camera / lens — top right */}
-          <div className="stage__modes" aria-label="Camera and lens selection">
-            <span id={`${modeGroupId}-label`} className="stage__mode-caption">
-              Camera
-            </span>
-            <div
-              className="stage__mode-group"
-              role="radiogroup"
-              aria-labelledby={`${modeGroupId}-label`}
+          {/* KYN-11 lens chrome. Fan is scene-dominant: clock, contextual
+              event chip (in the transport), ONE Explain action and the
+              perspective dock. Cameras, X-Ray controls and the evidence
+              rail belong to the Analyst presentation; the Accessible
+              presentation adds the description/transcript/audio panel.
+              None of these write the engine — lenses are presentation. */}
+          {lens === 'fan' ? (
+            <button
+              type="button"
+              className="stage__explain"
+              onClick={() => selectLens('analyst')}
+              title="Reveal the measured geometry and evidence at this exact instant (switches to the Analyst perspective)"
+              data-testid="fan-explain"
             >
-              {CAMERA_MODES.map((mode) => {
-                const directedUnavailable = mode.id === 'directed' && scene.directedTrack === null;
-                return (
-                  <button
-                    key={mode.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={camera === mode.id}
-                    title={
-                      directedUnavailable
-                        ? 'Directed sequence unavailable — no validated camera track for this moment'
-                        : mode.hint
-                    }
-                    aria-disabled={directedUnavailable || undefined}
-                    className="stage__mode-btn"
-                    onClick={() => setCamera(mode.id)}
-                    {...(directedUnavailable ? { disabled: true } : {})}
-                  >
-                    {mode.label}
-                  </button>
-                );
-              })}
-            </div>
-            <span id={`${modeGroupId}-label}-xray`} className="stage__mode-caption">
-              Evidence
-            </span>
-            <div className="stage__mode-group" role="group" aria-label="Evidence X-Ray">
-              <button
-                type="button"
-                className="stage__mode-btn stage__mode-btn--xray"
-                aria-pressed={xrayActive}
-                disabled={!xrayAvailable}
-                title={
-                  xrayAvailable
-                    ? 'Reveal the measured defender–striker separation behind the run (X)'
-                    : 'Evidence X-Ray unavailable — the measurement failed verification for this moment'
-                }
-                onClick={() => {
-                  setXrayActive((current) => !current);
-                  if (!xrayActive) setInspectorOpen(false);
-                }}
-              >
-                X-Ray
-              </button>
-              {xrayActive && xrayAvailable ? (
-                <>
-                  {(['before', 'after', 'both'] as const).map((phase) => (
-                    <button
-                      key={phase}
-                      type="button"
-                      className="stage__mode-btn"
-                      aria-pressed={xrayPhase === phase}
-                      title={
-                        phase === 'before'
-                          ? 'Separation at the start of the measured interval'
-                          : phase === 'after'
-                            ? 'Separation at the end of the measured interval'
-                            : 'Show both states for comparison'
-                      }
-                      onClick={() => setXrayPhase(phase)}
-                    >
-                      {phase === 'before' ? 'Before' : phase === 'after' ? 'After' : 'Both'}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="stage__mode-btn stage__mode-btn--inspect"
-                    aria-pressed={inspectorOpen}
-                    title="Show how this number was calculated (I)"
-                    onClick={() => {
-                      setInspectorOpen((current) => {
-                        if (!current) setInspectorReturnMs(engineRef.current.playheadMs);
-                        return !current;
-                      });
-                    }}
-                  >
-                    Show evidence
-                  </button>
-                </>
-              ) : null}
-            </div>
-            {camera === 'directed' ? (
-              <button
-                type="button"
-                className="stage__exit-directed"
-                onClick={() => setCamera('broadcast')}
-                title="Return to the broadcast camera (Escape)"
-              >
-                Exit Directed Mode
-              </button>
-            ) : null}
-            <span id={`${lensGroupId}-label`} className="stage__mode-caption">
-              Lens
-            </span>
-            <div
-              className="stage__mode-group"
-              role="radiogroup"
-              aria-labelledby={`${lensGroupId}-label`}
-            >
-              {(
-                [
-                  { id: 'fan', label: 'Fan', hint: 'Broadcast presentation' },
-                  { id: 'analyst', label: 'Analyst', hint: 'Tactical overhead view' },
-                  {
-                    id: 'accessible',
-                    label: 'Accessible',
-                    hint: '2D tactical view, no WebGL dependency',
-                  },
-                ] as const
-              ).map((option) => (
+              <span className="stage__explain-glyph" aria-hidden="true">
+                ◇
+              </span>
+              Explain this moment
+            </button>
+          ) : null}
+
+          {lens === 'analyst' ? (
+            <AnalystRail
+              scene={scene}
+              evidence={evidenceSafe ?? evidence}
+              selectedEntityId={selected}
+              camera={camera}
+              onCamera={setCamera}
+              onXray={() => {
+                setXrayActive((current) => !current);
+                if (!xrayActive) setInspectorOpen(false);
+              }}
+              onInspect={() => {
+                setInspectorOpen((current) => {
+                  if (!current) setInspectorReturnMs(engineRef.current.playheadMs);
+                  return !current;
+                });
+              }}
+              xrayActive={xrayActive}
+              engineRef={engineRef}
+              getFrame={getFrame}
+            />
+          ) : null}
+
+          {lens === 'accessible' ? (
+            <AccessiblePanel
+              scene={scene}
+              evidence={evidenceSafe ?? evidence}
+              engine={engine}
+              playing={playing}
+              selectedEntityId={selected}
+              getFrame={getFrame}
+              onSeek={(ms) => {
+                setPlaying(false);
+                setPlayhead(ms);
+              }}
+              onTogglePlay={togglePlaying}
+              onStep={(direction) =>
+                setPlayhead(stepFrame(engine.playheadMs, direction, momentWindow))
+              }
+              view={view}
+              onUse2D={() => setView('2d')}
+            />
+          ) : null}
+
+          {/* X-Ray phase controls surface wherever the overlay is active. */}
+          {xrayActive && xrayAvailable ? (
+            <div className="stage__xray-phases" role="group" aria-label="Evidence X-Ray phases">
+              {(['before', 'after', 'both'] as const).map((phase) => (
                 <button
-                  key={option.id}
+                  key={phase}
                   type="button"
-                  role="radio"
-                  aria-checked={lens === option.id}
-                  title={option.hint}
-                  className="stage__mode-btn stage__mode-btn--lens"
-                  onClick={() => applyLens(option.id)}
+                  className="stage__phase-btn"
+                  aria-pressed={xrayPhase === phase}
+                  title={
+                    phase === 'before'
+                      ? 'Separation at the start of the measured interval'
+                      : phase === 'after'
+                        ? 'Separation at the end of the measured interval'
+                        : 'Show both states for comparison'
+                  }
+                  onClick={() => setXrayPhase(phase)}
                 >
-                  {option.label}
+                  {phase === 'before' ? 'Before' : phase === 'after' ? 'After' : 'Both'}
                 </button>
               ))}
             </div>
-          </div>
+          ) : null}
+
+          {camera === 'directed' ? (
+            <button
+              type="button"
+              className="stage__exit-directed"
+              onClick={() => setCamera('broadcast')}
+              title="Return to the broadcast camera (Escape)"
+            >
+              Exit Directed Mode
+            </button>
+          ) : null}
+
+          {/* The perspective dock — one control, three experiences of the
+              SAME moment. Switching never touches the engine. */}
+          <LensDock lens={lens} onSelect={selectLens} />
 
           {/* Evidence X-Ray inspector — compact, contextual, collapsible. */}
           <EvidenceInspector
