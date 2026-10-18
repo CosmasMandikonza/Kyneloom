@@ -570,6 +570,16 @@
   text-align: center;
 }
 
+/* Very narrow columns: let the middle line wrap instead of flooring the
+   card's min-content width. */
+@media (max-width: 35rem) {
+  .mcard__meta > span:nth-child(2) {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
 .mcard__meta-id {
   color: var(--mint-500);
 }
@@ -625,7 +635,9 @@
   }
 
   .moments__grid {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr): a bare 1fr track floors at the item min-content, and
+       the card meta's nowrap spans would push the whole page sideways. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .mcard__index {

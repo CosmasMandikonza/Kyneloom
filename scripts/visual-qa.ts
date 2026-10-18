@@ -1377,7 +1377,22 @@ async function main(): Promise<void> {
               failures.push(`moments @ ${viewport.name}: featured CTA href wrong`);
             }
             // Real scene previews: every preview image loads and they are
-            // distinct files (no repeated placeholder).
+            // distinct files (no repeated placeholder). Lazy images below
+            // the fold are scrolled through first — that is the loading
+            // contract a real visitor triggers.
+            await page.evaluate(() => {
+              for (const img of Array.from(document.querySelectorAll('img.mcard__image'))) {
+                img.scrollIntoView({ block: 'nearest' });
+              }
+            });
+            await page.waitForFunction(
+              () =>
+                Array.from(document.querySelectorAll<HTMLImageElement>('.mcard__image')).every(
+                  (img) => img.complete,
+                ),
+              undefined,
+              { timeout: 15_000 },
+            );
             const images = await page.evaluate(() =>
               Array.from(document.querySelectorAll<HTMLImageElement>('.mcard__image')).map(
                 (img) => ({
@@ -1657,8 +1672,25 @@ async function main(): Promise<void> {
         failures.push(`seam direct nav: playhead ${String(directPlayhead)} != 4723400`);
       }
 
-      // Honest evidence context (KYN-10): X-Ray at a chapter OUTSIDE the
-      // measured interval shows the contextual note; jumping grounds it.
+      // Honest evidence context (KYN-10): the note must NOT appear while
+      // INSIDE the measured interval (ia-04 at 78:43.4 is inside), then at
+      // the equalizer (78:48.3, outside) X-Ray shows the contextual note
+      // and jumping grounds the playhead on the interval.
+      await page.getByRole('button', { name: 'X-Ray' }).click();
+      await page.waitForTimeout(700);
+      const noteInsideInterval = await page.locator('[data-evidence-context]').first().isVisible();
+      checks.seamEvidenceNoteSuppressedInside = noteInsideInterval
+        ? 'SHOWN (wrong)'
+        : 'hidden (correct)';
+      if (noteInsideInterval) {
+        failures.push('seam: evidence note appeared while INSIDE the measured interval');
+      }
+      await page.goto(`${BASE}/explore?moment=ia-10-the-equalizer`, { waitUntil: 'load' });
+      await page.waitForFunction(
+        () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+        undefined,
+        { timeout: 45_000 },
+      );
       await page.getByRole('button', { name: 'X-Ray' }).click();
       await page.waitForTimeout(700);
       checks.seamEvidenceNote = (await page.locator('[data-evidence-context]').first().isVisible())

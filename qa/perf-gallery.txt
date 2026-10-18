@@ -1,0 +1,11 @@
+
+KYN-10 gallery performance (headed GPU Chromium)
+  UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36
+  GPU: ANGLE (Intel, Intel(R) Arc(TM) 140V GPU (8GB) (0x000064A0) Direct3D11 vs_5_0 ps_5_0, D3D11)
+  idle 5s:      197 frames · p50 24.6ms · p95 25.7ms · max 232.5ms · ~39fps
+  sweep 6s:     243 frames · p50 24.5ms · p95 25.5ms · max 419.7ms · ~40fps
+  settle 3s:    130 frames · p50 24.7ms · p95 25.8ms · ~43fps
+  tilt rAF loops after pointer left: 0
+  DOM: 331 nodes · 12/12 images loaded · 0 canvases
+  JS heap: 5.8 MB · event listeners: 481
+  preview resources: 16

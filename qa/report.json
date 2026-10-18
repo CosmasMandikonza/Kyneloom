@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T20:51:55.361Z",
+  "generatedAt": "2026-10-18T07:54:55.147Z",
   "viewports": [
     "1440x900",
     "1280x800",
@@ -9,11 +9,12 @@
   ],
   "routes": [
     "/",
+    "/moments",
     "/explore",
     "/studio",
     "/m/mom-synthetic-78m"
   ],
-  "captures": 26,
+  "captures": 34,
   "failures": [],
   "results": [
     {
@@ -25,13 +26,41 @@
       "consoleErrors": [],
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
-        "focusables": 7,
+        "focusables": 8,
         "ctaText": "Enter the moment\n→",
         "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129",
         "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":21473}",
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":9951}",
         "landingRepeatNav": "ok (Δgeo +0, Δtex +0)"
+      }
+    },
+    {
+      "route": "moments",
+      "viewport": "1440x900",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moments-1440x900.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Moments — Playable Moment gallery · Kyneloom",
+        "focusables": 32,
+        "momentsCount": 12,
+        "momentsDistinctIds": 12,
+        "momentsDistinctFocus": 12,
+        "momentsReducedMotion": false,
+        "momentsCards": 12,
+        "momentsHrefs": "exact",
+        "momentsFeaturedCta": true,
+        "momentsPreviewsLoaded": "12/12",
+        "momentsPreviewsDistinct": 12,
+        "momentsCanvases": 0,
+        "momentsSpineNodes": 12,
+        "momentsFeaturedMedia": "present",
+        "momentsHoverTilt": "yes",
+        "momentsHoverReveal": "visible",
+        "momentsTiltLoopsAfterLeave": 0,
+        "momentsMotionOffscreenPaused": true
       }
     },
     {
@@ -43,8 +72,8 @@
       "consoleErrors": [],
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 26,
-        "scene3dReadyMs": 3084,
+        "focusables": 28,
+        "scene3dReadyMs": 846,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -60,14 +89,14 @@
         "ballMeshAtSource": "exact",
         "ballSpinDeterministic": "identical",
         "playerYawDeterministic": "identical",
-        "cameraOverheadConverged": "yes 0.0/92.0/0.0",
-        "cameraFollowConverged": "yes 5.0/4.4/8.9",
-        "cameraKeeperConverged": "yes 41.5/2.8/5.6",
-        "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
+        "cameraOverheadConverged": "yes 0.0/91.9/0.1",
+        "cameraFollowConverged": "yes 5.0/4.6/8.9",
+        "cameraKeeperConverged": "yes 40.1/2.9/5.8",
+        "cameraDirectedGoalPose": "yes 58.9/3.2/7.0",
         "directedSeekDeterministic": "identical",
         "escapeExitsDirected": "true",
         "rapidChangesConverge": "yes",
-        "orbitBoundsAfterGestures": "ok pos -63.0/74.9/82.0 target -63.0/0.0/82.0",
+        "orbitBoundsAfterGestures": "ok pos -68.0/74.9/82.0 target -68.0/0.0/82.0",
         "orbitExitConverged": "yes",
         "xrayOverlaysRendered": "yes (3 lines + label)",
         "xrayWorldInvariant": "identical",
@@ -81,7 +110,7 @@
         "xrayKeyboard": "yes",
         "xrayResourcesBounded": "ok (Δgeo +0, Δtex +0 after 4 on/off rounds × 3 phases)",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":1021.9,\"p95Ms\":1093.4,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":3,\"p50Ms\":281.6,\"p95Ms\":371.9,\"drawCalls\":151,\"triangles\":608152,\"geometries\":44,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -94,7 +123,7 @@
       "consoleErrors": [],
       "checks": {
         "title": "Studio — production workspace · Kyneloom",
-        "focusables": 6,
+        "focusables": 7,
         "disabledPublish": 1,
         "eventMarkers": 4
       }
@@ -108,7 +137,7 @@
       "consoleErrors": [],
       "checks": {
         "title": "Published Moment · Kyneloom",
-        "focusables": 6,
+        "focusables": 7,
         "unpublishedChip": 1
       }
     },
@@ -121,10 +150,36 @@
       "consoleErrors": [],
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
-        "focusables": 7,
+        "focusables": 8,
         "ctaText": "Enter the moment\n→",
         "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129"
+      }
+    },
+    {
+      "route": "moments",
+      "viewport": "1440x900",
+      "reducedMotion": true,
+      "screenshot": "screenshots/moments-1440x900-rm.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Moments — Playable Moment gallery · Kyneloom",
+        "focusables": 32,
+        "momentsCount": 12,
+        "momentsDistinctIds": 12,
+        "momentsDistinctFocus": 12,
+        "momentsReducedMotion": true,
+        "momentsCards": 12,
+        "momentsHrefs": "exact",
+        "momentsFeaturedCta": true,
+        "momentsPreviewsLoaded": "12/12",
+        "momentsPreviewsDistinct": 12,
+        "momentsCanvases": 0,
+        "momentsSpineNodes": 12,
+        "momentsFeaturedMedia": "present",
+        "momentsReducedTiltStatic": 0,
+        "momentsReducedCardsStillLinks": true
       }
     },
     {
@@ -136,8 +191,8 @@
       "consoleErrors": [],
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 26,
-        "scene3dReadyMs": 3083,
+        "focusables": 28,
+        "scene3dReadyMs": 853,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -157,13 +212,41 @@
       "consoleErrors": [],
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
-        "focusables": 7,
+        "focusables": 8,
         "ctaText": "Enter the moment\n→",
         "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129",
         "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
         "landingSkip": "yes",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"ready\"],\"startCount\":1,\"ms\":10494}"
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"ready\"],\"startCount\":1,\"ms\":5704}"
+      }
+    },
+    {
+      "route": "moments",
+      "viewport": "1280x800",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moments-1280x800.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Moments — Playable Moment gallery · Kyneloom",
+        "focusables": 32,
+        "momentsCount": 12,
+        "momentsDistinctIds": 12,
+        "momentsDistinctFocus": 12,
+        "momentsReducedMotion": false,
+        "momentsCards": 12,
+        "momentsHrefs": "exact",
+        "momentsFeaturedCta": true,
+        "momentsPreviewsLoaded": "12/12",
+        "momentsPreviewsDistinct": 12,
+        "momentsCanvases": 0,
+        "momentsSpineNodes": 12,
+        "momentsFeaturedMedia": "present",
+        "momentsHoverTilt": "yes",
+        "momentsHoverReveal": "visible",
+        "momentsTiltLoopsAfterLeave": 0,
+        "momentsMotionOffscreenPaused": true
       }
     },
     {
@@ -175,196 +258,8 @@
       "consoleErrors": [],
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 26,
-        "scene3dReadyMs": 2915,
-        "scenePlayers": 22,
-        "sceneMissing": 0,
-        "cameraRadios": 6,
-        "cameraDisabled": 0,
-        "playheadMoves": true,
-        "spaceTogglesPlay": true,
-        "controlsOverlapStagePx": 0,
-        "twoDFallback": 1,
-        "resetPlayheadMs": 4722100,
-        "ballTruthAtCheckpoint": true,
-        "cameraIndependent": "identical",
-        "seekDeterministic": "identical",
-        "ballMeshAtSource": "exact",
-        "ballSpinDeterministic": "identical",
-        "playerYawDeterministic": "identical",
-        "cameraOverheadConverged": "yes 0.0/92.0/0.0",
-        "cameraFollowConverged": "yes 5.0/4.4/8.9",
-        "cameraKeeperConverged": "yes 41.4/2.8/5.6",
-        "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
-        "directedSeekDeterministic": "identical",
-        "escapeExitsDirected": "true",
-        "rapidChangesConverge": "yes",
-        "orbitBoundsAfterGestures": "ok pos -82.0/74.9/82.0 target -82.0/0.0/82.0",
-        "orbitExitConverged": "yes",
-        "xrayOverlaysRendered": "yes (3 lines + label)",
-        "xrayWorldInvariant": "identical",
-        "xrayPhaseSwitch": "yes (2)",
-        "xraySceneClick": "yes (click @ 789,245, candidate 0/10)",
-        "inspectorSentence": "exact values",
-        "inspectorDelta": "exact",
-        "inspectorInterpretation": "labeled hypothesis",
-        "inspectorFrames": "exact frame ids",
-        "inspectorSeek": "yes",
-        "xrayKeyboard": "yes",
-        "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":969.7,\"p95Ms\":1011.2,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
-        "contextLoss": "lost → context-lost"
-      }
-    },
-    {
-      "route": "studio",
-      "viewport": "1280x800",
-      "reducedMotion": false,
-      "screenshot": "screenshots/studio-1280x800.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Studio — production workspace · Kyneloom",
-        "focusables": 6,
-        "disabledPublish": 1,
-        "eventMarkers": 4
-      }
-    },
-    {
-      "route": "moment",
-      "viewport": "1280x800",
-      "reducedMotion": false,
-      "screenshot": "screenshots/moment-1280x800.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Published Moment · Kyneloom",
-        "focusables": 6,
-        "unpublishedChip": 1
-      }
-    },
-    {
-      "route": "landing",
-      "viewport": "1024x768",
-      "reducedMotion": false,
-      "screenshot": "screenshots/landing-1024x768.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Kyneloom — Every moment has a world inside",
-        "focusables": 7,
-        "ctaText": "Enter the moment\n→",
-        "ctaClickable": "yes",
-        "fixtureSamplesShown": "5,129",
-        "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":22410}"
-      }
-    },
-    {
-      "route": "explore",
-      "viewport": "1024x768",
-      "reducedMotion": false,
-      "screenshot": "screenshots/explore-1024x768.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 26,
-        "scene3dReadyMs": 2743,
-        "scenePlayers": 22,
-        "sceneMissing": 0,
-        "cameraRadios": 6,
-        "cameraDisabled": 0,
-        "playheadMoves": true,
-        "spaceTogglesPlay": true,
-        "controlsOverlapStagePx": 0,
-        "twoDFallback": 1,
-        "resetPlayheadMs": 4722100,
-        "ballTruthAtCheckpoint": true,
-        "cameraIndependent": "identical",
-        "seekDeterministic": "identical",
-        "ballMeshAtSource": "exact",
-        "ballSpinDeterministic": "identical",
-        "playerYawDeterministic": "identical",
-        "cameraOverheadConverged": "yes 0.0/92.0/0.0",
-        "cameraFollowConverged": "yes 5.0/4.4/8.9",
-        "cameraKeeperConverged": "yes 41.4/2.8/5.6",
-        "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
-        "directedSeekDeterministic": "identical",
-        "escapeExitsDirected": "true",
-        "rapidChangesConverge": "yes",
-        "orbitBoundsAfterGestures": "ok pos -79.2/74.9/82.0 target -79.2/0.0/82.0",
-        "orbitExitConverged": "yes",
-        "xrayOverlaysRendered": "yes (3 lines + label)",
-        "xrayWorldInvariant": "identical",
-        "xrayPhaseSwitch": "yes (2)",
-        "xraySceneClick": "yes (click @ 655,235, candidate 0/10)",
-        "inspectorSentence": "exact values",
-        "inspectorDelta": "exact",
-        "inspectorInterpretation": "labeled hypothesis",
-        "inspectorFrames": "exact frame ids",
-        "inspectorSeek": "yes",
-        "xrayKeyboard": "yes",
-        "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":946.6,\"p95Ms\":997.6,\"drawCalls\":149,\"triangles\":608056,\"geometries\":43,\"textures\":49,\"samples\":240}",
-        "contextLoss": "lost → context-lost"
-      }
-    },
-    {
-      "route": "studio",
-      "viewport": "1024x768",
-      "reducedMotion": false,
-      "screenshot": "screenshots/studio-1024x768.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Studio — production workspace · Kyneloom",
-        "focusables": 6,
-        "disabledPublish": 1,
-        "eventMarkers": 4
-      }
-    },
-    {
-      "route": "moment",
-      "viewport": "1024x768",
-      "reducedMotion": false,
-      "screenshot": "screenshots/moment-1024x768.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Published Moment · Kyneloom",
-        "focusables": 6,
-        "unpublishedChip": 1
-      }
-    },
-    {
-      "route": "landing",
-      "viewport": "390x844",
-      "reducedMotion": false,
-      "screenshot": "screenshots/landing-390x844.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Kyneloom — Every moment has a world inside",
-        "focusables": 7,
-        "ctaText": "Enter the moment\n→",
-        "ctaClickable": "yes",
-        "fixtureSamplesShown": "5,129",
-        "landingOrb": "{\"state\":\"idle\",\"fragments\":320,\"markers\":23}",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":9017}"
-      }
-    },
-    {
-      "route": "explore",
-      "viewport": "390x844",
-      "reducedMotion": false,
-      "screenshot": "screenshots/explore-390x844.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 26,
-        "scene3dReadyMs": 1389,
+        "focusables": 28,
+        "scene3dReadyMs": 863,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -381,8 +276,250 @@
         "ballSpinDeterministic": "identical",
         "playerYawDeterministic": "identical",
         "cameraOverheadConverged": "yes 0.0/91.9/0.1",
+        "cameraFollowConverged": "yes 5.0/4.7/8.9",
+        "cameraKeeperConverged": "yes 40.8/2.8/5.7",
+        "cameraDirectedGoalPose": "yes 58.8/3.2/7.0",
+        "directedSeekDeterministic": "identical",
+        "escapeExitsDirected": "true",
+        "rapidChangesConverge": "yes",
+        "orbitBoundsAfterGestures": "ok pos -82.0/74.9/82.0 target -82.0/0.0/82.0",
+        "orbitExitConverged": "yes",
+        "xrayOverlaysRendered": "yes (3 lines + label)",
+        "xrayWorldInvariant": "identical",
+        "xrayPhaseSwitch": "yes (2)",
+        "xraySceneClick": "yes (click @ 789,244, candidate 0/10)",
+        "inspectorSentence": "exact values",
+        "inspectorDelta": "exact",
+        "inspectorInterpretation": "labeled hypothesis",
+        "inspectorFrames": "exact frame ids",
+        "inspectorSeek": "yes",
+        "xrayKeyboard": "yes",
+        "cameraFovRange": "40–50°",
+        "perf": "{\"fps\":4,\"p50Ms\":273.6,\"p95Ms\":296.2,\"drawCalls\":151,\"triangles\":608152,\"geometries\":44,\"textures\":49,\"samples\":240}",
+        "contextLoss": "lost → context-lost"
+      }
+    },
+    {
+      "route": "studio",
+      "viewport": "1280x800",
+      "reducedMotion": false,
+      "screenshot": "screenshots/studio-1280x800.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Studio — production workspace · Kyneloom",
+        "focusables": 7,
+        "disabledPublish": 1,
+        "eventMarkers": 4
+      }
+    },
+    {
+      "route": "moment",
+      "viewport": "1280x800",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moment-1280x800.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Published Moment · Kyneloom",
+        "focusables": 7,
+        "unpublishedChip": 1
+      }
+    },
+    {
+      "route": "landing",
+      "viewport": "1024x768",
+      "reducedMotion": false,
+      "screenshot": "screenshots/landing-1024x768.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Kyneloom — Every moment has a world inside",
+        "focusables": 8,
+        "ctaText": "Enter the moment\n→",
+        "ctaClickable": "yes",
+        "fixtureSamplesShown": "5,129",
+        "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":8855}"
+      }
+    },
+    {
+      "route": "moments",
+      "viewport": "1024x768",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moments-1024x768.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Moments — Playable Moment gallery · Kyneloom",
+        "focusables": 32,
+        "momentsCount": 12,
+        "momentsDistinctIds": 12,
+        "momentsDistinctFocus": 12,
+        "momentsReducedMotion": false,
+        "momentsCards": 12,
+        "momentsHrefs": "exact",
+        "momentsFeaturedCta": true,
+        "momentsPreviewsLoaded": "12/12",
+        "momentsPreviewsDistinct": 12,
+        "momentsCanvases": 0,
+        "momentsSpineNodes": 12,
+        "momentsFeaturedMedia": "present",
+        "momentsHoverTilt": "yes",
+        "momentsHoverReveal": "visible",
+        "momentsTiltLoopsAfterLeave": 0,
+        "momentsMotionOffscreenPaused": true
+      }
+    },
+    {
+      "route": "explore",
+      "viewport": "1024x768",
+      "reducedMotion": false,
+      "screenshot": "screenshots/explore-1024x768.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Explore — The Invisible Assist · Kyneloom",
+        "focusables": 28,
+        "scene3dReadyMs": 846,
+        "scenePlayers": 22,
+        "sceneMissing": 0,
+        "cameraRadios": 6,
+        "cameraDisabled": 0,
+        "playheadMoves": true,
+        "spaceTogglesPlay": true,
+        "controlsOverlapStagePx": 0,
+        "twoDFallback": 1,
+        "resetPlayheadMs": 4722100,
+        "ballTruthAtCheckpoint": true,
+        "cameraIndependent": "identical",
+        "seekDeterministic": "identical",
+        "ballMeshAtSource": "exact",
+        "ballSpinDeterministic": "identical",
+        "playerYawDeterministic": "identical",
+        "cameraOverheadConverged": "yes 0.1/91.9/0.1",
+        "cameraFollowConverged": "yes 5.0/4.5/8.9",
+        "cameraKeeperConverged": "yes 40.6/2.8/5.7",
+        "cameraDirectedGoalPose": "yes 58.7/3.2/7.0",
+        "directedSeekDeterministic": "identical",
+        "escapeExitsDirected": "true",
+        "rapidChangesConverge": "yes",
+        "orbitBoundsAfterGestures": "ok pos -77.7/74.9/82.0 target -77.7/0.0/82.0",
+        "orbitExitConverged": "yes",
+        "xrayOverlaysRendered": "yes (3 lines + label)",
+        "xrayWorldInvariant": "identical",
+        "xrayPhaseSwitch": "yes (2)",
+        "xraySceneClick": "yes (click @ 655,234, candidate 0/10)",
+        "inspectorSentence": "exact values",
+        "inspectorDelta": "exact",
+        "inspectorInterpretation": "labeled hypothesis",
+        "inspectorFrames": "exact frame ids",
+        "inspectorSeek": "yes",
+        "xrayKeyboard": "yes",
+        "cameraFovRange": "40–50°",
+        "perf": "{\"fps\":4,\"p50Ms\":258.5,\"p95Ms\":305.6,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
+        "contextLoss": "lost → context-lost"
+      }
+    },
+    {
+      "route": "studio",
+      "viewport": "1024x768",
+      "reducedMotion": false,
+      "screenshot": "screenshots/studio-1024x768.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Studio — production workspace · Kyneloom",
+        "focusables": 7,
+        "disabledPublish": 1,
+        "eventMarkers": 4
+      }
+    },
+    {
+      "route": "moment",
+      "viewport": "1024x768",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moment-1024x768.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Published Moment · Kyneloom",
+        "focusables": 7,
+        "unpublishedChip": 1
+      }
+    },
+    {
+      "route": "landing",
+      "viewport": "390x844",
+      "reducedMotion": false,
+      "screenshot": "screenshots/landing-390x844.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Kyneloom — Every moment has a world inside",
+        "focusables": 8,
+        "ctaText": "Enter the moment\n→",
+        "ctaClickable": "yes",
+        "fixtureSamplesShown": "5,129",
+        "landingOrb": "{\"state\":\"idle\",\"fragments\":320,\"markers\":23}",
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":7792}"
+      }
+    },
+    {
+      "route": "moments",
+      "viewport": "390x844",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moments-390x844.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Moments — Playable Moment gallery · Kyneloom",
+        "focusables": 32,
+        "momentsCount": 12,
+        "momentsDistinctIds": 12,
+        "momentsDistinctFocus": 12,
+        "momentsReducedMotion": false,
+        "momentsCards": 12,
+        "momentsHrefs": "exact",
+        "momentsFeaturedCta": true,
+        "momentsPreviewsLoaded": "12/12",
+        "momentsPreviewsDistinct": 12,
+        "momentsCanvases": 0,
+        "momentsSpineNodes": 12,
+        "momentsFeaturedMedia": "present",
+        "momentsMotionOffscreenPaused": true,
+        "momentsTouchNavigation": true
+      }
+    },
+    {
+      "route": "explore",
+      "viewport": "390x844",
+      "reducedMotion": false,
+      "screenshot": "screenshots/explore-390x844.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Explore — The Invisible Assist · Kyneloom",
+        "focusables": 28,
+        "scene3dReadyMs": 470,
+        "scenePlayers": 22,
+        "sceneMissing": 0,
+        "cameraRadios": 6,
+        "cameraDisabled": 0,
+        "playheadMoves": true,
+        "spaceTogglesPlay": true,
+        "controlsOverlapStagePx": 0,
+        "twoDFallback": 1,
+        "resetPlayheadMs": 4722100,
+        "ballTruthAtCheckpoint": true,
+        "cameraIndependent": "identical",
+        "seekDeterministic": "identical",
+        "ballMeshAtSource": "exact",
+        "ballSpinDeterministic": "identical",
+        "playerYawDeterministic": "identical",
+        "cameraOverheadConverged": "yes 0.1/91.7/0.2",
         "cameraFollowConverged": "yes 5.0/4.6/8.9",
-        "cameraKeeperConverged": "yes 41.3/2.8/5.7",
+        "cameraKeeperConverged": "yes 39.9/2.9/5.8",
         "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
         "directedSeekDeterministic": "identical",
         "escapeExitsDirected": "true",
@@ -392,7 +529,7 @@
         "xrayOverlaysRendered": "yes (3 lines + label)",
         "xrayWorldInvariant": "identical",
         "xrayPhaseSwitch": "yes (2)",
-        "xraySceneClick": "yes (tap @ 352,258, candidate 0/10)",
+        "xraySceneClick": "yes (tap @ 352,251, candidate 0/10)",
         "inspectorSentence": "exact values",
         "inspectorDelta": "exact",
         "inspectorInterpretation": "labeled hypothesis",
@@ -400,7 +537,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":2,\"p50Ms\":484.9,\"p95Ms\":523.7,\"drawCalls\":79,\"triangles\":303976,\"geometries\":37,\"textures\":47,\"samples\":240}",
+        "perf": "{\"fps\":7,\"p50Ms\":140.2,\"p95Ms\":181.5,\"drawCalls\":78,\"triangles\":303944,\"geometries\":35,\"textures\":47,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -413,7 +550,7 @@
       "consoleErrors": [],
       "checks": {
         "title": "Studio — production workspace · Kyneloom",
-        "focusables": 6,
+        "focusables": 7,
         "disabledPublish": 1,
         "eventMarkers": 4
       }
@@ -427,7 +564,7 @@
       "consoleErrors": [],
       "checks": {
         "title": "Published Moment · Kyneloom",
-        "focusables": 6,
+        "focusables": 7,
         "unpublishedChip": 1
       }
     },
@@ -440,11 +577,38 @@
       "consoleErrors": [],
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
-        "focusables": 7,
+        "focusables": 8,
         "ctaText": "Enter the moment\n→",
         "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129",
-        "landingReducedMotion": "direct handoff in 2261ms; phases [\"idle\",\"ready\"]"
+        "landingReducedMotion": "direct handoff in 1507ms; phases [\"idle\",\"ready\"]"
+      }
+    },
+    {
+      "route": "moments",
+      "viewport": "390x844",
+      "reducedMotion": true,
+      "screenshot": "screenshots/moments-390x844-rm.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Moments — Playable Moment gallery · Kyneloom",
+        "focusables": 32,
+        "momentsCount": 12,
+        "momentsDistinctIds": 12,
+        "momentsDistinctFocus": 12,
+        "momentsReducedMotion": true,
+        "momentsCards": 12,
+        "momentsHrefs": "exact",
+        "momentsFeaturedCta": true,
+        "momentsPreviewsLoaded": "12/12",
+        "momentsPreviewsDistinct": 12,
+        "momentsCanvases": 0,
+        "momentsSpineNodes": 12,
+        "momentsFeaturedMedia": "present",
+        "momentsReducedTiltStatic": 0,
+        "momentsReducedCardsStillLinks": true,
+        "momentsTouchNavigation": true
       }
     },
     {
@@ -456,8 +620,8 @@
       "consoleErrors": [],
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 26,
-        "scene3dReadyMs": 1256,
+        "focusables": 28,
+        "scene3dReadyMs": 469,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -477,12 +641,37 @@
       "consoleErrors": [],
       "checks": {
         "title": "Kyneloom — Every moment has a world inside",
-        "focusables": 7,
+        "focusables": 8,
         "ctaText": "Enter the moment\n→",
         "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129",
         "landingOrb": "{\"state\":\"idle\",\"fragments\":320,\"markers\":23}",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":8501}"
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":7683}"
+      }
+    },
+    {
+      "route": "moments",
+      "viewport": "375x812",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moments-375x812.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "title": "Moments — Playable Moment gallery · Kyneloom",
+        "focusables": 32,
+        "momentsCount": 12,
+        "momentsDistinctIds": 12,
+        "momentsDistinctFocus": 12,
+        "momentsReducedMotion": false,
+        "momentsCards": 12,
+        "momentsHrefs": "exact",
+        "momentsFeaturedCta": true,
+        "momentsPreviewsLoaded": "12/12",
+        "momentsPreviewsDistinct": 12,
+        "momentsCanvases": 0,
+        "momentsSpineNodes": 12,
+        "momentsFeaturedMedia": "present",
+        "momentsMotionOffscreenPaused": true
       }
     },
     {
@@ -494,8 +683,8 @@
       "consoleErrors": [],
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 26,
-        "scene3dReadyMs": 2203,
+        "focusables": 28,
+        "scene3dReadyMs": 642,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "cameraRadios": 6,
@@ -511,10 +700,10 @@
         "ballMeshAtSource": "exact",
         "ballSpinDeterministic": "identical",
         "playerYawDeterministic": "identical",
-        "cameraOverheadConverged": "yes 0.1/91.9/0.1",
-        "cameraFollowConverged": "yes 5.0/4.5/8.9",
-        "cameraKeeperConverged": "yes 41.3/2.8/5.6",
-        "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
+        "cameraOverheadConverged": "yes 0.2/91.7/0.3",
+        "cameraFollowConverged": "yes 5.0/4.6/8.9",
+        "cameraKeeperConverged": "yes 39.9/2.9/5.8",
+        "cameraDirectedGoalPose": "yes 58.7/3.2/7.0",
         "directedSeekDeterministic": "identical",
         "escapeExitsDirected": "true",
         "rapidChangesConverge": "yes",
@@ -523,7 +712,7 @@
         "xrayOverlaysRendered": "yes (3 lines + label)",
         "xrayWorldInvariant": "identical",
         "xrayPhaseSwitch": "yes (2)",
-        "xraySceneClick": "yes (click @ 338,247, candidate 0/10)",
+        "xraySceneClick": "yes (click @ 339,243, candidate 0/10)",
         "inspectorSentence": "exact values",
         "inspectorDelta": "exact",
         "inspectorInterpretation": "labeled hypothesis",
@@ -531,7 +720,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":707.7,\"p95Ms\":780.6,\"drawCalls\":131,\"triangles\":607576,\"geometries\":39,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":5,\"p50Ms\":199.7,\"p95Ms\":242.9,\"drawCalls\":129,\"triangles\":607512,\"geometries\":37,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -544,7 +733,7 @@
       "consoleErrors": [],
       "checks": {
         "title": "Studio — production workspace · Kyneloom",
-        "focusables": 6,
+        "focusables": 7,
         "disabledPublish": 1,
         "eventMarkers": 4
       }
@@ -558,7 +747,7 @@
       "consoleErrors": [],
       "checks": {
         "title": "Published Moment · Kyneloom",
-        "focusables": 6,
+        "focusables": 7,
         "unpublishedChip": 1
       }
     },
@@ -572,6 +761,29 @@
       "checks": {
         "landingToExplore": true,
         "exploreToStudio": true
+      }
+    },
+    {
+      "route": "moments-seam",
+      "viewport": "1440x900",
+      "reducedMotion": false,
+      "screenshot": "screenshots/moments-1440x900.png",
+      "horizontalOverflowPx": 0,
+      "consoleErrors": [],
+      "checks": {
+        "seamTwoCardsDistinct": "ok",
+        "seamChapterChip": "CHAPTER · THE EQUALIZER",
+        "seamDirectNav": "ok",
+        "seamEvidenceNoteSuppressedInside": "hidden (correct)",
+        "seamEvidenceNote": "shown",
+        "seamEvidenceJump": "{\"playhead\":4720500,\"noteHidden\":true}",
+        "seamRejects(does-not-exist)": "{\"notice\":true,\"playhead\":4722100}",
+        "seamRejects(%3Cscript%3Eal)": "{\"notice\":true,\"playhead\":4722100}",
+        "seamDefaultExplore": "checkpoint",
+        "seamKeyboardTab": true,
+        "seamKeyboardFocusVisible": true,
+        "seamKeyboardEnter": true,
+        "seamRepeatNav": "{\"canvases\":0,\"cards\":12,\"images\":12,\"tiltLoops\":0}"
       }
     },
     {

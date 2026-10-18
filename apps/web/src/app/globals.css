@@ -362,3 +362,15 @@ a:hover {
     padding: 0.4rem 0.7rem;
   }
 }
+
+/* Phones: the wordmark already navigates home, so the Home item is visual
+   duplication that pushes the four-item pill past the viewport edge. */
+@media (max-width: 30rem) {
+  .site-nav a[href='/'] {
+    display: none;
+  }
+
+  .site-nav {
+    gap: 0;
+  }
+}

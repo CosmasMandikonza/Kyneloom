@@ -59,6 +59,15 @@ export function MomentCard({ entry, preview }: MomentCardProps) {
     const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
     const controller = createTiltController(el, undefined, reduced);
 
+    // The engaged state mirrors onto the link itself (data-tilt-active) so
+    // CSS and assistive tooling can key off the semantic card, while the
+    // controller keeps its own spring-tail signal on the inner element.
+    const setEngaged = (engaged: boolean): void => {
+      controller.setEngaged(engaged);
+      if (engaged) link.setAttribute('data-tilt-active', 'true');
+      else link.removeAttribute('data-tilt-active');
+    };
+
     let onMove: ((event: PointerEvent) => void) | null = null;
     if (finePointer && !reduced) {
       onMove = (event: PointerEvent): void => {
@@ -72,13 +81,13 @@ export function MomentCard({ entry, preview }: MomentCardProps) {
       link.addEventListener('pointermove', onMove, { passive: true });
     }
 
-    const onEnter = (): void => controller.setEngaged(true);
+    const onEnter = (): void => setEngaged(true);
     const onLeave = (): void => {
-      controller.setEngaged(false);
+      setEngaged(false);
       controller.pointer(0, 0);
     };
     const onFocus = (): void => {
-      if (link.matches(':focus-visible')) controller.setEngaged(true);
+      if (link.matches(':focus-visible')) setEngaged(true);
     };
     link.addEventListener('pointerenter', onEnter);
     link.addEventListener('pointerleave', onLeave);

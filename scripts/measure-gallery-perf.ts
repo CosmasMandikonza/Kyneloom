@@ -12,7 +12,7 @@
  */
 import { spawn } from 'node:child_process';
 import { execSync } from 'node:child_process';
-import { chromium } from 'playwright';
+import { chromium, type Page } from 'playwright';
 
 const PORT = 3183;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -62,31 +62,36 @@ interface FrameStats {
   meanFps: number;
 }
 
-async function measureFrames(page: import('playwright').Page, ms: number): Promise<FrameStats> {
-  return page.evaluate((durationMs) => {
-    return new Promise<FrameStats>((resolve) => {
-      const times: number[] = [];
-      let last = performance.now();
-      const start = last;
-      const tick = (now: number): void => {
-        times.push(now - last);
-        last = now;
-        if (now - start < durationMs) requestAnimationFrame(tick);
-        else {
-          const sorted = [...times].sort((a, b) => a - b);
-          const mean = times.reduce((t, v) => t + v, 0) / times.length;
-          resolve({
-            frames: times.length,
-            p50Ms: Number((sorted[Math.floor(sorted.length * 0.5)] ?? 0).toFixed(2)),
-            p95Ms: Number((sorted[Math.floor(sorted.length * 0.95)] ?? 0).toFixed(2)),
-            maxMs: Number((sorted.at(-1) ?? 0).toFixed(2)),
-            meanFps: Math.round(1000 / mean),
-          });
-        }
-      };
-      requestAnimationFrame(tick);
-    });
-  }, ms);
+/**
+ * rAF frame-time collector as a raw string: tsx/esbuild decorates named
+ * function expressions with `__name` helpers that do not exist inside the
+ * page, so this must stay out of the transform path.
+ */
+const COLLECT_FRAMES = `(durationMs) => new Promise((resolve) => {
+  const times = [];
+  let last = performance.now();
+  const start = last;
+  const tick = (now) => {
+    times.push(now - last);
+    last = now;
+    if (now - start < durationMs) requestAnimationFrame(tick);
+    else {
+      const sorted = [...times].sort((a, b) => a - b);
+      const mean = times.reduce((t, v) => t + v, 0) / times.length;
+      resolve({
+        frames: times.length,
+        p50Ms: Number(sorted[Math.floor(sorted.length * 0.5)].toFixed(2)),
+        p95Ms: Number(sorted[Math.floor(sorted.length * 0.95)].toFixed(2)),
+        maxMs: Number(sorted[sorted.length - 1].toFixed(2)),
+        meanFps: Math.round(1000 / mean),
+      });
+    }
+  };
+  requestAnimationFrame(tick);
+})`;
+
+async function measureFrames(page: Page, ms: number): Promise<FrameStats> {
+  return (await page.evaluate(`(${COLLECT_FRAMES})(${ms})`)) as FrameStats;
 }
 
 async function main(): Promise<void> {
@@ -121,13 +126,19 @@ async function main(): Promise<void> {
     await page.waitForTimeout(1500);
 
     const cdp = await context.newCDPSession(page);
-    const gpuInfo = (await cdp.send('SystemInfo.getInfo')) as {
-      gpu?: { devices?: { description?: string }[]; renderer?: string };
-    };
     const gpu =
-      gpuInfo.gpu !== undefined
-        ? `${gpuInfo.gpu.devices?.[0]?.description ?? 'unknown GPU'} · ${gpuInfo.gpu.renderer ?? ''}`.trim()
-        : 'unknown';
+      (await page.evaluate(() => {
+        try {
+          const canvas = document.createElement('canvas');
+          const gl = canvas.getContext('webgl2');
+          if (gl === null) return null;
+          const ext = gl.getExtension('WEBGL_debug_renderer_info');
+          if (ext === null) return null;
+          return String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL));
+        } catch {
+          return null;
+        }
+      })) ?? 'unavailable (CDP SystemInfo empty; WEBGL_debug_renderer_info masked)';
     const ua = await page.evaluate(() => navigator.userAgent);
 
     const idle = await measureFrames(page, 5000);
@@ -166,6 +177,7 @@ async function main(): Promise<void> {
         .length,
       canvases: document.querySelectorAll('canvas').length,
     }));
+    await cdp.send('Performance.enable');
     const heap = await cdp.send('Performance.getMetrics');
     const jsHeap = heap.metrics.find((m) => m.name === 'JSHeapUsedSize')?.value ?? -1;
     const listeners = heap.metrics.find((m) => m.name === 'JSEventListeners')?.value ?? -1;
