@@ -131,6 +131,59 @@
   background: var(--line);
 }
 
+/* Honest evidence context (KYN-10): the separation measurement belongs to
+   its own interval — when the playhead is elsewhere, say so. */
+.stage__evidence-context {
+  position: absolute;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: color-mix(in srgb, var(--ink-950) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber-400) 45%, transparent);
+  border-radius: var(--radius-full);
+  font-size: var(--step--1);
+  letter-spacing: 0.06em;
+  color: var(--amber-400);
+  max-width: min(92%, 42rem);
+  z-index: 5;
+}
+
+/* The transport loop toggles the `hidden` attribute — the flex display
+   above would override it, so the guard is explicit. */
+.stage__evidence-context[hidden] {
+  display: none;
+}
+
+.stage__evidence-context-seek {
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--amber-400) 55%, transparent);
+  background: transparent;
+  color: var(--amber-400);
+  border-radius: var(--radius-full);
+  font: inherit;
+  padding: 0.2rem 0.7rem;
+  cursor: pointer;
+  min-height: 1.8rem;
+}
+
+.stage__evidence-context-seek:hover {
+  background: color-mix(in srgb, var(--amber-400) 14%, transparent);
+  color: var(--text-primary);
+}
+
+/* Unknown catalog selection notice (KYN-10 seam, honest failure). */
+.explore__selection-note {
+  margin-block: var(--space-4);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
 /* Camera + lens — top right */
 .stage__modes {
   position: absolute;

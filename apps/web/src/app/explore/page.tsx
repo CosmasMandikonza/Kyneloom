@@ -3,6 +3,11 @@ import Link from 'next/link';
 import { loadGoldenMatch } from '@/lib/match-fixture';
 import { buildEvidenceProjection } from '@/lib/evidence-data';
 import { buildSceneData } from '@/lib/scene-data';
+import {
+  buildMomentCatalog,
+  resolveMomentSelection,
+  type MomentCatalogEntry,
+} from '@/lib/moment-catalog';
 import { ReplayStage } from './replay-stage';
 import './explore.css';
 
@@ -18,22 +23,55 @@ export const metadata: Metadata = {
  * serializable scene projection (buildSceneData): 22 players, the ball, the
  * accepted tracking samples and the golden-window events. The renderer,
  * filesystem and reducer stay on the server side of this boundary.
+ *
+ * KYN-10 selection seam: `/explore?moment=<catalogId>` resolves the id
+ * against the deterministic catalog SERVER-SIDE and, when valid, moves the
+ * initial playhead to that chapter's validated source timestamp. Unknown or
+ * malformed ids never reach the scene — the checkpoint stays authoritative
+ * and an honest notice explains what happened. The default route and the
+ * KYN-09 `?enter=orb` handoff are unchanged.
  */
-export default async function ExplorePage() {
+export default async function ExplorePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const golden = await loadGoldenMatch();
-  const scene = buildSceneData(golden);
+  const catalog = buildMomentCatalog(golden);
+  const params = await searchParams;
+  const selection = resolveMomentSelection(catalog, params['moment']);
+  const selectedEntry: MomentCatalogEntry | null =
+    selection.status === 'selected' ? selection.entry : null;
+  const scene = buildSceneData(golden, {
+    initialFocusMs: selectedEntry?.focusMs,
+  });
   const evidence = buildEvidenceProjection(golden);
 
   return (
     <main id="main-content" className="explore">
       {scene !== null ? (
-        <ReplayStage scene={scene} evidence={evidence} />
+        <ReplayStage
+          scene={scene}
+          evidence={evidence}
+          chapterTitle={selectedEntry?.title ?? null}
+        />
       ) : (
         <section className="explore__meta panel" role="note">
           <p className="chip chip--not-implemented">Fixture unavailable</p>
           <p>{golden.ok ? 'Scene data could not be built.' : golden.message}</p>
         </section>
       )}
+
+      {selection.status === 'unknown' ? (
+        <section className="explore__meta panel explore__selection-note" role="note">
+          <p className="chip chip--not-implemented">Unknown moment</p>
+          <p data-unknown-moment={selection.raw}>
+            No catalog chapter matches <span className="mono">{selection.raw}</span>, so the replay
+            opened at the default checkpoint instead.{' '}
+            <Link href="/moments">Browse the moment gallery</Link> for valid chapters.
+          </p>
+        </section>
+      ) : null}
 
       {golden.ok ? (
         <section className="explore__meta panel" aria-labelledby="meta-title">

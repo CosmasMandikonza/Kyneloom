@@ -1,0 +1,640 @@
+/*
+ * KYN-10 — the Playable Moment gallery.
+ * Cinematic, editorial, portal-like: dark ink canvas, generous air, real
+ * scene imagery doing the storytelling, restrained spring-driven depth.
+ * All tokens come from the shared globals; no new palette values.
+ */
+
+.moments {
+  min-height: 100dvh;
+  padding-top: var(--header-h);
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgba(81, 215, 189, 0.06), transparent 55%), var(--ink-900);
+}
+
+.moments__header {
+  padding-block: var(--space-8) var(--space-6);
+}
+
+.moments__eyebrow {
+  color: var(--mint-500);
+  font-size: var(--step--1);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  margin: 0 0 var(--space-3);
+}
+
+.moments__title {
+  font-size: var(--step-5);
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+  margin: 0 0 var(--space-4);
+  max-width: 14ch;
+}
+
+.moments__lede {
+  color: var(--text-muted);
+  font-size: var(--step-1);
+  max-width: 44ch;
+  margin: 0;
+}
+
+.moments__empty p {
+  margin-block: var(--space-2);
+}
+
+/* ---------- Featured moment ---------- */
+
+.featured {
+  position: relative;
+  isolation: isolate;
+  min-height: min(78vh, 46rem);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  border-block: 1px solid var(--line-soft);
+}
+
+.featured__media {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  /* The tilt controller writes --tilt-gx/--tilt-gy (50% at rest): the
+     pointer-driven parallax travel for the media layer. */
+  transform: translate3d(
+    calc((var(--tilt-gx, 50%) - 50%) * 0.22),
+    calc((var(--tilt-gy, 50%) - 50%) * 0.16),
+    0
+  );
+  will-change: transform;
+}
+
+.featured__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scale(1.07); /* headroom for parallax travel */
+  animation: featured-reveal 1.15s var(--ease-out) both;
+}
+
+.featured__video--missing {
+  background:
+    radial-gradient(80% 70% at 60% 20%, rgba(81, 215, 189, 0.08), transparent 60%), var(--ink-950);
+}
+
+.featured__scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      to top,
+      rgba(7, 19, 25, 0.97) 0%,
+      rgba(7, 19, 25, 0.82) 30%,
+      rgba(7, 19, 25, 0.3) 62%,
+      rgba(7, 19, 25, 0.5) 100%
+    ),
+    linear-gradient(to right, rgba(7, 19, 25, 0.85), rgba(7, 19, 25, 0.25) 55%, transparent 80%);
+}
+
+.featured__glare {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    farthest-corner circle at var(--tilt-gx, 50%) var(--tilt-gy, 40%),
+    rgba(198, 249, 231, 0.1),
+    transparent 55%
+  );
+  opacity: var(--tilt-lift, 0);
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.featured__content {
+  padding-block: var(--space-8);
+  width: 100%;
+}
+
+.featured__eyebrow {
+  color: var(--mint-200);
+  font-size: var(--step--1);
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  margin: 0 0 var(--space-4);
+}
+
+.featured__title {
+  font-size: var(--step-6);
+  line-height: 0.98;
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--space-4);
+  max-width: 16ch;
+  text-wrap: balance;
+}
+
+.featured__hook {
+  color: var(--text-muted);
+  font-size: var(--step-1);
+  line-height: 1.55;
+  max-width: 52ch;
+  margin: 0 0 var(--space-5);
+}
+
+.featured__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-7);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  background: color-mix(in srgb, var(--ink-950) 62%, transparent);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  max-width: fit-content;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.featured__facts dt {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-1);
+}
+
+.featured__facts dd {
+  margin: 0;
+  color: var(--mint-200);
+  font-size: var(--step-1);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.featured__facts-note {
+  color: var(--text-muted);
+  font-size: var(--step--1);
+  opacity: 0.75;
+  margin: 0 0 var(--space-5);
+  max-width: 60ch;
+}
+
+.featured__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.featured__cta {
+  font-size: var(--step-1);
+  padding-inline: 2rem;
+}
+
+.featured__browse {
+  color: var(--text-muted);
+  font-size: var(--step-0);
+  border-bottom: 1px solid transparent;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.featured__browse:hover {
+  color: var(--mint-200);
+  border-color: currentColor;
+}
+
+@keyframes featured-reveal {
+  from {
+    opacity: 0;
+    transform: scale(1.12);
+    filter: brightness(0.55) saturate(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.07);
+    filter: none;
+  }
+}
+
+/* ---------- Collection ---------- */
+
+.moments__collection {
+  padding-block: var(--space-8) var(--space-9);
+}
+
+.moments__collection-head {
+  max-width: 64ch;
+  margin-bottom: var(--space-6);
+}
+
+.moments__collection-title {
+  font-size: var(--step-3);
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--space-3);
+}
+
+.moments__collection-note {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Timeline spine — where the chapters sit inside the window. */
+.moments__spine {
+  position: relative;
+  height: 2.75rem;
+  margin-bottom: var(--space-6);
+  display: flex;
+  align-items: center;
+}
+
+.moments__spine-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--line) 6%, var(--line) 94%, transparent);
+}
+
+.moments__spine-node {
+  position: absolute;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.7rem;
+  min-height: 1.7rem;
+  padding: 0 0.25rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line-soft);
+  background: var(--ink-900);
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.moments__spine-node:hover {
+  color: var(--mint-200);
+  border-color: var(--mint-500);
+  transform: translateX(-50%) translateY(-2px);
+}
+
+.moments__spine-node--event {
+  color: var(--mint-500);
+  border-color: color-mix(in srgb, var(--mint-500) 55%, transparent);
+  background: color-mix(in srgb, var(--mint-500) 12%, var(--ink-900));
+}
+
+/* ---------- Chapter grid ---------- */
+
+.moments__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+  gap: var(--space-6) var(--space-5);
+}
+
+.moments__grid-item {
+  animation: card-in 0.55s var(--ease-out) both;
+  animation-delay: calc(var(--card-index, 0) * 45ms);
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.moments__provenance {
+  margin-top: var(--space-7);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line-soft);
+  color: var(--text-muted);
+  font-size: var(--step--1);
+  max-width: 76ch;
+}
+
+/* ---------- Moment card ---------- */
+
+.mcard {
+  display: block;
+  color: inherit;
+  border-radius: var(--radius-md);
+  outline-offset: 4px;
+}
+
+.mcard__frame {
+  perspective: 900px;
+}
+
+.mcard__tilt {
+  position: relative;
+  border-radius: var(--radius-md);
+  background: var(--ink-800);
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+  transform-style: preserve-3d;
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+  will-change: transform;
+}
+
+.mcard[data-tilt-active] .mcard__tilt,
+.mcard:hover .mcard__tilt,
+.mcard:focus-visible .mcard__tilt {
+  border-color: color-mix(in srgb, var(--mint-500) 45%, var(--line-soft));
+  box-shadow:
+    0 24px 48px -24px rgba(0, 0, 0, 0.8),
+    0 0 0 1px color-mix(in srgb, var(--mint-500) 18%, transparent),
+    0 0 42px -18px var(--mint-glow);
+}
+
+.mcard__media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--ink-950);
+}
+
+.mcard__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scale(1.02); /* hair of headroom for the tilt */
+  transition: transform var(--dur-cinematic) var(--ease-out);
+}
+
+.mcard:hover .mcard__image,
+.mcard:focus-visible .mcard__image {
+  transform: scale(1.06);
+}
+
+.mcard__image--missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    repeating-linear-gradient(
+      to right,
+      color-mix(in srgb, var(--line-soft) 60%, transparent) 0 1px,
+      transparent 1px 12.5%
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--line-soft) 60%, transparent) 0 1px,
+      transparent 1px 20%
+    ),
+    radial-gradient(70% 60% at 50% 30%, rgba(81, 215, 189, 0.05), transparent 60%), var(--ink-950);
+  color: var(--text-muted);
+  font-size: var(--step--1);
+  letter-spacing: 0.22em;
+}
+
+.mcard__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(7, 19, 25, 0.92) 0%,
+    rgba(7, 19, 25, 0.45) 46%,
+    rgba(7, 19, 25, 0.12) 75%,
+    rgba(7, 19, 25, 0.28) 100%
+  );
+  transition: background var(--dur-base) var(--ease-out);
+}
+
+.mcard__glare {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    farthest-corner circle at var(--tilt-gx, 50%) var(--tilt-gy, 50%),
+    rgba(198, 249, 231, 0.13),
+    transparent 58%
+  );
+  opacity: var(--tilt-lift, 0);
+}
+
+.mcard__clock {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  padding: 0.18rem 0.55rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ink-950) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  color: var(--mint-200);
+  font-size: var(--step--1);
+  letter-spacing: 0.08em;
+}
+
+.mcard__index {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-3);
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(198, 249, 231, 0.32);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+  /* The overlay content sits above the numeral; it must never collide. */
+  text-shadow: none;
+}
+
+.mcard__overlay {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  z-index: 2; /* above the ghost numeral and the scrim */
+}
+
+.mcard__tag {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--mint-200);
+  border: 1px solid color-mix(in srgb, var(--mint-500) 40%, transparent);
+  background: color-mix(in srgb, var(--mint-500) 10%, transparent);
+  border-radius: var(--radius-full);
+  padding: 0.14rem 0.6rem;
+}
+
+.mcard__title {
+  margin: 0;
+  font-size: var(--step-2);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.mcard__hook {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--step-0);
+  line-height: 1.5;
+}
+
+.mcard__fact {
+  color: var(--mint-200);
+  font-size: var(--step-0);
+  letter-spacing: 0.02em;
+}
+
+.mcard__enter {
+  color: var(--mint-500);
+  font-size: var(--step-0);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Progressive reveal: hover/focus (fine pointers) uncovers the hook, the
+   measured fact and the enter affordance. Touch devices see everything —
+   no utility may depend on hover. */
+@media (hover: hover) and (pointer: fine) {
+  .mcard__hook,
+  .mcard__fact,
+  .mcard__enter {
+    opacity: 0;
+    transform: translateY(6px);
+    transition:
+      opacity var(--dur-base) var(--ease-out),
+      transform var(--dur-base) var(--ease-out);
+  }
+
+  .mcard:hover .mcard__hook,
+  .mcard:hover .mcard__fact,
+  .mcard:hover .mcard__enter,
+  .mcard:focus-visible .mcard__hook,
+  .mcard:focus-visible .mcard__fact,
+  .mcard:focus-visible .mcard__enter,
+  .mcard:focus-within .mcard__hook,
+  .mcard:focus-within .mcard__fact,
+  .mcard:focus-within .mcard__enter {
+    opacity: 1;
+    transform: none;
+  }
+
+  .mcard__hook,
+  .mcard__fact {
+    transition-delay: 40ms;
+  }
+}
+
+.mcard__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4) calc(var(--space-2) + 0.1rem);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  border-top: 1px solid color-mix(in srgb, var(--line-soft) 70%, transparent);
+}
+
+.mcard__meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The middle (players/camera) flexes; id and source keep their content. */
+.mcard__meta > span:nth-child(2) {
+  flex: 1;
+  text-align: center;
+}
+
+.mcard__meta-id {
+  color: var(--mint-500);
+}
+
+.mcard__meta-src {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 60rem) {
+  .featured {
+    min-height: 74vh;
+  }
+
+  .featured__title {
+    font-size: var(--step-5);
+  }
+
+  .featured__facts {
+    gap: var(--space-4) var(--space-6);
+  }
+}
+
+@media (max-width: 35rem) {
+  .moments__header {
+    padding-block: var(--space-7) var(--space-5);
+  }
+
+  .featured {
+    min-height: 82vh;
+  }
+
+  /* Mobile CTA hierarchy: the primary action must dominate; the browse
+     link quiets down so the eye lands on Enter the scene first. */
+  .featured__cta {
+    font-size: var(--step-1);
+    padding-inline: 1.75rem;
+    box-shadow: 0 10px 36px -10px var(--mint-glow);
+  }
+
+  .featured__browse {
+    font-size: var(--step--1);
+    color: var(--text-muted);
+    opacity: 0.85;
+  }
+
+  .featured__facts {
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
+  .moments__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mcard__index {
+    font-size: 2.6rem;
+  }
+
+  .moments__spine-node {
+    min-width: 1.45rem;
+    min-height: 1.45rem;
+    font-size: 0.58rem;
+  }
+}

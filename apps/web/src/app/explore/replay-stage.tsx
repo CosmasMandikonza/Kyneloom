@@ -23,6 +23,7 @@ import { LivingReplayCanvas, type SceneQuality } from './scene/living-replay';
 import { XrayOverlay, type XrayPhase, SCENE_OPEN_INSPECTOR_EVENT } from './scene/xray-overlay';
 import { EvidenceInspector } from './evidence-inspector';
 import { validateEvidenceProjection, type EvidenceProjection } from '@/lib/evidence-data';
+import { MEASURED_INTERVAL_MS } from '@/lib/moment-catalog';
 import { Fallback2D } from './scene/fallback-2d';
 
 /**
@@ -85,6 +86,12 @@ function distanceToSegmentPx(
 export interface ReplayStageProps {
   readonly scene: SceneData;
   readonly evidence: EvidenceProjection;
+  /**
+   * KYN-10: title of the catalog chapter this replay was opened at, or null
+   * for the default entry. Presentational only — the playhead already came
+   * from the server-validated scene.initialFocusMs.
+   */
+  readonly chapterTitle?: string | null;
 }
 
 /**
@@ -92,7 +99,7 @@ export interface ReplayStageProps {
  * stage truthfully (explicit notice, no transport) rather than playing a
  * plausible-but-false replay built from invented defaults.
  */
-export function ReplayStage({ scene, evidence }: ReplayStageProps) {
+export function ReplayStage({ scene, evidence, chapterTitle }: ReplayStageProps) {
   let timeline: ReturnType<typeof sceneTimeline> | null = null;
   let invalidReason: string | null = null;
   try {
@@ -112,13 +119,21 @@ export function ReplayStage({ scene, evidence }: ReplayStageProps) {
       </section>
     );
   }
-  return <ReplayStageInner scene={scene} evidence={evidence} timeline={timeline} />;
+  return (
+    <ReplayStageInner
+      scene={scene}
+      evidence={evidence}
+      timeline={timeline}
+      chapterTitle={chapterTitle ?? null}
+    />
+  );
 }
 
 function ReplayStageInner({
   scene,
   evidence,
   timeline,
+  chapterTitle,
 }: ReplayStageProps & { timeline: ReturnType<typeof sceneTimeline> }) {
   const modeGroupId = useId();
   const lensGroupId = useId();
@@ -189,7 +204,14 @@ function ReplayStageInner({
   const sliderRef = useRef<HTMLInputElement>(null);
   const fillRef = useRef<HTMLSpanElement>(null);
   const eventRef = useRef<HTMLSpanElement>(null);
+  const evidenceContextRef = useRef<HTMLDivElement>(null);
   const scrubbingRef = useRef(false);
+
+  /** The verified X-Ray measurement interval (KYN-10 honesty gate). */
+  const MEASURED_WINDOW = {
+    startMs: MEASURED_INTERVAL_MS[0],
+    endMs: MEASURED_INTERVAL_MS[1],
+  } as const;
 
   // Environment: reduced motion + coarse pointer → lighter quality tier.
   useEffect(() => {
@@ -267,6 +289,12 @@ function ReplayStageInner({
             : 'open play';
           eventRef.current.dataset.goal =
             active?.phase === 'active' && active.event.isGoal ? 'true' : 'false';
+        }
+        // Honest evidence context: visible only while X-Ray is showing AND
+        // the playhead sits outside the measured interval.
+        if (evidenceContextRef.current !== null) {
+          const outside = t < MEASURED_WINDOW.startMs || t > MEASURED_WINDOW.endMs;
+          evidenceContextRef.current.hidden = !(xrayActiveRef.current && outside);
         }
       }
       raf = requestAnimationFrame(loop);
@@ -465,6 +493,38 @@ function ReplayStageInner({
               {scene.teams.home} vs {scene.teams.away}
             </span>
             <span className="chip chip--synthetic">Synthetic</span>
+            {chapterTitle !== null ? (
+              <span className="chip chip--evidence" data-chapter-chip={scene.initialFocusMs}>
+                Chapter · {chapterTitle}
+              </span>
+            ) : null}
+          </div>
+
+          {/* Honest evidence context (KYN-10): the verified separation
+              measurement belongs to its own interval; when the playhead is
+              outside it, say so instead of letting the overlay read as if it
+              belonged to the current chapter. Visibility is driven from the
+              transport loop (no per-frame React renders). */}
+          <div
+            className="stage__evidence-context"
+            ref={evidenceContextRef}
+            hidden
+            data-evidence-context=""
+          >
+            <span className="mono">
+              MEASURED INTERVAL {formatMatchClock(MEASURED_WINDOW.startMs)}–
+              {formatMatchClock(MEASURED_WINDOW.endMs)} · PLAYHEAD OUTSIDE IT
+            </span>
+            <button
+              type="button"
+              className="stage__evidence-context-seek"
+              onClick={() => {
+                setPlaying(false);
+                setPlayhead(MEASURED_WINDOW.startMs);
+              }}
+            >
+              Go to measured interval
+            </button>
           </div>
 
           {/* Camera / lens — top right */}
