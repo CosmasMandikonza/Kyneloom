@@ -64,7 +64,12 @@ export function AnalystRail({
 }: AnalystRailProps) {
   const timeRef = useRef<HTMLSpanElement>(null);
   const eventRef = useRef<HTMLSpanElement>(null);
-  const factsRef = useRef<HTMLDListElement>(null);
+  /**
+   * Ref on the CHANGING LEAF ONLY. Never put it on the <dl>: assigning
+   * textContent to the container would delete the React-owned <dt>/<dd>
+   * semantic structure (review round: facts DOM integrity).
+   */
+  const detailRef = useRef<HTMLSpanElement>(null);
 
   const selected =
     selectedEntityId !== null
@@ -86,7 +91,7 @@ export function AnalystRail({
           ? `${active.phase === 'active' ? '' : 'next · '}${active.event.label} — ${active.event.actorId} (${active.event.eventId})`
           : 'open play';
       }
-      if (factsRef.current !== null && selected !== undefined) {
+      if (detailRef.current !== null && selected !== undefined) {
         const pos = frame.positions.get(selected.entityId);
         const speed = frame.velocitiesMps.get(selected.entityId);
         const text =
@@ -95,7 +100,7 @@ export function AnalystRail({
             : `${selected.entityId}: ${pos.xM.toFixed(1)}, ${pos.yM.toFixed(1)} m${pos.exact ? '' : ' (interpolated)'} · ${speed === undefined ? 'speed n/a' : `${speed.toFixed(1)} m/s`} · ${pos.origin}`;
         if (text !== lastText) {
           lastText = text;
-          factsRef.current.textContent = text;
+          detailRef.current.textContent = text;
         }
       }
     }, 250);
@@ -120,7 +125,7 @@ export function AnalystRail({
             open play
           </span>
         </p>
-        <dl className="rail__facts mono" ref={factsRef}>
+        <dl className="rail__facts mono">
           <div>
             <dt>Selection</dt>
             <dd>
@@ -131,8 +136,10 @@ export function AnalystRail({
           </div>
           <div>
             <dt>Selected detail</dt>
-            <dd data-testid="rail-selected-detail">
-              {selected !== undefined ? 'awaiting first sync' : 'select a player in the scene'}
+            <dd>
+              <span data-testid="rail-selected-detail" ref={detailRef}>
+                {selected !== undefined ? 'awaiting first sync' : 'select a player in the scene'}
+              </span>
             </dd>
           </div>
         </dl>

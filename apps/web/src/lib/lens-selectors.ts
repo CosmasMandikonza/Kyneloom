@@ -15,17 +15,25 @@ import { eventAtPlayhead } from './playback';
  * functions are pure and unit-tested against the committed fixture.
  */
 
-/** Cardinal/intercardinal description of a pitch position, source-grounded geometry. */
+/**
+ * Pitch-zone wording is NEUTRAL and coordinate-relative (review round):
+ * "attacking/defending third" is a TEAM-RELATIVE fact — attack direction is
+ * stored per team and per half in the fixture (docs/05) and cannot be
+ * inferred from X alone (the ball has no attacking third). X speaks only
+ * for itself: +X is the right end of the pitch's own coordinate frame,
+ * −X the left end. Y keeps the documented canonical orientation
+ * (docs/05: +y towards the upper touchline in canonical 2D).
+ */
 function pitchZone(xM: number): string {
-  if (xM > 34.5) return 'in the attacking third';
-  if (xM > -34.5) return 'around the middle third';
-  return 'in the defending third';
+  if (xM > 34.5) return 'in the right third of the pitch';
+  if (xM < -34.5) return 'in the left third of the pitch';
+  return 'in the middle third of the pitch';
 }
 
 function pitchSide(yM: number): string {
-  if (yM > 11) return 'upper touchline side';
-  if (yM < -11) return 'lower touchline side';
-  return 'through the centre';
+  if (yM > 11) return 'nearer the upper touchline';
+  if (yM < -11) return 'nearer the lower touchline';
+  return 'through the central lane';
 }
 
 export interface SpatialDescription {

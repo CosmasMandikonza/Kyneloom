@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatMatchClockTenths } from '@/lib/clock';
+import { eventAtPlayhead } from '@/lib/playback';
 import {
   describeSpatialState,
   transcriptEntries,
@@ -65,15 +66,42 @@ export function AccessiblePanel({
   const descriptionRef = useRef<HTMLDivElement>(null);
   const speechRef = useRef<SpeechController | null>(null);
   const [rate, setRate] = useState(1);
-  const [lastAnnouncement, setLastAnnouncement] = useState('');
+  const [narrationStatus, setNarrationStatus] = useState('');
+
+  /**
+   * Concise live-announcement channel (review round): ONE short
+   * role="status" line, throttled and deduplicated. Meaningful changes
+   * only — source-event transitions during playback and deliberate
+   * navigation (seek/step). The verbose spatial description is a readable,
+   * NON-live region: screen readers are never flooded with the whole
+   * paragraph twice a second.
+   */
+  const [announcement, setAnnouncement] = useState('');
+  const [announcementCount, setAnnouncementCount] = useState(0);
+  const lastAnnouncedRef = useRef('');
+  const lastAnnouncedAtRef = useRef(0);
+  /** Current source-event key the sync loop last saw (shared with seeks). */
+  const lastEventKeyRef = useRef('');
+  const announce = useCallback((text: string, options?: { force?: boolean }): void => {
+    if (text === lastAnnouncedRef.current) return; // deduplicate
+    // Deliberate navigation may force through the throttle; playback-drift
+    // announcements never can.
+    if (options?.force !== true && Date.now() - lastAnnouncedAtRef.current < 1200) return;
+    lastAnnouncedRef.current = text;
+    lastAnnouncedAtRef.current = Date.now();
+    setAnnouncement(text);
+    setAnnouncementCount((count) => count + 1);
+  }, []);
 
   const transcript = useMemo(() => transcriptEntries(scene, evidence), [scene, evidence]);
 
   // Bounded-cadence spatial description: recomputed from the sampled state
   // at most every 500 ms (and on transport revisions), written directly to
-  // the DOM — no React re-render per frame.
+  // the DOM — no React re-render per frame. The container is deliberately
+  // NOT a live region; announcements go through the throttled channel.
   useEffect(() => {
     let lastText = '';
+    let firstSync = true;
     const sync = (): void => {
       const t = engine.playheadMs;
       const description = describeSpatialState({
@@ -102,11 +130,28 @@ export function AccessiblePanel({
         }
         existing.append(ul);
       }
+      // Source-event transitions are the meaningful playback changes worth
+      // announcing — concise, never the whole spatial paragraph.
+      const active = eventAtPlayhead(t, scene.events);
+      const key = active === null ? 'open' : `${active.phase}:${active.event.eventId}`;
+      if (key !== lastEventKeyRef.current && !firstSync) {
+        lastEventKeyRef.current = key;
+        announce(
+          active === null
+            ? `Open play at ${formatMatchClockTenths(t)}`
+            : active.phase === 'active'
+              ? `${active.event.label} by ${active.event.actorId} at ${formatMatchClockTenths(t)}`
+              : `Next: ${active.event.label} by ${active.event.actorId}`,
+        );
+      } else if (firstSync) {
+        lastEventKeyRef.current = key;
+      }
     };
     sync();
+    firstSync = false;
     const interval = window.setInterval(sync, 500);
     return () => window.clearInterval(interval);
-  }, [engine, getFrame, scene, selectedEntityId]);
+  }, [announce, engine, getFrame, scene, selectedEntityId]);
 
   // Optional browser speech synthesis — created on demand, destroyed on
   // unmount/lens exit so no voice outlives the panel.
@@ -133,7 +178,7 @@ export function AccessiblePanel({
     const text = `${description.summary} ${description.details.slice(0, 3).join(' ')}`;
     controller.setRate(rate);
     controller.speak(text);
-    setLastAnnouncement('Narration started');
+    setNarrationStatus('Narration started');
   };
 
   const speechSupported = useMemo(() => {
@@ -160,13 +205,24 @@ export function AccessiblePanel({
         <h3 id="a11y-desc-title" className="a11y__heading">
           Spatial description
         </h3>
+        {/* Readable, continuously updated — deliberately NOT a live region:
+            screen readers browse it on demand while the concise channel
+            below carries meaningful announcements. */}
         <div
           ref={descriptionRef}
           className="a11y__description"
           data-testid="spatial-description"
-          aria-live="polite"
-          aria-atomic="false"
+          role="region"
+          aria-labelledby="a11y-desc-title"
         />
+        <p
+          className="visually-hidden"
+          role="status"
+          data-testid="live-announcement"
+          data-count={announcementCount}
+        >
+          {announcement}
+        </p>
       </section>
 
       <section className="a11y__section" aria-labelledby="a11y-audio-title">
@@ -197,7 +253,7 @@ export function AccessiblePanel({
                 className="a11y__btn"
                 onClick={() => {
                   speechRef.current?.stop();
-                  setLastAnnouncement('Narration stopped');
+                  setNarrationStatus('Narration stopped');
                 }}
               >
                 Stop
@@ -221,7 +277,7 @@ export function AccessiblePanel({
               </label>
             </div>
             <p className="visually-hidden" role="status">
-              {lastAnnouncement}
+              {narrationStatus}
             </p>
           </div>
         ) : (
@@ -243,7 +299,18 @@ export function AccessiblePanel({
               <button
                 type="button"
                 className="a11y__entry-seek"
-                onClick={() => onSeek(entry.atMs)}
+                onClick={() => {
+                  onSeek(entry.atMs);
+                  const active = eventAtPlayhead(entry.atMs, scene.events);
+                  lastEventKeyRef.current =
+                    active === null ? 'open' : `${active.phase}:${active.event.eventId}`;
+                  announce(
+                    `Jumped to ${formatMatchClockTenths(entry.atMs)} — ${entry.title.split(' · ')[0]}`,
+                    {
+                      force: true,
+                    },
+                  );
+                }}
                 title={`Seek to ${formatMatchClockTenths(entry.atMs)}`}
               >
                 <span className="mono a11y__entry-kind">{KIND_LABELS[entry.kind]}</span>

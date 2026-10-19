@@ -137,3 +137,66 @@ describe('fanExplanation', () => {
     ).toBeNull();
   });
 });
+
+describe('neutral coordinate-relative pitch zones (review round 3)', () => {
+  it('describes X zones neutrally — right/left/middle thirds of the pitch itself', async () => {
+    const { scene, getFrame } = await fixture();
+    const frame = getFrame(4_722_100);
+    // Find real players at both ends of the pitch from the sampled frame.
+    const right = scene.players.find((p) => (frame.positions.get(p.entityId)?.xM ?? 0) > 34.5);
+    const left = scene.players.find((p) => (frame.positions.get(p.entityId)?.xM ?? 0) < -34.5);
+    const middle = scene.players.find((p) => {
+      const x = frame.positions.get(p.entityId)?.xM ?? 0;
+      return x >= -34.5 && x <= 34.5;
+    });
+    expect(right).toBeDefined();
+    expect(left).toBeDefined();
+    expect(middle).toBeDefined();
+    const describe = (id: string): string =>
+      describeSpatialState({
+        scene,
+        frame,
+        playheadMs: 4_722_100,
+        selectedEntityId: id,
+      }).details.join(' ');
+    // Both teams' players at the SAME end get the SAME coordinate-relative
+    // wording — no team-relative attack direction is invented from X.
+    expect(describe(right!.entityId)).toContain('right third of the pitch');
+    expect(describe(left!.entityId)).toContain('left third of the pitch');
+    expect(describe(middle!.entityId)).toContain('middle third of the pitch');
+  });
+
+  it('never uses team-relative attacking/defending zone language anywhere', async () => {
+    const { scene, getFrame } = await fixture();
+    for (const t of [4_717_000, 4_722_100, 4_726_200, 4_728_300, 4_731_000]) {
+      const frame = getFrame(t);
+      for (const player of scene.players.slice(0, 6)) {
+        const text = describeSpatialState({
+          scene,
+          frame,
+          playheadMs: t,
+          selectedEntityId: player.entityId,
+        }).details.join(' ');
+        expect(text, `${player.entityId}@${String(t)}`).not.toContain('attacking third');
+        expect(text, `${player.entityId}@${String(t)}`).not.toContain('defending third');
+        expect(text, `${player.entityId}@${String(t)}`).not.toContain('attacking');
+        expect(text, `${player.entityId}@${String(t)}`).not.toContain('defending');
+      }
+    }
+  });
+
+  it('the ball description carries no possession, team or attack-direction attribution', async () => {
+    const { scene, getFrame } = await fixture();
+    for (const t of [4_717_000, 4_725_100, 4_731_000]) {
+      const text = describeSpatialState({
+        scene,
+        frame: getFrame(t),
+        playheadMs: t,
+        selectedEntityId: null,
+      }).details.join(' ');
+      const ballLine = text.split('.').find((part) => part.includes('The ball is at'));
+      expect(ballLine).toBeDefined();
+      expect(ballLine).not.toMatch(/home|away|attacking|defending|possession|carried by/i);
+    }
+  });
+});

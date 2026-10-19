@@ -63,6 +63,18 @@ export default async function StudioPage() {
       </div>
 
       <div className="studio__grid container">
+        {/* Honest authorization boundary (KYN-11 review): no authentication,
+            tenant isolation or producer authority exists yet — this route is
+            a public read-only scaffold until Issue #21 ships the real
+            server-enforced auth/tenant policy. Nothing here is gated by (or
+            grants privileges through) a viewing lens. */}
+        <p className="studio__auth-note" role="note">
+          <span className="chip chip--not-implemented">Authentication · Issue #21</span>
+          Professional sign-in, tenant isolation and publisher authority are not implemented — this
+          public scaffold cannot edit, approve or publish anything, and switching viewer lenses
+          never changes that.
+        </p>
+
         {/* Preview — dominant */}
         <section className="studio__preview" aria-labelledby="preview-title">
           <div className="visually-hidden" id="preview-title">
