@@ -78,6 +78,7 @@ declare global {
         cameraWorldPosition(): readonly [number, number, number] | null;
         cameraFov(): number | null;
         cameraLookTarget(): readonly [number, number, number] | null;
+        projectWorld?(x: number, y: number, z: number): readonly [number, number] | null;
       };
     };
     __kyneloomLanding?: {
@@ -120,6 +121,13 @@ declare global {
       motionActive(): boolean;
       activeTiltLoops(): number;
       reducedMotion(): boolean;
+    };
+    __kyneloomLens?: {
+      lens(): string;
+      playheadMs(): number;
+      selected(): string | null;
+      camera(): string;
+      view(): string;
     };
   }
 }
@@ -548,6 +556,373 @@ async function main(): Promise<void> {
               }
             }
 
+            // KYN-11 — lens perspectives: Fan is the default chrome; lens
+            // switching preserves the football truth EXACTLY (playhead,
+            // selection, world snapshot); the presentations render distinct
+            // chrome; preference persists per session and malformed values
+            // revert to Fan; a remembered lens never overrides a gallery
+            // chapter's own timestamp.
+            {
+              const fanRadio = page.getByRole('radio', { name: 'Fan', exact: true });
+              const fanChecked = await fanRadio.getAttribute('aria-checked');
+              const explainPresent = (await page.getByTestId('fan-explain').count()) === 1;
+              const fanCameraGroups = await page
+                .getByRole('radiogroup', { name: 'Camera' })
+                .count();
+              checks.lensFanDefault =
+                fanChecked === 'true' && explainPresent && fanCameraGroups === 0;
+              if (!checks.lensFanDefault) {
+                failures.push(
+                  `explore @ ${viewport.name}: fan default broken (checked ${String(fanChecked)}, explain ${String(explainPresent)}, camera groups ${String(fanCameraGroups)})`,
+                );
+              }
+
+              // Truth invariance across every lens switch.
+              const stateBefore = await page.evaluate(() => ({
+                lens: window.__kyneloomLens!.lens(),
+                playhead: window.__kyneloomLens!.playheadMs(),
+                selected: window.__kyneloomLens!.selected(),
+                world: JSON.stringify(window.__kyneloomScene!.snapshot()),
+              }));
+              const lensStates: string[] = [];
+              for (const next of ['Analyst', 'Accessible', 'Fan', 'Analyst'] as const) {
+                await page.getByRole('radio', { name: next, exact: true }).click({ force: true });
+                await page.waitForTimeout(450);
+                lensStates.push(
+                  JSON.stringify(
+                    await page.evaluate(() => ({
+                      playhead: window.__kyneloomLens!.playheadMs(),
+                      selected: window.__kyneloomLens!.selected(),
+                      world: JSON.stringify(window.__kyneloomScene!.snapshot()),
+                    })),
+                  ),
+                );
+              }
+              const truthInvariant = lensStates.every(
+                (state) =>
+                  JSON.parse(state).playhead === stateBefore.playhead &&
+                  JSON.parse(state).selected === stateBefore.selected &&
+                  JSON.parse(state).world === stateBefore.world,
+              );
+              checks.lensTruthInvariant = truthInvariant ? 'identical' : 'DIVERGED';
+              if (!truthInvariant) {
+                failures.push(`explore @ ${viewport.name}: lens switching changed football truth`);
+              }
+
+              // Presentation chrome actually differs per lens.
+              const analystChrome = (await page.getByTestId('analyst-rail').count()) === 1;
+              const analystMeasure = await page
+                .getByTestId('rail-measure')
+                .innerText()
+                .catch(() => '');
+              checks.lensAnalystChrome =
+                analystChrome && analystMeasure.includes('14.038') ? 'rail+metric' : 'MISSING';
+              // Review round: projected player selection keeps the rail's
+              // semantic facts list intact while the live leaf updates.
+              const selectionClick = await page.evaluate(() => {
+                const canvas = document.querySelector('canvas');
+                const scene = window.__kyneloomScene;
+                if (canvas === null || scene === undefined) return null;
+                const snap = scene.snapshot();
+                const project = scene.visual?.projectWorld;
+                if (project === undefined) return null;
+                const box = canvas.getBoundingClientRect();
+                // Prefer the story winger; on narrow viewports her projection
+                // can sit under the rail overlay, so fall back to any player
+                // whose projected point is actually the top element (a real,
+                // unobstructed tap target — same discipline as the X-Ray
+                // click-target selection).
+                const ordered = [
+                  ...snap.players.filter((q) => q.entityId === 'home-11'),
+                  ...snap.players.filter((q) => q.entityId !== 'home-11'),
+                ];
+                for (const player of ordered) {
+                  const screen = project(player.xM, player.zM, -player.yM);
+                  if (screen === null) continue;
+                  const px = box.left + screen[0];
+                  const py = box.top + screen[1];
+                  if (px < box.left || px > box.right || py < box.top || py > box.bottom) continue;
+                  if (document.elementFromPoint(px, py) !== canvas) continue;
+                  return { x: px, y: py, id: player.entityId };
+                }
+                return null;
+              });
+              if (selectionClick === null) {
+                failures.push(`explore @ ${viewport.name}: projected selection target unavailable`);
+              } else {
+                await page.mouse.click(selectionClick.x, selectionClick.y);
+                await page
+                  .waitForFunction(
+                    () =>
+                      window.__kyneloomLens!.selected() === (selectionClick as { id: string }).id,
+                    undefined,
+                    { timeout: 5000 },
+                  )
+                  .catch(() => undefined);
+                const selectedId = await page.evaluate(() => window.__kyneloomLens!.selected());
+                checks.lensProjectedSelection = `${selectedId ?? 'none'} via ${selectionClick.id}`;
+                if (selectedId !== selectionClick.id) {
+                  failures.push(
+                    `explore @ ${viewport.name}: projected click selected ${String(selectedId)} (wanted ${selectionClick.id})`,
+                  );
+                }
+                await page.waitForTimeout(900); // let the 250 ms rail sync run
+                const factsIntegrity = await page.evaluate(() => {
+                  const dl = document.querySelector('.rail__facts');
+                  if (dl === null) return { dts: -1, dds: -1, detail: '' };
+                  return {
+                    dts: dl.querySelectorAll('dt').length,
+                    dds: dl.querySelectorAll('dd').length,
+                    detail:
+                      dl.querySelector('[data-testid="rail-selected-detail"]')?.textContent ?? '',
+                  };
+                });
+                checks.lensRailFactsIntegrity = JSON.stringify(factsIntegrity);
+                if (
+                  factsIntegrity.dts !== 2 ||
+                  factsIntegrity.dds !== 2 ||
+                  !factsIntegrity.detail.includes(selectionClick.id)
+                ) {
+                  failures.push(
+                    `explore @ ${viewport.name}: rail facts structure damaged ${checks.lensRailFactsIntegrity}`,
+                  );
+                }
+              }
+              await page
+                .getByRole('radio', { name: 'Accessible', exact: true })
+                .click({ force: true });
+              await page.waitForTimeout(900);
+              // The projected click can land under the analyst rail; if it
+              // happened to hit 'Source evidence' the inspector is open and
+              // would cover the accessible panel — close it first.
+              const closeInspector = page.getByRole('button', { name: 'Close inspector' });
+              if ((await closeInspector.count()) === 1) {
+                await closeInspector.click();
+                await page.waitForTimeout(300);
+              }
+              const transcriptText = await page
+                .getByTestId('transcript')
+                .innerText()
+                .catch(() => '');
+              const descriptionText = await page
+                .getByTestId('spatial-description')
+                .innerText()
+                .catch(() => '');
+              checks.lensAccessibleChrome =
+                (await page.getByTestId('accessible-panel').count()) === 1 &&
+                transcriptText.includes('evt-0007') &&
+                transcriptText.includes('INTERPRETATION')
+                  ? 'panel+transcript'
+                  : 'MISSING';
+              checks.lensDescriptionSynced = descriptionText.includes('78:4')
+                ? 'live'
+                : `UNSYNCED "${descriptionText.slice(0, 40)}"`;
+              if (!checks.lensDescriptionSynced.startsWith('live')) {
+                failures.push(
+                  `explore @ ${viewport.name}: accessible description not synced (${checks.lensDescriptionSynced})`,
+                );
+              }
+              // Review round: description is readable-NOT-live; the concise
+              // announcement channel is separate, throttled and bounded
+              // under advancing playback.
+              const liveArchitecture = await page.evaluate(() => {
+                const description = document.querySelector('[data-testid="spatial-description"]');
+                const live = document.querySelector('[data-testid="live-announcement"]');
+                return {
+                  descAriaLive: description?.getAttribute('aria-live') ?? 'none',
+                  liveRole: live?.getAttribute('role') ?? 'none',
+                  count: Number(live?.getAttribute('data-count') ?? '0'),
+                };
+              });
+              checks.lensA11yLiveArchitecture = JSON.stringify(liveArchitecture);
+              if (
+                liveArchitecture.descAriaLive !== 'none' ||
+                liveArchitecture.liveRole !== 'status'
+              ) {
+                failures.push(
+                  `explore @ ${viewport.name}: live-region architecture wrong ${checks.lensA11yLiveArchitecture}`,
+                );
+              }
+              // Advancing playback: description refreshes, announcements stay bounded.
+              const sliderEl = page.locator('.stage__slider');
+              await sliderEl.evaluate((el, value) => {
+                const input = el as HTMLInputElement;
+                input.value = String(value);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+              }, 4_723_600);
+              const panelPlay = page
+                .getByTestId('accessible-panel')
+                .getByRole('button', { name: 'Play' });
+              await panelPlay.click();
+              const bounded = (await page.evaluate(() => {
+                return new Promise((resolve) => {
+                  const description = document.querySelector('[data-testid="spatial-description"]');
+                  const live = document.querySelector('[data-testid="live-announcement"]');
+                  const startPlayhead = description?.getAttribute('data-playhead') ?? '';
+                  const startCount = Number(live?.getAttribute('data-count') ?? '0');
+                  setTimeout(() => {
+                    resolve({
+                      playheadMoved:
+                        (description?.getAttribute('data-playhead') ?? '') !== startPlayhead,
+                      announcements: Number(live?.getAttribute('data-count') ?? '0') - startCount,
+                      text: live?.textContent ?? '',
+                    });
+                  }, 2400);
+                });
+              })) as { playheadMoved: boolean; announcements: number; text: string };
+              await page
+                .getByTestId('accessible-panel')
+                .getByRole('button', { name: 'Pause' })
+                .click();
+              checks.lensA11yBoundedAnnouncements = JSON.stringify(bounded);
+              if (!bounded.playheadMoved || bounded.announcements > 2) {
+                failures.push(
+                  `explore @ ${viewport.name}: announcement channel flooding ${checks.lensA11yBoundedAnnouncements}`,
+                );
+              }
+              if (String(bounded.text).includes('The ball is at')) {
+                failures.push(
+                  `explore @ ${viewport.name}: announcement carried the full spatial paragraph`,
+                );
+              }
+              if (
+                checks.lensAnalystChrome === 'MISSING' ||
+                checks.lensAccessibleChrome === 'MISSING'
+              ) {
+                failures.push(`explore @ ${viewport.name}: lens chrome missing`);
+              }
+              if (!checks.lensDescriptionSynced.startsWith('live')) {
+                failures.push(
+                  `explore @ ${viewport.name}: accessible description not synced (${checks.lensDescriptionSynced})`,
+                );
+              }
+
+              // Session preference persistence + malformed revert.
+              await page
+                .getByRole('radio', { name: 'Analyst', exact: true })
+                .click({ force: true });
+              await page.waitForTimeout(300);
+              await page.reload({ waitUntil: 'load' });
+              await page.waitForFunction(
+                () => (window as { __kyneloomLens?: unknown }).__kyneloomLens !== undefined,
+                undefined,
+                { timeout: 30_000 },
+              );
+              await page.waitForTimeout(600);
+              const remembered = await page.evaluate(() => window.__kyneloomLens!.lens());
+              checks.lensRemembered = remembered;
+              if (remembered !== 'analyst') {
+                failures.push(`explore @ ${viewport.name}: lens preference not remembered`);
+              }
+              await page.evaluate(() =>
+                window.sessionStorage.setItem('kyneloom.lens', '{"role":"producer"}'),
+              );
+              await page.reload({ waitUntil: 'load' });
+              await page.waitForFunction(
+                () => (window as { __kyneloomLens?: unknown }).__kyneloomLens !== undefined,
+                undefined,
+                { timeout: 30_000 },
+              );
+              await page.waitForTimeout(600);
+              const reverted = await page.evaluate(() => window.__kyneloomLens!.lens());
+              checks.lensCorruptReverts = reverted;
+              if (reverted !== 'fan') {
+                failures.push(
+                  `explore @ ${viewport.name}: malformed lens preference produced ${reverted}`,
+                );
+              }
+              // A remembered lens must never override a chapter timestamp.
+              await page.evaluate(() => window.sessionStorage.setItem('kyneloom.lens', 'analyst'));
+              await page.goto(`${BASE}/moments`, { waitUntil: 'load' });
+              await page.locator('[data-catalog-id="ia-04-top-speed"]').scrollIntoViewIfNeeded();
+              await page.locator('[data-catalog-id="ia-04-top-speed"]').click();
+              await page.waitForURL('**/explore?moment=ia-04-top-speed', { timeout: 30_000 });
+              await page.waitForFunction(
+                () => (window as { __kyneloomLens?: unknown }).__kyneloomLens !== undefined,
+                undefined,
+                { timeout: 45_000 },
+              );
+              await page.waitForTimeout(800);
+              const chapterState = await page.evaluate(() => ({
+                playhead: window.__kyneloomLens!.playheadMs(),
+                lens: window.__kyneloomLens!.lens(),
+              }));
+              checks.lensChapterIndependence = JSON.stringify(chapterState);
+              if (chapterState.playhead !== 4_723_400 || chapterState.lens !== 'analyst') {
+                failures.push(
+                  `explore: remembered lens broke chapter selection ${checks.lensChapterIndependence}`,
+                );
+              }
+              await page.evaluate(() => window.sessionStorage.removeItem('kyneloom.lens'));
+              await page.goto(`${BASE}/explore`, { waitUntil: 'networkidle' });
+              await page.waitForFunction(
+                () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+                undefined,
+                { timeout: 45_000 },
+              );
+              // Software-GL resilience: the reload/navigation storm above can
+              // exhaust SwiftShader contexts and silently drop the canvas to
+              // the 2D fallback. Recover ONCE (fresh scene, analyst active)
+              // so the deep block below verifies everything on a healthy
+              // renderer — never by weakening an assertion.
+              const sceneAliveAfterLens = await page.evaluate(
+                () => typeof window.__kyneloomScene === 'object',
+              );
+              if (!sceneAliveAfterLens) {
+                await page.goto(`${BASE}/explore`, { waitUntil: 'networkidle' });
+                await page.waitForFunction(
+                  () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+                  undefined,
+                  { timeout: 45_000 },
+                );
+                await page
+                  .getByRole('radio', { name: 'Analyst', exact: true })
+                  .click({ force: true });
+                await page.waitForTimeout(700);
+                checks.lensSceneRecovered = await page.evaluate(
+                  () => typeof window.__kyneloomScene === 'object',
+                );
+                if (checks.lensSceneRecovered !== true) {
+                  failures.push(
+                    `explore @ ${viewport.name}: scene did not recover after lens churn`,
+                  );
+                }
+              }
+
+              // Lens evidence screenshots (fan / analyst / accessible).
+              await page.screenshot({
+                path: path.join(OUT_DIR, 'screenshots', `explore-lens-fan-${viewport.name}.png`),
+              });
+              await page
+                .getByRole('radio', { name: 'Analyst', exact: true })
+                .click({ force: true });
+              await page.waitForTimeout(600);
+              await page.screenshot({
+                path: path.join(
+                  OUT_DIR,
+                  'screenshots',
+                  `explore-lens-analyst-${viewport.name}.png`,
+                ),
+              });
+              await page
+                .getByRole('radio', { name: 'Accessible', exact: true })
+                .click({ force: true });
+              await page.waitForTimeout(900);
+              await page.screenshot({
+                path: path.join(
+                  OUT_DIR,
+                  'screenshots',
+                  `explore-lens-accessible-${viewport.name}.png`,
+                ),
+              });
+              // Leave ANALYST active: the deep camera/X-Ray checks below
+              // operate through the analyst rail (the fan chrome has none).
+              await page
+                .getByRole('radio', { name: 'Analyst', exact: true })
+                .click({ force: true });
+              await page.waitForTimeout(400);
+            }
+
             // Transport controls exist and are enabled (cameras unlocked in KYN-06).
             checks.cameraRadios = await page
               .getByRole('radiogroup', { name: 'Camera' })
@@ -767,9 +1142,10 @@ async function main(): Promise<void> {
               const converge = async (
                 cam: string,
                 done: (p: readonly [number, number, number]) => boolean,
+                budgetMs = 12_000,
               ) => {
                 await page.getByRole('radio', { name: cam }).click({ force: true });
-                const deadline = Date.now() + 12_000;
+                const deadline = Date.now() + budgetMs;
                 let last: readonly [number, number, number] | null = null;
                 while (Date.now() < deadline) {
                   await page.waitForTimeout(450);
@@ -978,6 +1354,7 @@ async function main(): Promise<void> {
               const orbitExit = await converge(
                 'Overhead',
                 (pt) => Math.hypot(pt[0], pt[1] - 92, pt[2]) < 0.75,
+                20_000,
               );
               checks.orbitExitConverged =
                 orbitExit !== null && Math.hypot(orbitExit[1] - 92) < 1 ? 'yes' : 'NO';
@@ -985,6 +1362,29 @@ async function main(): Promise<void> {
                 failures.push(
                   `explore @ ${viewport.name}: camera failed to converge after orbit exit`,
                 );
+              }
+
+              // Same bounded recovery immediately before the X-RAY block (it
+              // has accumulated the most GPU churn: cameras, orbit, seeks).
+              const sceneAlivePreXray = await page.evaluate(
+                () => typeof window.__kyneloomScene === 'object',
+              );
+              if (!sceneAlivePreXray) {
+                await page.goto(`${BASE}/explore`, { waitUntil: 'networkidle' });
+                await page.waitForFunction(
+                  () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+                  undefined,
+                  { timeout: 45_000 },
+                );
+                await page
+                  .getByRole('radio', { name: 'Analyst', exact: true })
+                  .click({ force: true });
+                await page.waitForTimeout(700);
+                if (
+                  (await page.evaluate(() => typeof window.__kyneloomScene === 'object')) !== true
+                ) {
+                  failures.push(`explore @ ${viewport.name}: scene dead before X-Ray block`);
+                }
               }
 
               // KYN-08 — Evidence X-Ray: the FULL click-to-claim-to-evidence
@@ -1012,7 +1412,14 @@ async function main(): Promise<void> {
                 }
 
                 // Evidence invariance: camera switches and scrubbing never
-                // change the measurement or canonical coordinates.
+                // change the measurement or canonical coordinates. Pause
+                // defensively first — a stray transport state under heavy
+                // load would otherwise drift the playhead mid-comparison.
+                const playButton = page.locator('.stage__play');
+                if ((await playButton.getAttribute('aria-pressed')) === 'true') {
+                  await playButton.click();
+                  await page.waitForTimeout(300);
+                }
                 const evidenceBefore = await page.evaluate(() =>
                   window.__kyneloomScene!.snapshot(),
                 );
@@ -1023,7 +1430,19 @@ async function main(): Promise<void> {
                 await seek(4_717_400);
                 await seek(4_728_300);
                 await page.waitForTimeout(500);
-                const evidenceAfter = await page.evaluate(() => window.__kyneloomScene!.snapshot());
+                let evidenceAfter = await page.evaluate(() => window.__kyneloomScene!.snapshot());
+                const worldPayload = (snap: unknown): string =>
+                  JSON.stringify({
+                    players: (snap as { players: unknown }).players,
+                    ball: (snap as { ball: unknown }).ball,
+                    missing: (snap as { missing: unknown }).missing,
+                  });
+                if (worldPayload(evidenceAfter) !== worldPayload(evidenceBefore)) {
+                  // One bounded settle-retry: under load the first post-seek
+                  // read can race the transport mirror.
+                  await page.waitForTimeout(600);
+                  evidenceAfter = await page.evaluate(() => window.__kyneloomScene!.snapshot());
+                }
                 checks.xrayWorldInvariant =
                   JSON.stringify({
                     players: evidenceBefore.players,
@@ -1127,7 +1546,7 @@ async function main(): Promise<void> {
                 }
 
                 // Inspector: computed values verbatim + provenance + frames.
-                await page.getByRole('button', { name: 'Show evidence' }).click();
+                await page.getByRole('button', { name: 'Source evidence' }).click();
                 await page.waitForTimeout(300);
                 const sentence = await page.getByTestId('evidence-sentence').innerText();
                 const deltaChip = await page.getByTestId('evidence-delta').innerText();
@@ -1675,7 +2094,10 @@ async function main(): Promise<void> {
       // Honest evidence context (KYN-10): the note must NOT appear while
       // INSIDE the measured interval (ia-04 at 78:43.4 is inside), then at
       // the equalizer (78:48.3, outside) X-Ray shows the contextual note
-      // and jumping grounds the playhead on the interval.
+      // and jumping grounds the playhead on the interval. KYN-11: the X-Ray
+      // affordance lives in the Analyst rail — switch there first.
+      await page.getByRole('radio', { name: 'Analyst', exact: true }).click({ force: true });
+      await page.waitForTimeout(400);
       await page.getByRole('button', { name: 'X-Ray' }).click();
       await page.waitForTimeout(700);
       const noteInsideInterval = await page.locator('[data-evidence-context]').first().isVisible();

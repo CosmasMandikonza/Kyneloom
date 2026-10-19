@@ -87,6 +87,8 @@ export function fractionToPlayhead(fraction: number, window: PlaybackWindow): nu
 }
 
 export interface SceneEventLite {
+  /** Source event id when the caller passes full SceneEvents through. */
+  readonly eventId?: string;
   readonly occurredAtMs: number;
   readonly label: string;
   readonly kind: string;

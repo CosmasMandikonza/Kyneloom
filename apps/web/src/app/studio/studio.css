@@ -287,3 +287,14 @@
     grid-template-columns: 4rem 1fr;
   }
 }
+
+/* Honest #21 authorization disclosure (KYN-11 review round). */
+.studio__auth-note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin: var(--space-4) 0 0;
+  color: var(--text-muted);
+  font-size: var(--step--1);
+}

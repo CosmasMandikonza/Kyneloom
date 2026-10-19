@@ -16,7 +16,7 @@ import { Ball } from './ball';
 import { Footballers } from './footballers';
 import { CameraRig } from './camera-rig';
 import { Fallback2D } from './fallback-2d';
-import { sceneVisual } from './visual-debug';
+import { registerVisualProbe, sceneVisual } from './visual-debug';
 import { registerXrayProbe } from './xray-overlay';
 
 /**
@@ -86,6 +86,7 @@ export function LivingReplayCanvas({
           </Suspense>
           <CameraRig mode={cameraMode} />
           {children}
+          <ProjectionProbe />
           <PerfProbe />
           <QaHook />
         </SceneRuntimeContext.Provider>
@@ -121,6 +122,27 @@ class SceneErrorBoundary extends Component<
     if (this.state.failed) return null;
     return this.props.children;
   }
+}
+
+/** Registers the live camera projection into the visual probe. */
+function ProjectionProbe() {
+  const gl = useThree((state) => state.gl);
+  const camera = useThree((state) => state.camera);
+  useEffect(() => {
+    return registerVisualProbe('projection', {
+      projectWorld: (x, y, z) => {
+        const canvas = gl.domElement;
+        const vector = new THREE.Vector3(x, y, z);
+        vector.project(camera);
+        if (vector.z > 1) return null; // behind the camera
+        return [
+          ((vector.x + 1) / 2) * canvas.clientWidth,
+          ((1 - vector.y) / 2) * canvas.clientHeight,
+        ];
+      },
+    });
+  }, [gl, camera]);
+  return null;
 }
 
 /** Frame-time probe: measured, not guessed (docs/08, docs/19). */
@@ -180,6 +202,8 @@ function QaHook() {
         cameraWorldPosition: (): unknown => visual.cameraWorldPosition?.() ?? null,
         cameraFov: (): unknown => visual.cameraFov?.() ?? null,
         cameraLookTarget: (): unknown => visual.cameraLookTarget?.() ?? null,
+        projectWorld: (x: number, y: number, z: number): unknown =>
+          visual.projectWorld?.(x, y, z) ?? null,
       },
       snapshot: (): unknown => {
         const frame = runtime.getFrame(runtime.engine.playheadMs);

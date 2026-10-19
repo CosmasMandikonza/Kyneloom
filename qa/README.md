@@ -178,3 +178,21 @@ chapter → 3D replay at its timestamp → camera change → honest evidence
 context → inspector → back to replay — into
 `qa/video/gallery-screencast.mp4` (+ `.webm` twin), same honesty rules as
 the other recorders.
+
+### Lens perspectives (KYN-11)
+
+The `/explore` pass adds the one-truth-many-lens contract: Fan default
+chrome, byte-identical playhead/selection/world across every switch,
+distinct Analyst/Accessible presentations with the verified metric and
+live description, session persistence with malformed revert, remembered
+lens never overriding chapter timestamps, projected player selection, and
+`explore-lens-*.png` evidence per viewport.
+
+## `qa:record:lens` and `lens:perf` (KYN-11)
+
+`pnpm qa:record:lens` records the continuous acceptance journey (gallery →
+Fan → select winger → Analyst at same instant → X-Ray + source frames →
+Accessible transcript → back to Fan, selection intact) as
+`qa/video/lens-journey-screencast.mp4` (+ `.webm` twin). `pnpm lens:perf`
+measures frame times for all four presentations and lifecycle stability
+across repeated switching (`qa/perf-lens.txt`).
