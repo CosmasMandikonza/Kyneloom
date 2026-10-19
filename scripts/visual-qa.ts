@@ -2253,6 +2253,187 @@ async function main(): Promise<void> {
       await context.close();
     }
 
+    // KYN-12 — the agent metric API: real HTTP executions and adversarial
+    // rejections against the production server (docs/07 get_metric).
+    {
+      const post = async (
+        body: unknown,
+      ): Promise<{ status: number; json: Record<string, unknown> }> => {
+        const res = await fetch(`${BASE}/api/agent/metric`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+      };
+      const apiChecks: Record<string, boolean | number | string> = {};
+      const apiFailures: string[] = [];
+
+      // Valid separation query — the canonical verified numbers.
+      const good = await post({
+        matchId: 'synthetic-derby-01',
+        query: {
+          kind: 'separation-delta',
+          defenderId: 'away-03',
+          strikerId: 'home-09',
+          fromMs: 4720500,
+          toMs: 4724000,
+        },
+      });
+      const goodResult = good.json['result'] as
+        | {
+            status?: string;
+            value?: { deltaM?: number };
+            provenance?: { algorithmVersion?: string };
+          }
+        | undefined;
+      apiChecks.separationStatus = good.status;
+      apiChecks.separationDelta = String(goodResult?.value?.deltaM ?? 'none');
+      if (
+        good.status !== 200 ||
+        goodResult?.status !== 'verified' ||
+        goodResult.value?.deltaM !== 14.038 ||
+        goodResult.provenance?.algorithmVersion !== 'kyneloom-separation-v1'
+      ) {
+        apiFailures.push(
+          `valid separation query returned ${JSON.stringify(good.json).slice(0, 200)}`,
+        );
+      }
+
+      // Valid movement query on the run.
+      const movement = await post({
+        matchId: 'synthetic-derby-01',
+        query: { kind: 'off-ball-movement', entityId: 'home-11', fromMs: 4720500, toMs: 4724000 },
+      });
+      const movementResult = movement.json['result'] as
+        { status?: string; value?: { displacementM?: number } } | undefined;
+      apiChecks.movementStatus = movement.status;
+      apiChecks.movementDisplacement = String(movementResult?.value?.displacementM ?? 'none');
+      if (movement.status !== 200 || movementResult?.status !== 'verified') {
+        apiFailures.push(`movement query failed: ${JSON.stringify(movement.json).slice(0, 160)}`);
+      }
+
+      // Adversarial rejections.
+      const hostile: {
+        body: unknown;
+        expectedStatus: number;
+        expectedCode: string;
+        label: string;
+      }[] = [
+        {
+          label: 'unknown match',
+          expectedStatus: 404,
+          expectedCode: 'match-not-authorized',
+          body: {
+            matchId: 'premier-league-2024',
+            query: { kind: 'nearest-opponent', entityId: 'home-11', atMs: 4722100 },
+          },
+        },
+        {
+          label: 'arbitrary SQL kind',
+          expectedStatus: 400,
+          expectedCode: 'unsupported-metric',
+          body: {
+            matchId: 'synthetic-derby-01',
+            query: { kind: 'raw-sql', sql: 'DROP TABLE matches' },
+          },
+        },
+        {
+          label: 'freeform tool name',
+          expectedStatus: 400,
+          expectedCode: 'unsupported-metric',
+          body: {
+            matchId: 'synthetic-derby-01',
+            query: { kind: 'execute_tool', tool: 'publish_release' },
+          },
+        },
+        {
+          label: 'path traversal entity',
+          expectedStatus: 400,
+          expectedCode: 'invalid-entity',
+          body: {
+            matchId: 'synthetic-derby-01',
+            query: { kind: 'nearest-opponent', entityId: '../../etc/passwd', atMs: 4722100 },
+          },
+        },
+        {
+          label: 'stale revision',
+          expectedStatus: 409,
+          expectedCode: 'stale-revision',
+          body: {
+            matchId: 'synthetic-derby-01',
+            reducerRevision: 1,
+            query: {
+              kind: 'separation-delta',
+              defenderId: 'away-03',
+              strikerId: 'home-09',
+              fromMs: 4720500,
+              toMs: 4724000,
+            },
+          },
+        },
+        {
+          label: 'oversized window',
+          expectedStatus: 400,
+          expectedCode: 'window-too-large',
+          body: {
+            matchId: 'synthetic-derby-01',
+            query: {
+              kind: 'separation-delta',
+              defenderId: 'away-03',
+              strikerId: 'home-09',
+              fromMs: 0,
+              toMs: 10_000_000,
+            },
+          },
+        },
+        {
+          label: 'unknown entity',
+          expectedStatus: 400,
+          expectedCode: 'unknown-entity',
+          body: {
+            matchId: 'synthetic-derby-01',
+            query: { kind: 'nearest-opponent', entityId: 'home-99', atMs: 4722100 },
+          },
+        },
+        {
+          label: 'malformed body',
+          expectedStatus: 400,
+          expectedCode: 'malformed-body',
+          body: 'not-an-object',
+        },
+      ];
+      for (const attempt of hostile) {
+        const rejected = await post(attempt.body);
+        apiChecks[`reject:${attempt.label}`] =
+          `${String(rejected.status)}/${String(rejected.json['code'])}`;
+        if (
+          rejected.status !== attempt.expectedStatus ||
+          rejected.json['code'] !== attempt.expectedCode
+        ) {
+          apiFailures.push(
+            `${attempt.label}: expected ${String(attempt.expectedStatus)}/${attempt.expectedCode}, got ${String(rejected.status)}/${String(rejected.json['code'])}`,
+          );
+        }
+      }
+
+      // GET is a documented 405.
+      const getRes = await fetch(`${BASE}/api/agent/metric`);
+      apiChecks.getMethod = getRes.status;
+      if (getRes.status !== 405) apiFailures.push(`GET expected 405, got ${String(getRes.status)}`);
+
+      results.push({
+        route: 'agent-metric-api',
+        viewport: '1440x900',
+        reducedMotion: false,
+        screenshot: 'screenshots/moments-1440x900.png',
+        horizontalOverflowPx: 0,
+        consoleErrors: [],
+        checks: apiChecks,
+      });
+      for (const failure of apiFailures) failures.push(`agent metric API: ${failure}`);
+    }
+
     // KYN-09 acceptance 9 — WebGL-unavailable landing: a truthful fallback
     // (poster + direct CTA link), verified in a browser with WebGL off.
     {

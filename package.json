@@ -32,7 +32,8 @@
     "qa:record:gallery": "tsx scripts/record-gallery-live.ts",
     "moments:perf": "tsx scripts/measure-gallery-perf.ts",
     "qa:record:lens": "tsx scripts/record-lens-live.ts",
-    "lens:perf": "tsx scripts/measure-lens-perf.ts"
+    "lens:perf": "tsx scripts/measure-lens-perf.ts",
+    "intelligence:demo": "tsx scripts/intelligence-demo.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
