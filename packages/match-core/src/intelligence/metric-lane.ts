@@ -72,6 +72,14 @@ export interface LaneOccupancyValue {
   readonly widthM: number;
   readonly occupants: readonly LaneOccupant[];
   readonly corridorLengthM: number;
+  /**
+   * Opposing candidates whose position could NOT be established at the
+   * passer's instant (missing, interpolated, or below the source-quality
+   * policy). Each could be a corridor blocker — an empty `occupants` list
+   * with a non-empty `unresolvedOpponents` list is NEVER a verified clear
+   * lane (review gate 2).
+   */
+  readonly unresolvedOpponents: readonly string[];
 }
 
 export type LaneOccupancyResult = MetricResult<LaneOccupancyValue>;
@@ -90,9 +98,26 @@ export function laneOccupancy(
   input: LaneOccupancyInput,
 ): LaneOccupancyResult {
   const entityIds = [input.from.entityId, input.to.entityId];
-  const metricId = metricIdFor('passing-lane-occupancy', input.matchId, entityIds, {
-    windowMs: [Math.min(input.from.atMs, input.to.atMs), Math.max(input.from.atMs, input.to.atMs)],
-  });
+  // Identity carries the calculation arguments AND the endpoint direction:
+  // A→B at their instants is a different lane measurement than B→A or a
+  // different width, even inside the same collapsed time window.
+  const metricId = metricIdFor(
+    'passing-lane-occupancy',
+    input.matchId,
+    entityIds,
+    {
+      windowMs: [
+        Math.min(input.from.atMs, input.to.atMs),
+        Math.max(input.from.atMs, input.to.atMs),
+      ],
+    },
+    {
+      from: `${input.from.entityId}@${String(input.from.atMs)}`,
+      to: `${input.to.entityId}@${String(input.to.atMs)}`,
+      widthM: input.widthM,
+      excludeRadiusM: input.excludeRadiusM ?? 1.5,
+    },
+  );
 
   const insufficient = (
     code: MetricInsufficientEvidence['failure']['code'],
@@ -162,6 +187,7 @@ export function laneOccupancy(
   const excludeRadius = input.excludeRadiusM ?? 1.5;
 
   const occupants: LaneOccupant[] = [];
+  const unresolvedOpponents: string[] = [];
   let exactSamples = 2;
   for (const candidateId of [...input.candidateEntityIds].sort()) {
     if (candidateId === a.entityId || candidateId === b.entityId || candidateId === 'ball')
@@ -171,12 +197,23 @@ export function laneOccupancy(
     const pose = timeline
       .sampleAt(input.from.atMs)
       .entities.find((entity) => entity.entityId === candidateId);
-    if (pose === undefined || classifyPose(pose) !== 'exact') continue;
+    // REVIEW GATE 2: an opponent whose position cannot be established
+    // (missing, interpolated or below the source-quality policy) is a
+    // POTENTIAL blocker. It is never silently skipped: it is recorded as
+    // unresolved and downgrades the whole result — a "clear lane" over
+    // unknown opponent positions is not verified geometry.
+    if (pose === undefined || classifyPose(pose) !== 'exact') {
+      unresolvedOpponents.push(candidateId);
+      continue;
+    }
     const gate = checkRawEndpoint(tracking, {
       entityId: candidateId,
       atMs: input.from.atMs,
     });
-    if (!gate.ok) continue;
+    if (!gate.ok) {
+      unresolvedOpponents.push(candidateId);
+      continue;
+    }
     exactSamples += 1;
     const toOpponentX = pose.xM - a.xM;
     const toOpponentY = pose.yM - a.yM;
@@ -200,41 +237,61 @@ export function laneOccupancy(
     widthM: input.widthM,
     occupants,
     corridorLengthM: round3(Math.sqrt(lengthSq)),
+    unresolvedOpponents,
   };
 
-  return {
-    status: 'verified',
-    assurance: 'exact-source',
-    provenance: {
-      kind: 'passing-lane-occupancy',
-      algorithmVersion: LANE_OCCUPANCY_VERSION,
-      metricId,
-      matchId: input.matchId,
-      reducerRevision,
-      entityIds,
-      units: 'entity_count',
-      requested: { windowMs: [input.from.atMs, input.to.atMs] as const },
-      dependsOn: {
-        sourceFrameIds: [a.frameId, b.frameId, ...occupants.map((o) => o.sourceFrameId)].sort(),
-        eventIds: [],
-        entityIds: [...entityIds, ...occupants.map((o) => o.entityId)].sort(),
-      },
-      sourceOrigin: 'synthetic_ground_truth',
-      classification: 'calculated',
-      coverage: { exactSamples, interpolatedSamples: 0, missingEntityIds: [] },
-      inputFingerprint: metricFingerprint(LANE_OCCUPANCY_VERSION, {
-        metricId,
-        widthM: input.widthM,
-        excludeRadiusM: excludeRadius,
-        endpoints: [
-          `${a.entityId}@${a.frameId}:${a.xM},${a.yM}`,
-          `${b.entityId}@${b.frameId}:${b.xM},${b.yM}`,
-        ],
-        occupants: occupants.map((o) => `${o.entityId}:${o.lateralM}@${o.alongFraction}`),
-      }),
-      interpretationBoundary:
-        'Corridor occupancy is a geometric condition; it says nothing about pass intent, feasibility or outcome.',
+  const provenance = {
+    kind: 'passing-lane-occupancy' as const,
+    algorithmVersion: LANE_OCCUPANCY_VERSION,
+    metricId,
+    matchId: input.matchId,
+    reducerRevision,
+    entityIds,
+    units: 'entity_count' as const,
+    requested: { windowMs: [input.from.atMs, input.to.atMs] as const },
+    dependsOn: {
+      sourceFrameIds: [a.frameId, b.frameId, ...occupants.map((o) => o.sourceFrameId)].sort(),
+      eventIds: [],
+      entityIds: [...entityIds, ...occupants.map((o) => o.entityId), ...unresolvedOpponents].sort(),
     },
+    sourceOrigin: 'synthetic_ground_truth' as const,
+    classification: 'calculated' as const,
+    coverage: {
+      exactSamples,
+      interpolatedSamples: 0,
+      missingEntityIds: unresolvedOpponents,
+    },
+    inputFingerprint: metricFingerprint(LANE_OCCUPANCY_VERSION, {
+      metricId,
+      widthM: input.widthM,
+      excludeRadiusM: excludeRadius,
+      endpoints: [
+        `${a.entityId}@${a.frameId}:${a.xM},${a.yM}`,
+        `${b.entityId}@${b.frameId}:${b.xM},${b.yM}`,
+      ],
+      occupants: occupants.map((o) => `${o.entityId}:${o.lateralM}@${o.alongFraction}`),
+      unresolvedOpponents,
+    }),
+    interpretationBoundary:
+      'Corridor occupancy is a geometric condition; it says nothing about pass intent, feasibility or outcome.',
+  };
+
+  if (unresolvedOpponents.length > 0) {
+    return {
+      status: 'disclosed' as const,
+      assurance: 'includes-interpolation' as const,
+      provenance,
+      value,
+      disclosure:
+        `${String(unresolvedOpponents.length)} opposing candidate(s) could not be positioned at the passer's instant ` +
+        `(${unresolvedOpponents.join(', ')}); each could be a corridor blocker, so the occupancy ` +
+        `geometry is disclosed for editorial exploration — an empty occupant list is NOT a verified clear lane.`,
+    };
+  }
+  return {
+    status: 'verified' as const,
+    assurance: 'exact-source' as const,
+    provenance,
     value,
   };
 }

@@ -41,20 +41,18 @@ function rolesByEntity(): Map<string, string> {
   return roles;
 }
 
-const CONTEXT_CACHE: Map<string, { context: MetricToolContext; builtAtMs: number }> = new Map();
-const CONTEXT_TTL_MS = 60_000;
-
 /**
- * Revision-aware context cache: keyed by matchId + the CURRENT reducer
- * revision of the source. When a fixture's accepted set changes (a rebuild
- * or correction), the next projection produces a different revisionCount
- * and the stale context is never reused.
+ * REVIEW GATE 3 — NO cross-request context cache. The previous 60 s
+ * matchId-keyed cache could serve stale `verified` numbers after a source
+ * correction, and `revisionCount` counts applied EVENT envelopes, so a
+ * tracking-only correction leaves the revision number unchanged — a
+ * revision-keyed scheme would still be wrong without a full content
+ * digest. This route serves one small synthetic fixture; the projection
+ * is ~200 ms, so every request rebuilds the context from the CURRENT
+ * accepted source. A cache may return only when it validates a full
+ * source content digest AND the reducer revision.
  */
-async function resolveContext(matchId: string): Promise<MetricToolContext | null> {
-  const cached = CONTEXT_CACHE.get(matchId);
-  if (cached !== undefined && Date.now() - cached.builtAtMs < CONTEXT_TTL_MS) {
-    return cached.context;
-  }
+async function resolveContext(_matchId: string): Promise<MetricToolContext | null> {
   const golden = await loadGoldenMatch();
   if (!golden.ok) return null;
   const scene = buildSceneData(golden);
@@ -69,7 +67,6 @@ async function resolveContext(matchId: string): Promise<MetricToolContext | null
     playerEntityIds,
     rolesByEntity: rolesByEntity(),
   };
-  CONTEXT_CACHE.set(matchId, { context, builtAtMs: Date.now() });
   return context;
 }
 

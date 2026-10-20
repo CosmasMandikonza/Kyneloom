@@ -54,9 +54,17 @@ export function nearestOpponent(
   input: NearestOpponentInput,
 ): NearestOpponentResult {
   const entityIds = [input.entityId];
-  const metricId = metricIdFor('nearest-opponent', input.matchId, entityIds, {
-    atMs: input.atMs,
-  });
+  const metricId = metricIdFor(
+    'nearest-opponent',
+    input.matchId,
+    entityIds,
+    { atMs: input.atMs },
+    {
+      // Role filtering changes the candidate set — a defendersOnly scan is a
+      // different measurement from the all-opponents scan.
+      defendersOnly: input.defendersOnly === true,
+    },
+  );
 
   const insufficient = (
     code: MetricInsufficientEvidence['failure']['code'],
@@ -122,8 +130,16 @@ export function nearestOpponent(
     }
     const pose = frame.entities.find((entity) => entity.entityId === candidateId);
     const quality = classifyPose(pose);
-    if (pose === undefined || quality === 'unusable') continue; // absent opponent: not a candidate
-    if (quality === 'interpolated') continue; // verified tier: exact opponents only
+    // REVIEW GATE 2: an opponent whose position is absent, unusable or
+    // interpolated may BE the nearest — the determination is withheld
+    // naming the candidate, never silently resolved to a farther opponent.
+    if (pose === undefined || quality === 'unusable' || quality === 'interpolated') {
+      return insufficient(
+        'missing-tracking',
+        `opponent ${candidateId} has no exact usable pose at ${String(input.atMs)} ms; ` +
+          `it may be the nearest, so the nearest-opponent determination is withheld`,
+      );
+    }
     const gate = checkRawEndpoint(tracking, { entityId: candidateId, atMs: input.atMs });
     if (!gate.ok) {
       // A present-but-unreliable opponent poisons nearest determination:

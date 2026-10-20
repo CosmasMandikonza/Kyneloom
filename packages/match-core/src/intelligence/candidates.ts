@@ -239,6 +239,7 @@ export function detectMomentCandidates(input: DetectionInput): readonly MomentCa
       metricId: string;
       algorithmVersion: string;
       status: 'verified' | 'disclosed' | 'insufficient-evidence';
+      inputFingerprint: string;
     }[] = [];
     const reasonCodes: CandidateReasonCode[] = [];
     const limitations: string[] = [];
@@ -250,6 +251,7 @@ export function detectMomentCandidates(input: DetectionInput): readonly MomentCa
         metricId: result.provenance.metricId,
         algorithmVersion: result.provenance.algorithmVersion,
         status: result.status,
+        inputFingerprint: result.provenance.inputFingerprint,
       });
       if (result.status === 'insufficient-evidence') {
         insufficientSignals += 1;
@@ -381,6 +383,7 @@ export function detectMomentCandidates(input: DetectionInput): readonly MomentCa
       ...new Set([...events.map((event) => event.eventId), ...contextEventIds]),
     ].sort();
 
+    const scorerConfig = { weights, thresholds };
     const candidateId = candidateIdFor({
       matchId: input.matchId,
       scorerVersion: CANDIDATE_VERSION,
@@ -388,10 +391,25 @@ export function detectMomentCandidates(input: DetectionInput): readonly MomentCa
       startMs: group.startMs,
       endMs: group.endMs,
       anchorEventIds,
+      // The DEPENDENCY fingerprints of the contributing metrics — these
+      // encode the actual measured source positions, so a tracking
+      // correction that changes any relevant measurement changes the
+      // candidate identity even at a constant event revision.
       metricFingerprints: metricRefs.map(
-        (ref) => `${ref.metricId}:${ref.algorithmVersion}:${ref.status}`,
+        (ref) => `${ref.metricId}:${ref.algorithmVersion}:${ref.inputFingerprint}`,
       ),
+      scorerConfig,
     });
+    const candidateFingerprint = fnv1aHex(
+      canonicalJsonStringify({
+        candidateId,
+        totalScore,
+        eventSalience,
+        tacticalSalience,
+        tactical: tactical.map((t) => `${t.metricId}:${t.kind}:${String(t.points)}`),
+        scorerConfig,
+      }),
+    );
 
     limitations.push(
       'Ranking score is a documented heuristic for editorial attention, not a probability',
@@ -418,7 +436,7 @@ export function detectMomentCandidates(input: DetectionInput): readonly MomentCa
       causalClaimSupport: 'insufficient',
       editorialBoundary:
         'Spatial signals and source events are reported together because they co-occurred in one window; the detector does not establish that any movement caused any outcome.',
-      inputFingerprint: candidateId,
+      inputFingerprint: candidateFingerprint,
     });
   }
 
@@ -439,6 +457,10 @@ function candidateIdFor(parts: {
   endMs: number;
   anchorEventIds: readonly string[];
   metricFingerprints: readonly string[];
+  /** Resolved weights + thresholds: score-affecting configuration is part
+   *  of the identity (review gate 1) — a re-scored corpus can never
+   *  silently reuse a candidate id minted under different parameters. */
+  scorerConfig: Readonly<Record<string, unknown>>;
 }): string {
   return `cand-${fnv1aHex(
     canonicalJsonStringify({
@@ -448,6 +470,7 @@ function candidateIdFor(parts: {
       window: [parts.startMs, parts.endMs],
       anchors: [...parts.anchorEventIds].sort(),
       metrics: [...parts.metricFingerprints].sort(),
+      scorerConfig: parts.scorerConfig,
     }),
   )}`;
 }

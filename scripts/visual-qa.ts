@@ -2484,6 +2484,94 @@ async function main(): Promise<void> {
       apiChecks.getMethod = getRes.status;
       if (getRes.status !== 405) apiFailures.push(`GET expected 405, got ${String(getRes.status)}`);
 
+      // REVIEW GATE 3 — source freshness: a TRACKING-ONLY correction on disk
+      // (event count, hence reducerRevision, unchanged) between two
+      // consecutive requests must be reflected in the served values. The
+      // fixture file is restored byte-exact in finally; nothing is committed.
+      {
+        const fixturePath = path.resolve(
+          'tests/fixtures/generated/synthetic-derby-01/tracking.jsonl',
+        );
+        const original = readFileSync(fixturePath, 'utf-8');
+        const sepQuery = async (): Promise<{ status: number; json: Record<string, unknown> }> => {
+          const res = await fetch(`${BASE}/api/agent/metric`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tool: 'get_metric',
+              matchId: 'synthetic-derby-01',
+              query: {
+                kind: 'separation-delta',
+                defenderId: 'away-03',
+                strikerId: 'home-09',
+                fromMs: 4_720_500,
+                toMs: 4_724_000,
+              },
+            }),
+          });
+          return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+        };
+        try {
+          const before = await sepQuery();
+          const beforeBody = before.json as {
+            ok?: boolean;
+            result?: {
+              provenance?: { inputFingerprint?: string; reducerRevision?: number };
+              value?: { deltaM?: number; separationAfterM?: number };
+            };
+          };
+          const beforeFp = beforeBody.result?.provenance?.inputFingerprint ?? null;
+          const beforeDelta = beforeBody.result?.value?.deltaM ?? null;
+          const beforeRevision = beforeBody.result?.provenance?.reducerRevision ?? null;
+
+          // TRACKING-ONLY correction: move away-03 at the toMs endpoint by
+          // +2 m. No event envelope is touched — reducerRevision cannot move.
+          const lines = original.split('\n').filter((l) => l.trim() !== '');
+          const corrected = lines
+            .map((line) => {
+              const parsed = JSON.parse(line) as {
+                entityId?: string;
+                sampleTimeMs?: number;
+                xM?: number;
+              };
+              if (parsed.entityId === 'away-03' && parsed.sampleTimeMs === 4_724_000) {
+                parsed.xM = (parsed.xM ?? 0) + 2;
+                return JSON.stringify(parsed);
+              }
+              return line;
+            })
+            .join('\n');
+          writeFileSync(fixturePath, corrected);
+
+          const after = await sepQuery();
+          const afterBody = after.json as typeof beforeBody;
+          const afterFp = afterBody.result?.provenance?.inputFingerprint ?? null;
+          const afterDelta = afterBody.result?.value?.deltaM ?? null;
+          const afterRevision = afterBody.result?.provenance?.reducerRevision ?? null;
+
+          apiChecks.freshness = JSON.stringify({
+            beforeFp,
+            afterFp,
+            beforeDelta,
+            afterDelta,
+            sameRevision: beforeRevision === afterRevision,
+          });
+          const freshnessOk =
+            beforeFp !== null &&
+            afterFp !== null &&
+            beforeFp !== afterFp &&
+            beforeDelta !== afterDelta &&
+            beforeRevision === afterRevision; // proves a revision-keyed cache could NOT have caught this
+          if (!freshnessOk) {
+            apiFailures.push(
+              `stale context served after tracking-only correction: ${apiChecks.freshness}`,
+            );
+          }
+        } finally {
+          writeFileSync(fixturePath, original);
+        }
+      }
+
       results.push({
         route: 'agent-metric-api',
         viewport: '1440x900',

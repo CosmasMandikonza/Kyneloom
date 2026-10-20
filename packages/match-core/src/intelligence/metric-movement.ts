@@ -94,9 +94,19 @@ export function offBallMovement(
     input.opponentEntityId !== undefined
       ? [input.entityId, input.opponentEntityId]
       : [input.entityId];
-  const metricId = metricIdFor('off-ball-movement', input.matchId, entityIds, {
-    windowMs: [input.fromMs, input.toMs],
-  });
+  const metricId = metricIdFor(
+    'off-ball-movement',
+    input.matchId,
+    entityIds,
+    { windowMs: [input.fromMs, input.toMs] },
+    {
+      // Sampling cadence and coverage floor change the numbers; the
+      // opponent's participation changes the signal set.
+      sampleStepMs: input.sampleStepMs ?? 100,
+      minCoverage: input.minCoverage ?? 0.6,
+      withOpponentSpacing: input.opponentEntityId !== undefined,
+    },
+  );
 
   const insufficient = (
     code: MetricInsufficientEvidence['failure']['code'],
@@ -194,14 +204,34 @@ export function offBallMovement(
   const windowSeconds = (last.tMs - first.tMs) / 1000;
 
   // Optional spacing delta at the first/last resolvable subject points.
+  // REVIEW GATE 2: the opponent's endpoints pass the SAME source-quality
+  // policy as the subject's; their frames join the dependencies and their
+  // positions join the fingerprint. A low-quality (non-interpolated,
+  // below-policy) opponent WITHHOLDS the spacing independently; an
+  // interpolated opponent qualifies the whole result as disclosed — the
+  // spacing can never silently influence a verified number.
   let spacingDelta: number | null = null;
+  let spacingInterpolated = false;
+  let spacingWithheld = false;
+  const spacingFrameIds: string[] = [];
+  const spacingPositions: string[] = [];
   if (input.opponentEntityId !== undefined) {
-    const opponentAt = (tMs: number): { xM: number; yM: number } | null => {
+    const opponentAt = (
+      tMs: number,
+    ): { xM: number; yM: number; interpolated: boolean; frameId: string } | null => {
       const pose = timeline
         .sampleAt(tMs)
         .entities.find((e) => e.entityId === input.opponentEntityId);
       if (pose === undefined || classifyPose(pose) === 'unusable') return null;
-      return { xM: pose.xM, yM: pose.yM };
+      const interpolated = classifyPose(pose) === 'interpolated';
+      if (!interpolated) {
+        const gate = checkRawEndpoint(tracking, {
+          entityId: input.opponentEntityId!,
+          atMs: tMs,
+        });
+        if (!gate.ok) return null; // below policy: spacing cannot use it
+      }
+      return { xM: pose.xM, yM: pose.yM, interpolated, frameId: pose.sourceFrameIds[0] ?? '' };
     };
     const startOpponent = opponentAt(first.tMs);
     const endOpponent = opponentAt(last.tMs);
@@ -209,6 +239,14 @@ export function offBallMovement(
       const before = Math.hypot(startOpponent.xM - first.xM, startOpponent.yM - first.yM);
       const after = Math.hypot(endOpponent.xM - last.xM, endOpponent.yM - last.yM);
       spacingDelta = round3(after - before);
+      spacingInterpolated = startOpponent.interpolated || endOpponent.interpolated;
+      spacingFrameIds.push(startOpponent.frameId, endOpponent.frameId);
+      spacingPositions.push(
+        `${startOpponent.frameId}:${startOpponent.xM},${startOpponent.yM}`,
+        `${endOpponent.frameId}:${endOpponent.xM},${endOpponent.yM}`,
+      );
+    } else {
+      spacingWithheld = true;
     }
   }
 
@@ -241,7 +279,7 @@ export function offBallMovement(
     units: 'metres' as const,
     requested: { windowMs: [input.fromMs, input.toMs] as const },
     dependsOn: {
-      sourceFrameIds: [...new Set(frameIds)].sort(),
+      sourceFrameIds: [...new Set([...frameIds, ...spacingFrameIds])].sort(),
       eventIds: (input.possessionEvents ?? []).map(
         (event) => `${event.kind}@${event.occurredAtMs}`,
       ),
@@ -252,27 +290,47 @@ export function offBallMovement(
     coverage: {
       exactSamples: poses.filter((p) => !p.interpolated).length,
       interpolatedSamples: interpolated,
-      missingEntityIds: [],
+      missingEntityIds: spacingWithheld
+        ? input.opponentEntityId !== undefined
+          ? [input.opponentEntityId]
+          : []
+        : [],
     },
     inputFingerprint: metricFingerprint(OFF_BALL_MOVEMENT_VERSION, {
       metricId,
       step,
       poses: poses.map((p) => `${p.tMs}:${round2(p.xM)},${round2(p.yM)}`),
-      spacingDelta,
+      spacing: spacingWithheld ? 'withheld' : { delta: spacingDelta, positions: spacingPositions },
       offBallStatus,
     }),
     interpretationBoundary,
   };
 
-  if (interpolated > 0) {
+  const interpolatedTotal = interpolated + (spacingInterpolated ? 1 : 0);
+  if (interpolatedTotal > 0) {
     const disclosed: MetricDisclosed<OffBallMovementValue> = {
       status: 'disclosed',
       assurance: 'includes-interpolation',
       provenance: provenanceBase,
       value,
-      disclosure: `${String(interpolated)} of ${String(poses.length)} resolvable points were interpolated across gaps ≤ 400 ms; this signal is disclosed for editorial exploration, not verified source measurement.`,
+      disclosure:
+        `${String(interpolated)} of ${String(poses.length)} resolvable subject points were interpolated` +
+        `${spacingInterpolated ? ', and the opponent spacing endpoints included interpolated positions' : ''}` +
+        ` (gaps ≤ 400 ms); this signal is disclosed for editorial exploration, not verified source measurement` +
+        `${spacingWithheld ? '. The opponent spacing could not be established at the required quality and was withheld' : ''}.`,
     };
     return disclosed;
+  }
+  if (spacingWithheld) {
+    // Subject statistics are exact and verified; ONLY the optional spacing
+    // is below the verified bar — withheld (null) with full disclosure in
+    // coverage, never a number derived from unusable opponent input.
+    return {
+      status: 'verified',
+      assurance: 'exact-source',
+      provenance: provenanceBase,
+      value: { ...value, spacingDeltaM: null },
+    };
   }
   return { status: 'verified', assurance: 'exact-source', provenance: provenanceBase, value };
 }

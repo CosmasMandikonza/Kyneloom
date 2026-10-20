@@ -25,7 +25,7 @@
 
 ### Golden-fixture discovery (`tests/intelligence-golden.test.ts`, 8 tests, all passing)
 
-The detector AUTONOMOUSLY surfaces The Invisible Assist from the accepted corpus (no matchId special-casing): `cand-23ec4cfe`, window 4721700–4729800, anchors `evt-0042`/`evt-0009`/`evt-0010`, context including `evt-0007`, both signal families contributing, score 140.2 (events 56 + tactical 86). Byte-stable under repetition, event-order shuffling and duplicate delivery; missing frames withhold tactical signals (goal event may stand alone); goal rescission (same-id revision-2 correction) removes goal salience; the four metrics execute through the real tool path with canonical values.
+The detector AUTONOMOUSLY surfaces The Invisible Assist from the accepted corpus (no matchId special-casing): `cand-d2320439` (review round: the id now fingerprints metric dependency fingerprints + scorer config; previously `cand-23ec4cfe` before identity hardening), window 4721700–4729800, anchors `evt-0042`/`evt-0009`/`evt-0010`, context including `evt-0007`, both signal families contributing, score 140.2 (events 56 + tactical 86). Byte-stable under repetition, event-order shuffling and duplicate delivery; missing frames withhold tactical signals (goal event may stand alone); goal rescission (same-id revision-2 correction) removes goal salience; the four metrics execute through the real tool path with canonical values.
 
 ### Adversarial corpus (`intelligence.adversarial.test.ts`, all passing)
 

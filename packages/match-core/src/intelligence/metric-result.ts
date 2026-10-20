@@ -108,12 +108,20 @@ export interface MetricDisclosed<TValue> {
 export type MetricResult<TValue> =
   MetricVerified<TValue> | MetricDisclosed<TValue> | MetricInsufficientEvidence;
 
-/** Stable metric id from kind + entities + window (no runtime timestamps). */
+/**
+ * Stable metric id from kind + entities + window + the metric-specific
+ * ARGUMENTS that change the calculation (review gate 1). Different lane
+ * widths, role filters or sampling intervals are different measurements and
+ * must never share one reference. `args` is canonical-JSON serialized, so
+ * key order never matters and replay is byte-stable. Omit it ONLY when the
+ * kind has no further parameters.
+ */
 export function metricIdFor(
   kind: MetricKind,
   matchId: string,
   entityIds: readonly string[],
   requested: { atMs?: number; windowMs?: readonly [number, number] },
+  args?: Readonly<Record<string, unknown>>,
 ): string {
   const scope =
     requested.windowMs !== undefined
@@ -121,7 +129,9 @@ export function metricIdFor(
       : requested.atMs !== undefined
         ? `t${String(requested.atMs)}`
         : 't?';
-  return `${kind}:${matchId}:${[...entityIds].sort().join('+')}:${scope}`;
+  const argScope =
+    args === undefined || Object.keys(args).length === 0 ? '' : `:${canonicalJsonStringify(args)}`;
+  return `${kind}:${matchId}:${[...entityIds].sort().join('+')}:${scope}${argScope}`;
 }
 
 /** Deterministic dependency fingerprint over canonical inputs. */
