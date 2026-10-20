@@ -144,6 +144,7 @@ export {
   CANDIDATE_THRESHOLDS,
   type MomentCandidate,
   type DetectionInput,
+  type DetectionThresholds,
   type CandidateReasonCode,
 } from './intelligence/candidates';
 export {

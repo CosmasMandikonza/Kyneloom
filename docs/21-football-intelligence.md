@@ -57,10 +57,23 @@ Determinism: candidate ids are fingerprints over canonical, sorted inputs (score
 - **Adversarial corpus** (`intelligence.adversarial.test.ts`): movement-without-goal, goal-after-movement (causal claim refused), coverage starvation (zero tactical signals; a goal event may still stand alone), corrected outcome, revision-scoped ids, conflicting-sample invalidation, bounded execution.
 - **HTTP adversarial suite** (in `pnpm qa:visual`): eight hostile requests rejected with the documented codes + the two canonical verified queries.
 
+## Threshold sensitivity (measured, real execution)
+
+`pnpm intelligence:sensitivity` perturbs ONE documented threshold at a time against the unmodified golden corpus and prints the resulting detections (committed as `qa/intelligence-sensitivity.txt`; rows are deterministic). Headline findings at the checkpoint corpus:
+
+- **Score floor (`minimumTotalScore = 25`)** — the golden candidate (score 140.2) survives every floor up to 140 and drops at 141: the default has a ~115-point margin, and event salience alone (56) clears it comfortably. The adversarial suite separately proves a floor of 200 surfaces zero candidates on a starved corpus.
+- **Movement-burst bar (`movementBurstMps = 4.5`)** — the sharpest boundary: the golden sprint's signal is present through 4.5 and lost at 5.0 (its sustained mean sits in that band; the dual mean/peak trigger is what keeps it present at 4.5). Score contribution shifts 140.2 → 121.2 (bar ≤ 4.0) → 97.2 (bar ≥ 5.0).
+- **Separation bar (`separationDeltaM = 4`)** — robust: the signal survives bars up to at least 15 m on the detection window (the wider candidate window produces a larger separation change than the 3.5 s metric interval's 14.038 m).
+- **Proximity bar (`proximityDeltaM = 3`)** — dormant on the golden corpus: no proximity-gain signal fires at any bar 2–6 m; the weight is exercised only by the hand-calc suite. A wider corpus is needed before treating proximity as load-bearing.
+- **Tactical look-back (`tacticalLookbackMs = 4500`)** — below 3500 ms the movement burst drops out of the window (score falls to 70.2 at 2500, 54.2 at 1500); 4500 captures the full tactical contribution (86), and longer windows dilute slightly (85 at 6000, 72 at 8000) as more low-signal time enters the average.
+
+These are observations of ranking behavior on one fixture — a documented sensitivity profile, not a claim of optimal thresholds. A multi-fixture corpus (Issue #13+) is the right place to re-measure before tuning anything.
+
 ## Reproduce
 
 ```bash
-pnpm intelligence:demo   # the full deterministic trace with real ids/values
+pnpm intelligence:demo        # the full deterministic trace with real ids/values
+pnpm intelligence:sensitivity # the threshold perturbation table (real execution)
 ```
 
 Related: [docs/05](05-data-and-event-contracts.md) · [docs/07](07-agent-orchestration.md) · [docs/11](11-evaluation-and-reliability.md)

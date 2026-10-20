@@ -50,6 +50,8 @@ Do not claim these benchmarks before they are demonstrated. Separate measured in
 
 ## Agent evaluation
 
+> **Status update (KYN-12, partially measured):** the deterministic football-intelligence layer now has EXECUTED evaluation artifacts in-repo — hand-calculated metric fixtures (`packages/match-core/src/intelligence/metrics.hand-calc.test.ts`, expectations derived on paper), autonomous golden discovery + adversarial corpora (`intelligence.golden.test.ts` / `intelligence.adversarial.test.ts`), an HTTP adversarial suite in `pnpm qa:visual`, a reproducible demo trace (`qa/intelligence-trace.txt`), and a measured candidate-threshold sensitivity table (`pnpm intelligence:sensitivity` → `qa/intelligence-sensitivity.txt`). These cover the tool boundary and scorer; the model-side agent benchmarks below remain proposed and unclaimed.
+
 Create ~20–30 synthetic scenarios *initially* (clean goal, defensive run, ambiguous causality, late tracking, contradictory descriptions, multilingual variants and failed tools). Each scenario specifies expected facts, claims allowed only as hypotheses, forbidden claims, feasible scene plans and review behavior.
 
 Compare:

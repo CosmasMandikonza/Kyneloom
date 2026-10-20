@@ -1,0 +1,88 @@
+
+> kyneloom@0.0.0 intelligence:sensitivity C:\Users\COSMAS\.zcode\workspace\default\kyneloom
+> tsx scripts/intelligence-sensitivity.ts
+
+KYN-12 candidate-scoring threshold sensitivity — real execution
+corpus: synthetic-derby-01 (golden, unmodified) · reducerRevision 11 · defaults {"separationDeltaM":4,"movementBurstMps":4.5,"proximityDeltaM":3,"minimumTotalScore":25,"tacticalLookbackMs":4500,"tacticalLookaheadMs":1500,"mergeWindowMs":6000}
+
+== baseline (defaults) ==
+default                           | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+golden candidate id: cand-23ec4cfe
+
+== minimumTotalScore (score floor) ==
+floor = 0                         | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+floor = 10                        | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+floor = 20                        | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+floor = 25                        | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+floor = 30                        | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+floor = 50                        | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+floor = 80                        | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+floor = 120                       | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+floor = 140                       | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+floor = 141                       | no candidates surfaced
+floor = 150                       | no candidates surfaced
+floor = 200                       | no candidates surfaced
+
+== movementBurstMps (sustained-speed bar) ==
+burst bar = 3.0 m/s               | 1 candidate(s) · top cand-23ec4cfe score 121.2 (events 56 + tactical 67) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ movement-burst signal: present
+burst bar = 3.5 m/s               | 1 candidate(s) · top cand-23ec4cfe score 121.2 (events 56 + tactical 67) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ movement-burst signal: present
+burst bar = 4.0 m/s               | 1 candidate(s) · top cand-23ec4cfe score 121.2 (events 56 + tactical 67) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ movement-burst signal: present
+burst bar = 4.5 m/s               | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ movement-burst signal: present
+burst bar = 5.0 m/s               | 1 candidate(s) · top cand-23ec4cfe score 97.2 (events 56 + tactical 43) · event:goal+event:pass+event:shot+tactical:separation-delta
+                                  |   ↳ movement-burst signal: LOST
+burst bar = 5.5 m/s               | 1 candidate(s) · top cand-23ec4cfe score 97.2 (events 56 + tactical 43) · event:goal+event:pass+event:shot+tactical:separation-delta
+                                  |   ↳ movement-burst signal: LOST
+burst bar = 6.0 m/s               | 1 candidate(s) · top cand-23ec4cfe score 97.2 (events 56 + tactical 43) · event:goal+event:pass+event:shot+tactical:separation-delta
+                                  |   ↳ movement-burst signal: LOST
+
+== separationDeltaM (separation signal bar) ==
+separation bar = 2 m              | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ separation-delta signal: present
+separation bar = 3 m              | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ separation-delta signal: present
+separation bar = 4 m              | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ separation-delta signal: present
+separation bar = 5 m              | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ separation-delta signal: present
+separation bar = 6 m              | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ separation-delta signal: present
+separation bar = 8 m              | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ separation-delta signal: present
+separation bar = 10 m             | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ separation-delta signal: present
+separation bar = 14 m             | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ separation-delta signal: present
+separation bar = 15 m             | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ separation-delta signal: present
+
+== proximityDeltaM (proximity bar) ==
+proximity bar = 2 m               | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ proximity-gain signal: LOST
+proximity bar = 3 m               | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ proximity-gain signal: LOST
+proximity bar = 4 m               | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ proximity-gain signal: LOST
+proximity bar = 5 m               | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ proximity-gain signal: LOST
+proximity bar = 6 m               | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ proximity-gain signal: LOST
+
+== tacticalLookbackMs (window look-back) ==
+lookback = 1500 ms                | 1 candidate(s) · top cand-d90f6b6d score 54.2 (events 56 + tactical 0) · event:goal+event:pass+event:shot
+                                  |   ↳ top window 4724700–4729800 (5100 ms)
+lookback = 2500 ms                | 1 candidate(s) · top cand-0a154150 score 70.2 (events 56 + tactical 16) · event:goal+event:pass+event:shot+tactical:separation-delta
+                                  |   ↳ top window 4723700–4729800 (6100 ms)
+lookback = 3500 ms                | 1 candidate(s) · top cand-8c8361b3 score 128.2 (events 56 + tactical 74) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ top window 4722700–4729800 (7100 ms)
+lookback = 4500 ms                | 1 candidate(s) · top cand-23ec4cfe score 140.2 (events 56 + tactical 86) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ top window 4721700–4729800 (8100 ms)
+lookback = 6000 ms                | 1 candidate(s) · top cand-8f591ce4 score 139.2 (events 56 + tactical 85) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ top window 4720200–4729800 (9600 ms)
+lookback = 8000 ms                | 1 candidate(s) · top cand-f96657d3 score 126.2 (events 56 + tactical 72) · event:goal+event:pass+event:shot+tactical:movement-burst+tactical:separation-delta
+                                  |   ↳ top window 4718200–4729800 (11600 ms)
+
+All rows recomputed from the unmodified accepted corpus; overrides never mutate defaults.

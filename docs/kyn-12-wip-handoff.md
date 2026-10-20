@@ -1,6 +1,6 @@
 # KYN-12 WIP handoff — football intelligence checkpoint
 
-> **Status:** WORK IN PROGRESS — checkpointed to `feat/kyn-12-football-intelligence` mid-milestone. **Not ready for review or merge.** This file documents exactly what exists, what passed, what has not yet run, and how to resume.
+> **Status:** RESUME COMPLETED 2026-10-20 — every item in "NOT completed — resume here" is now done: qa:visual green (36 captures incl. the agent-metric-api section), screenshots regenerated consistently, the demo trace committed (`qa/intelligence-trace.txt`), docs 07/11 updated with implemented-pointers, the threshold-sensitivity evaluation executed and documented (`qa/intelligence-sensitivity.txt` + docs/21 + pinning tests), coverage expanded (+12 tests: asset truthfulness, budgets, sensitivity boundaries), full ladder green (599/599). This file remains as the historical handoff record; the PR carries the final state.
 
 ## Branch / commit
 

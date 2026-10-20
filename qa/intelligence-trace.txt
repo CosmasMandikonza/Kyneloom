@@ -1,0 +1,48 @@
+
+> kyneloom@0.0.0 intelligence:demo C:\Users\COSMAS\.zcode\workspace\default\kyneloom
+> tsx scripts/intelligence-demo.ts
+
+
+=== 1 · load accepted fixture ===
+events=11 tracking=5129 (golden fixture unchanged)
+
+=== 2 · project canonical state ===
+acceptedEvents=11 acceptedTracking=5129 reducerRevision=11 projectionMs=180.9
+
+=== 3 · calculate the four metrics (deterministic, source-quality gated) ===
+   A nearest-opponent  → verified away-05 @ 6.119 m (no role source)
+   B separation-delta  → verified 6.306 → 20.344 m (Δ14.038)
+   C lane-occupancy    → verified 1 occupant(s) in a 4 m × 16.913 m corridor
+   D off-ball-movement → verified displacement 11.314 m · mean 3.9 m/s · peak 7.18 m/s · off-ball full
+
+=== 4 · source-quality verification ===
+all four metrics carry exact-sample provenance; statuses above are the verification verdicts (zero is a value, missing is a status)
+
+=== 5 · detect + rank meaningful-moment candidates ===
+detectionMs=11.3 candidates=1
+   #1 cand-23ec4cfe score 140.2 (events 56 + tactical 86)
+      window 4721700–4729800 · anchors [evt-0042, evt-0009, evt-0010]
+      reasons [event:goal, event:pass, event:shot, tactical:movement-burst, tactical:separation-delta]
+      metrics [separation-delta:synthetic-derby-01:away-03+home-09:w4721700-4728300:verified | off-ball-movement:synthetic-derby-01:home-11:w4721700-4728300:verified]
+      causalClaimSupport=insufficient
+
+=== 6 · query candidate metrics through the allowlisted agent tool ===
+   separation @ measured interval → verified via kyneloom-separation-v1 fingerprint bedfe2a5
+      value {"beforeM":6.306,"afterM":20.344,"deltaM":14.038,"defenderId":"away-03","strikerId":"home-09"}
+   movement @ the run → verified via kyneloom-offball-movement-v1 fingerprint 6ebc8abf
+      value {"displacementM":11.314,"pathLengthM":13.66,"meanSpeedMps":3.9,"maxSpeedMps":7.18,"spacingDeltaM":null,"gridPoints":36,"resolvablePoints":36,"offBallStatus":"full"}
+   nearest opponent @ checkpoint → verified via kyneloom-nearest-opponent-v1 fingerprint f23b2a0a
+      value {"entityId":"away-05","distanceM":6.119,"roleLabel":null}
+   lane @ pass release → verified via kyneloom-lane-occupancy-v1 fingerprint ff079b81
+      value {"widthM":4,"occupants":[{"entityId":"away-04","lateralM":1.079,"alongFraction":0.863,"sourceFrameId":"frame-47240"}],"corridorLengthM":16.913}
+
+=== 7 · deterministic claim-policy example (NOT an LLM transcript) ===
+   claim "separation delta = {"beforeM":6.306,"afterM":20.344,"deltaM":14.038,"defenderId":"away-03","strikerId":"home-09"}" → supported
+   claim "separation delta = {1→2, Δ1}" → unsupported (the tool's recomputation is authoritative)
+   claim "the run caused the goal" → unsupported
+      Causal objective claim 'home-11’s decoy run caused the goal (evt-0010)' cannot be verified: no deterministic metric in kyneloom-get-metric-v1 establishes intent or causation. Permitted interpretation: hypothesis/editorial language with explicit disclosure.
+
+=== 8 · measured performance ===
+projection+detection+8 tool executions = 229.8 ms total on this machine (fixture: 11 events, 5129 samples)
+
+trace complete — every id, window and value above came from real execution.

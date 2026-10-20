@@ -66,6 +66,7 @@ const STORY_SUBJECTS = ['home-11'];
 function detectOn(
   corpus: Corpus,
   events: readonly MatchEvent[] = corpus.events,
+  thresholds?: Parameters<typeof detectMomentCandidates>[0]['thresholds'],
 ): readonly MomentCandidate[] {
   return detectMomentCandidates({
     matchId: 'synthetic-derby-01',
@@ -76,6 +77,7 @@ function detectOn(
     separationPairs: STORY_PAIRS,
     movementSubjects: STORY_SUBJECTS,
     windowMs: [4_717_000, 4_731_000],
+    ...(thresholds === undefined ? {} : { thresholds }),
   });
 }
 
@@ -379,6 +381,48 @@ describe('agent tool on the golden corpus (real get_metric execution)', () => {
     if (causal.verdict === 'unsupported') {
       expect(causal.detail).toContain('cannot be verified');
       expect(causal.detail).toContain('hypothesis');
+    }
+  });
+});
+
+describe('golden fixture — measured threshold sensitivity profile (docs/21)', () => {
+  // These pin the DOCUMENTED perturbation boundaries produced by
+  // `pnpm intelligence:sensitivity` (qa/intelligence-sensitivity.txt) so the
+  // profile cannot silently drift. Observations, not optimality claims.
+
+  it('the golden candidate clears score floors up to 140 and drops at 141', () => {
+    const corpus = loadCorpus();
+    const survives = (floor: number): boolean =>
+      detectOn(corpus, corpus.events, { minimumTotalScore: floor }).length > 0;
+    expect(survives(140)).toBe(true);
+    expect(survives(141)).toBe(false);
+  });
+
+  it('the movement-burst signal is present at the 4.5 m/s bar and lost at 5.0', () => {
+    const corpus = loadCorpus();
+    const hasBurst = (bar: number): boolean =>
+      detectOn(corpus, corpus.events, { movementBurstMps: bar })[0]?.reasonCodes.includes(
+        'tactical:movement-burst',
+      ) ?? false;
+    expect(hasBurst(4.5)).toBe(true);
+    expect(hasBurst(5.0)).toBe(false);
+  });
+
+  it('a shorter look-back than 3.5 s loses the movement burst from the window', () => {
+    const corpus = loadCorpus();
+    const hasBurst = (lookbackMs: number): boolean =>
+      detectOn(corpus, corpus.events, { tacticalLookbackMs: lookbackMs })[0]?.reasonCodes.includes(
+        'tactical:movement-burst',
+      ) ?? false;
+    expect(hasBurst(3500)).toBe(true);
+    expect(hasBurst(2500)).toBe(false);
+  });
+
+  it('proximity-gain is dormant on the golden corpus at every documented bar', () => {
+    const corpus = loadCorpus();
+    for (const bar of [2, 3, 4, 5, 6]) {
+      const top = detectOn(corpus, corpus.events, { proximityDeltaM: bar })[0];
+      expect(top?.reasonCodes.includes('tactical:proximity-gain') ?? false).toBe(false);
     }
   });
 });

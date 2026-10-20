@@ -13,6 +13,16 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
+// The READY handoff is a HARD navigation (frame-rate independent); the
+// hardNavigate seam is mocked so jsdom never needs to navigate.
+const assigned: string[] = [];
+vi.mock('@/lib/hard-navigate', () => ({
+  hardNavigate: (url: string): void => {
+    assigned.push(url);
+  },
+  isNavigationHeld: (): boolean => false,
+}));
+
 // WebGL "exists" so the encounter stays canvas-driven; the canvas itself is
 // stubbed out (jsdom has no WebGL) — these tests exercise the DRIVER. The
 // fallback test flips `caps.webgl` to false.
@@ -36,6 +46,7 @@ import { LandingExperience } from './landing-experience';
 afterEach(() => {
   caps.webgl = true;
   pushed.length = 0;
+  assigned.length = 0;
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -197,7 +208,7 @@ describe('LandingExperience (jsdom — no WebGL)', () => {
     // PHASE assertion (not navigation): ready immediately, never intro.
     expect(stage.dataset.phase).toBe('ready');
     await waitFor(() => {
-      expect(pushed).toEqual(['/explore?enter=orb']);
+      expect(assigned).toEqual(['/explore?enter=orb']);
     });
   });
 
