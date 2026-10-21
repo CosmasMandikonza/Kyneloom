@@ -2,7 +2,7 @@
   "name": "kyneloom",
   "private": true,
   "version": "0.0.0",
-  "description": "Kyneloom — the evidence-native experience engine for interactive sports. Repository foundation (KYN-01).",
+  "description": "Kyneloom \u2014 the evidence-native experience engine for interactive sports. Repository foundation (KYN-01).",
   "type": "module",
   "packageManager": "pnpm@10.34.7",
   "engines": {
@@ -32,7 +32,9 @@
     "qa:record:gallery": "tsx scripts/record-gallery-live.ts",
     "moments:perf": "tsx scripts/measure-gallery-perf.ts",
     "qa:record:lens": "tsx scripts/record-lens-live.ts",
-    "lens:perf": "tsx scripts/measure-lens-perf.ts"
+    "lens:perf": "tsx scripts/measure-lens-perf.ts",
+    "intelligence:demo": "tsx scripts/intelligence-demo.ts",
+    "intelligence:sensitivity": "tsx scripts/intelligence-sensitivity.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

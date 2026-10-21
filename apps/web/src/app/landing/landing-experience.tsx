@@ -11,6 +11,7 @@ import {
   type LandingFieldSpec,
 } from '@/lib/landing-geometry';
 import { ASSET_WARM_TIMEOUT_MS, EXPLORE_ASSETS, warmExploreAssets } from '@/lib/landing-assets';
+import { hardNavigate, isNavigationHeld } from '@/lib/hard-navigate';
 import {
   DEFAULT_LANDING_CONFIG,
   initialLandingState,
@@ -151,12 +152,30 @@ export function LandingExperience({ fixtureFacts, fieldInput }: LandingExperienc
 
   // READY = hand off to the real replay (exactly once).
   const navigated = useRef(false);
+  // A HARD navigation, deliberately: the App Router's transition pipeline
+  // runs through passive-effect scheduling that software renderers can
+  // starve for many seconds while this canvas still draws (measured: push
+  // delayed ~9 s and its transition never committing at ~2 fps).
+  // location.assign is frame-rate independent; /explore then runs its own
+  // enter choreography.
   useEffect(() => {
-    if (phase === 'ready' && !navigated.current) {
-      navigated.current = true;
-      router.push('/explore?enter=orb');
-    }
-  }, [phase, router]);
+    if (phase !== 'ready' || navigated.current) return;
+    navigated.current = true;
+    // QA may hold the handoff to capture the reveal state (see
+    // isNavigationHeld); released polling keeps the wait bounded and the
+    // product behavior identical for real users.
+    let released = false;
+    const timer = window.setInterval(() => {
+      if (released || !isNavigationHeld()) {
+        released = true;
+        window.clearInterval(timer);
+        hardNavigate('/explore?enter=orb');
+      }
+    }, 100);
+    return () => {
+      if (!released) window.clearInterval(timer);
+    };
+  }, [phase]);
 
   const webglUsable = webglOk && phase !== 'fallback';
 

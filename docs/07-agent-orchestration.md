@@ -43,6 +43,8 @@ A policy failure cannot be resolved by persuasive model prose.
 
 **`get_metric(matchId, reducerRevision, metricId)`** → number, units, algorithm version, sample refs, provenance quality.
 
+> **Status update (KYN-12, implemented):** this tool contract now exists as the deterministic `kyneloom-get-metric-v1` boundary (`packages/match-core/src/intelligence/agent-tool.ts`) behind `POST /api/agent/metric` (server-only route): allowlisted match sources, strict query grammar, revision-aware 409s, full `MetricResult` provenance and a deterministic `validateClaim` policy that refuses causal objectives outright. See [docs/21 — Football intelligence](21-football-intelligence.md) and the reproducible trace (`pnpm intelligence:demo`, committed as `qa/intelligence-trace.txt`). No Foundry connectivity is claimed — the boundary is exactly this local, auditable tool.
+
 **`get_event_window(matchId, fromMs, toMs)`** → bounded canonical event set with source IDs.
 
 **`validate_camera_plan(plan, sceneBounds)`** → feasibility report including clipping, missing target or unsupported modes.
