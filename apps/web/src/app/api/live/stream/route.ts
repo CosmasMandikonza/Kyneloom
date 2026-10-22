@@ -44,6 +44,14 @@ export async function GET(request: Request): Promise<Response> {
   const subscriberId = `sub-${String(Date.now())}-${String(Math.floor(Math.random() * 1e6))}`;
   service.subscribe(subscriberId);
   const startedAt = Date.now();
+  // This connection's GENERATION. The loop's lifetime is bound to it: an
+  // immediate operator restart (stop+start within one poll interval) leaves
+  // `running` true again before the next check, but the session id has
+  // rotated — this subscriber belongs to the dead generation and will never
+  // receive a new-generation snapshot (those are queued only at subscribe).
+  // Closing truthfully forces the browser's EventSource reconnect, which
+  // resubscribes and adopts the new generation via hello+snapshot.
+  const generation = service.status.sessionId;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -66,9 +74,11 @@ export async function GET(request: Request): Promise<Response> {
         while (Date.now() - startedAt < MAX_STREAM_MS) {
           const frames = service.drain(subscriberId, 8);
           for (const frame of frames) send(frame);
-          // The producer genuinely stopped (operator control / stream end):
-          // tell the truth and CLOSE — reconnecting clients resynchronize.
-          if (!service.status.running) {
+          // The producer genuinely stopped (operator control / stream end),
+          // OR this connection's generation was rotated out by an immediate
+          // restart that completed between polls: tell the truth and CLOSE —
+          // reconnecting clients resynchronize onto the new generation.
+          if (!service.status.running || service.status.sessionId !== generation) {
             send({
               type: 'status',
               matchId: service.matchId,

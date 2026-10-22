@@ -980,11 +980,29 @@ async function main(): Promise<void> {
               }
               await page.evaluate(() => window.sessionStorage.removeItem('kyneloom.lens'));
               await page.goto(`${BASE}/explore`, { waitUntil: 'networkidle', timeout: 90_000 });
-              await page.waitForFunction(
-                () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
-                undefined,
-                { timeout: 45_000 },
-              );
+              // Software-GL resilience (same class as the recovery below):
+              // the navigation storm can stall the scene mount past the
+              // wait timeout. ONE bounded reload retry — the assertion
+              // itself is never weakened; a second failure is recorded.
+              let sceneMountedAfterLens = false;
+              for (let attempt = 0; attempt < 2 && !sceneMountedAfterLens; attempt += 1) {
+                if (attempt > 0) {
+                  await page.goto(`${BASE}/explore`, { waitUntil: 'networkidle', timeout: 90_000 });
+                }
+                try {
+                  await page.waitForFunction(
+                    () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+                    undefined,
+                    { timeout: 45_000 },
+                  );
+                  sceneMountedAfterLens = true;
+                } catch {
+                  /* one retry, then record */
+                }
+              }
+              if (!sceneMountedAfterLens) {
+                failures.push('explore: scene did not mount after the lens navigation storm');
+              }
               // Software-GL resilience: the reload/navigation storm above can
               // exhaust SwiftShader contexts and silently drop the canvas to
               // the 2D fallback. Recover ONCE (fresh scene, analyst active)

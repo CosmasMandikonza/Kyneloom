@@ -129,7 +129,12 @@ export function useLiveStream(enabled: boolean, speed: 1 | 2 | 4 = 2): UseLiveSt
       try {
         await transport.connect();
         if (cancelled) return;
-        controller.setStatus('connected', 'transport connected — awaiting snapshot');
+        // Transport-up (SSE hello) is NOT connected: nothing is verified
+        // yet. 'connected' is declared ONLY by the controller's `applied`
+        // event — a fingerprint-verified snapshot/delta of the CURRENT
+        // generation (review round 3). Until then the truthful status is
+        // connecting; retained prior state must never read as live-healthy.
+        controller.setStatus('connecting', 'transport connected — awaiting verified snapshot');
       } catch {
         if (!cancelled) controller.setStatus('disconnected', 'transport failed to connect');
       }
