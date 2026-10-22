@@ -163,3 +163,31 @@ export {
   type ClaimInput,
   type ClaimVerdict,
 } from './intelligence/agent-tool';
+export {
+  STREAM_CONTRACT_VERSION,
+  acceptedSetFingerprint,
+  envelopeIdFor,
+  validateLiveFrame,
+  type StreamEnvelope,
+  type LiveFrame,
+  type LiveConnectionStatus,
+  type StreamTrackingTrack,
+} from './stream/wire';
+export {
+  LiveProjectionWorker,
+  internTracking,
+  type WorkerAdmissionResult,
+  type QuarantineRecord,
+  type LiveWorkerOptions,
+} from './stream/worker';
+export {
+  LocalFixtureProducer,
+  type ProducerChaos,
+  type ProducerOptions,
+} from './stream/local-producer';
+export {
+  LiveSyncController,
+  deintern,
+  type SyncEvent,
+  type LiveSyncOptions,
+} from './stream/client-sync';

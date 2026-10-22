@@ -25,6 +25,7 @@
     "qa:visual": "tsx scripts/visual-qa.ts",
     "qa:record": "tsx scripts/record-replay.ts",
     "qa:record:live": "tsx scripts/record-replay-live.ts",
+    "qa:record:stream": "tsx scripts/record-live-demo.ts",
     "qa:record:camera": "tsx scripts/record-camera-live.ts",
     "qa:record:xray": "tsx scripts/record-xray-live.ts",
     "qa:record:landing": "tsx scripts/record-landing-live.ts",
@@ -33,6 +34,7 @@
     "moments:perf": "tsx scripts/measure-gallery-perf.ts",
     "qa:record:lens": "tsx scripts/record-lens-live.ts",
     "lens:perf": "tsx scripts/measure-lens-perf.ts",
+    "live:perf": "tsx scripts/measure-live-perf.ts",
     "intelligence:demo": "tsx scripts/intelligence-demo.ts",
     "intelligence:sensitivity": "tsx scripts/intelligence-sensitivity.ts"
   },

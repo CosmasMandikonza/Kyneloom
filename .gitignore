@@ -42,3 +42,4 @@ pnpm-debug.log*
 .tools/
 qa/video-frames/
 qa/video-test/
+.live-archive/

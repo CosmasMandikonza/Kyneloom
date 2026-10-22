@@ -15,7 +15,8 @@ import type { Timeline, TimelineFrame } from '@kyneloom/match-core';
  * into this object.
  */
 export interface ReplayEngine {
-  readonly window: PlaybackWindow;
+  /** Live mode grows this as streamed match time advances (KYN-13). */
+  window: PlaybackWindow;
   /** Authoritative replay time in absolute match ms. */
   playheadMs: number;
   playing: boolean;

@@ -6,6 +6,7 @@ import { formatMatchClock, formatMatchClockTenths } from '@/lib/clock';
 import {
   advancePlayhead,
   eventAtPlayhead,
+  type SceneEventLite,
   playheadFraction,
   resetPlayhead,
   stepFrame,
@@ -22,6 +23,8 @@ import {
 import { LivingReplayCanvas, type SceneQuality } from './scene/living-replay';
 import { XrayOverlay, type XrayPhase, SCENE_OPEN_INSPECTOR_EVENT } from './scene/xray-overlay';
 import { EvidenceInspector } from './evidence-inspector';
+import { useLiveStream } from '@/lib/live/use-live-stream';
+import { LiveModeButtons, LiveStatusChip } from './live-stage-panel';
 import { validateEvidenceProjection, type EvidenceProjection } from '@/lib/evidence-data';
 import { MEASURED_INTERVAL_MS } from '@/lib/moment-catalog';
 import { pitchToThree } from '@kyneloom/contracts';
@@ -68,6 +71,17 @@ const SPEED_LABELS: Record<PlaybackSpeed, string> = {
   0.5: '0.5×',
   1: '1×',
   2: '2×',
+};
+
+const LIVE_EVENT_LABELS: Record<string, string> = {
+  kickoff: 'Kickoff',
+  pass_completed: 'Pass',
+  pass_attempted: 'Pass attempt',
+  shot_attempted: 'Shot',
+  goal: 'GOAL',
+  period_start: 'Period start',
+  period_end: 'Period end',
+  correction: 'Correction',
 };
 
 /** Pointer/touch hit tolerance around the projected measured segments. */
@@ -153,6 +167,47 @@ function ReplayStageInner({
     [timeline, scene.ballEntityId],
   );
 
+  // KYN-13 — Live Synthetic Stream mode. The engine's frame cache SWAPS to
+  // the streamed authoritative timeline; the canvas, cameras, selection and
+  // lens state are never remounted. The stream connection itself lives
+  // above every presentation concern (no reconnect on lens/camera changes).
+  const [liveActive, setLiveActive] = useState(false);
+  const live = useLiveStream(liveActive, 2);
+  const liveFrameCache = useMemo(
+    () =>
+      live.state.timeline !== null
+        ? createFrameCache(live.state.timeline, scene.ballEntityId)
+        : null,
+    [live.state.timeline, scene.ballEntityId],
+  );
+  const effectiveGetFrame = liveActive && liveFrameCache !== null ? liveFrameCache : getFrame;
+  const liveHealthy =
+    liveActive &&
+    live.state.status === 'connected' &&
+    live.state.connected &&
+    live.state.stateVersion !== null;
+  // Live window: [fixture start, latest streamed match time] — grows as the
+  // stream delivers; scrubbing stays bounded by what has genuinely arrived.
+  const effectiveWindow = liveActive
+    ? {
+        startMs: momentWindow.startMs,
+        endMs: Math.max(momentWindow.endMs, live.state.matchTimeMs),
+      }
+    : momentWindow;
+  const liveEvents = liveActive ? live.state.acceptedEvents : null;
+  // Event chip source: live accepted events (mapped to the chip shape) when
+  // the stream owns the truth; the committed fixture events otherwise.
+  const displayEvents: readonly SceneEventLite[] = useMemo(() => {
+    if (!liveActive || liveEvents === null) return scene.events;
+    return liveEvents.map((event) => ({
+      eventId: event.eventId,
+      occurredAtMs: event.occurredAtMs,
+      label: LIVE_EVENT_LABELS[event.kind as keyof typeof LIVE_EVENT_LABELS] ?? event.kind,
+      actorId: event.actorId ?? undefined,
+      kind: event.kind,
+    }));
+  }, [liveActive, liveEvents, scene.events]);
+
   const engineRef = useRef<ReplayEngine>({
     window: momentWindow,
     playheadMs: scene.initialFocusMs,
@@ -162,6 +217,22 @@ function ReplayStageInner({
     revision: 0,
   });
   const engine = engineRef.current;
+
+  // Live mode: the engine window follows what has genuinely arrived, and a
+  // FOLLOWING viewer jumps to the latest streamed match time (the user can
+  // pause following with the transport; the stream keeps buffering).
+  useEffect(() => {
+    engine.window = effectiveWindow;
+    engine.revision += 1;
+  }, [engine, effectiveWindow]);
+  const liveFollowRef = useRef(true);
+  useEffect(() => {
+    if (!liveActive || !liveFollowRef.current) return;
+    if (live.state.matchTimeMs > 0) {
+      engine.playheadMs = Math.min(effectiveWindow.endMs, live.state.matchTimeMs);
+      engine.revision += 1;
+    }
+  }, [engine, liveActive, live.state.matchTimeMs, live.state.seq, effectiveWindow.endMs]);
 
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<PlaybackSpeed>(1);
@@ -307,7 +378,7 @@ function ReplayStageInner({
           fillRef.current.style.width = `${(playheadFraction(t, momentWindow) * 100).toFixed(2)}%`;
         }
         if (eventRef.current !== null) {
-          const active = eventAtPlayhead(t, scene.events);
+          const active = eventAtPlayhead(t, displayEvents);
           eventRef.current.textContent = active
             ? `${active.phase === 'active' ? '' : 'next · '}${active.event.label} — ${active.event.actorId} (${formatMatchClock(active.event.occurredAtMs)})`
             : 'open play';
@@ -325,7 +396,7 @@ function ReplayStageInner({
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [engine, scene.events, momentWindow]);
+  }, [engine, displayEvents, momentWindow]);
 
   // Keyboard transport on the stage: arrows step frames, space toggles
   // play, digits 1–6 select cameras, X toggles Evidence X-Ray, I opens the
@@ -565,8 +636,14 @@ function ReplayStageInner({
   }, [openInspector]);
 
   const runtime = useMemo(
-    () => ({ scene, engine, getFrame, selected: { entityId: selected }, onSelect }),
-    [scene, engine, getFrame, selected, onSelect],
+    () => ({
+      scene,
+      engine,
+      getFrame: effectiveGetFrame,
+      selected: { entityId: selected },
+      onSelect,
+    }),
+    [scene, engine, effectiveGetFrame, selected, onSelect],
   );
 
   // Clearly-labeled QA/debug hook (not user-facing): the presentation-side
@@ -635,6 +712,31 @@ function ReplayStageInner({
                 Chapter · {chapterTitle}
               </span>
             ) : null}
+          </div>
+
+          {/* KYN-13 — viewing mode + honest stream status (never a fake LIVE
+              light: the green dot requires a connected transport AND applied
+              fresh state). */}
+          <div className="stage__live-panel">
+            <LiveModeButtons
+              liveActive={liveActive}
+              onToggle={(next) => {
+                setLiveActive(next);
+                liveFollowRef.current = true;
+                if (next) {
+                  setPlaying(false);
+                }
+              }}
+              disabled={false}
+            />
+            {liveActive ? (
+              <LiveStatusChip live={live.state} liveHealthy={liveHealthy} />
+            ) : (
+              <div className="livechip" data-live-status="recorded" data-testid="live-status">
+                <span className="livechip__dot livechip__dot--recorded" aria-hidden="true" />
+                <span className="livechip__label mono">Recorded replay</span>
+              </div>
+            )}
           </div>
 
           {/* Honest evidence context (KYN-10): the verified separation
