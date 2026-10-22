@@ -195,8 +195,11 @@ the default mode; activating **Live Synthetic Stream** must reach
 `connected` (patient polling — SSE dispatch on SwiftShader takes seconds)
 with the truthful status chip live and the scene QA hook reporting the
 **streamed snapshot's 22 players / 0 missing**
-(`explore-live-connected-1440x900.png`); a genuine producer stop through
-the operator control route must take the chip off live-green to the honest
+(`explore-live-connected-1440x900.png`); an **anonymous and a wrong-token
+control stop must both be denied 403 with the stream left running**
+(fail-closed operator control — the QA server provisions a local token
+and only the authorized interruption proceeds); the genuine producer stop
+must take the chip off live-green to the honest
 disconnected/reconnecting state with the scene preserved
 (`explore-live-offline-1440x900.png`), and a restart must resynchronize
 from the canonical snapshot with 22 players again

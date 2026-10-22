@@ -17,6 +17,8 @@ import { chromium } from 'playwright';
 const PORT = 3173;
 const BASE = `http://127.0.0.1:${PORT}`;
 const OUT_DIR = path.resolve('qa');
+/** Local operator token for this QA run (see /api/live/control auth). */
+const QA_CONTROL_TOKEN = 'kyneloom-local-qa';
 
 const VIEWPORTS = [
   { name: '1440x900', width: 1440, height: 900 },
@@ -170,6 +172,10 @@ async function startServer(): Promise<() => Promise<void>> {
   const child = spawn('pnpm', ['--filter', '@kyneloom/web', 'start', '--port', String(PORT)], {
     shell: true,
     stdio: 'pipe',
+    // Operator control token for THIS QA run only (review gate A): the
+    // control route is disabled unless the server environment provisions a
+    // token, and the QA's authorized requests must present the same one.
+    env: { ...process.env, KYNELOOM_LIVE_CONTROL_TOKEN: QA_CONTROL_TOKEN },
   });
   const stdout: string[] = [];
   child.stdout?.on('data', (d: Buffer) => stdout.push(d.toString()));
@@ -2744,19 +2750,51 @@ async function main(): Promise<void> {
       }
       await evidenceShot(page, 'explore-live-connected-1440x900.png', failures);
 
-      // Interruption/resync — the GENUINE path: the operator control stops
-      // the real producer; the SSE loop tells the truth (a disconnected
-      // status frame) and closes; reconnecting viewers resynchronize from
-      // the canonical snapshot. (context.setOffline is NOT used as the
-      // interruption: on this host it does not cut an established SSE
-      // socket — probed: readyState stays OPEN and frames keep flowing —
-      // so a chip that stays 'connected' would be TRUTHFUL, and asserting
-      // against it would test a false premise. The DOM flip needs a React
-      // commit on a possibly-starved renderer, hence the long window; the
-      // never-fake-LIVE rule stays strict.)
-      await fetch(`${BASE}/api/live/control`, {
+      // Review gate A regression — anonymous control is DENIED and the
+      // stream is untouched: a public viewer must never be able to stop the
+      // match for everyone.
+      const anonStop = await fetch(`${BASE}/api/live/control`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop' }),
+      });
+      liveChecks.anonControlStatus = anonStop.status;
+      if (anonStop.status !== 403) {
+        failures.push(
+          `live: anonymous control stop returned ${String(anonStop.status)} (expected 403 denial)`,
+        );
+      }
+      const wrongStop = await fetch(`${BASE}/api/live/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-kyneloom-live-control': 'wrong' },
+        body: JSON.stringify({ action: 'stop' }),
+      });
+      if (wrongStop.status !== 403) {
+        failures.push(
+          `live: wrong-token control stop returned ${String(wrongStop.status)} (expected 403 denial)`,
+        );
+      }
+      const afterDenials = await (await fetch(`${BASE}/api/live/status`)).json();
+      if (afterDenials.status?.running !== true) {
+        failures.push('live: denials must not stop the stream (control-disabled leak?)');
+      }
+
+      // Interruption/resync — the GENUINE path: the AUTHORIZED operator
+      // control stops the real producer; the SSE loop tells the truth (a
+      // disconnected status frame) and closes; reconnecting viewers
+      // resynchronize from the canonical snapshot. (context.setOffline is
+      // NOT used as the interruption: on this host it does not cut an
+      // established SSE socket — probed: readyState stays OPEN and frames
+      // keep flowing — so a chip that stays 'connected' would be TRUTHFUL,
+      // and asserting against it would test a false premise. The DOM flip
+      // needs a React commit on a possibly-starved renderer, hence the long
+      // window; the never-fake-LIVE rule stays strict.)
+      await fetch(`${BASE}/api/live/control`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-kyneloom-live-control': QA_CONTROL_TOKEN,
+        },
         body: JSON.stringify({ action: 'stop' }),
       });
       let offlineStatus: string | null = null;
@@ -2792,7 +2830,10 @@ async function main(): Promise<void> {
 
       await fetch(`${BASE}/api/live/control`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-kyneloom-live-control': QA_CONTROL_TOKEN,
+        },
         body: JSON.stringify({ action: 'start' }),
       });
       try {

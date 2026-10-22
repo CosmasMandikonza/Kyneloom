@@ -86,6 +86,12 @@ What exists is a genuine streaming vertical slice, honestly labeled — **no Azu
 
 **Contract-true but not deployed:** `apps/web/src/lib/live/azure-adapters.ts` implements the Event Hubs ingestion path (partition key `matchId`, explicit reducer consumer group, checkpoint only after the batch's durable work) and Web PubSub fan-out + **narrow negotiation** (the browser token carries join-leave-group for `match:{id}` only — a viewer can never publish match state), compiled against the official SDKs. `infra/live-stream.bicep` declares the smallest honest topology (Event Hubs + dedicated consumer group, Storage for checkpoints/archive/quarantine with no public access, Web PubSub). Activating it requires only environment variables plus an authorized deployment; until then the local transport serves every contract-level test.
 
+**Correctness laws enforced at the wire (review round):**
+- The state version fingerprints the **fully normalized accepted fields** — events including team/actor/attributes/provenance, tracking including confidence/visibility/origin/source-frame/reconstruction disclosures — so materially different corpora can never share a version; identical sets in any arrival order always do.
+- Snapshot issuance is **read-only with respect to the broadcast sequence**: snapshots carry the current seq; only authoritative publishes advance it. A viewer joining, an HTTP snapshot read, or a resync can never push another viewer into a false gap.
+- Corrections and conflict tombstones travel with **reducer-mirroring semantics** (replacement by identity + explicit removals), so client corpora converge byte-equal to the server's accepted set without spurious resyncs — proven end-to-end with two simultaneous viewers.
+- **Operator control is fail-closed**: the producer stop/start route is disabled unless `KYNELOOM_LIVE_CONTROL_TOKEN` is provisioned in the server environment, requires the token header (constant-time compare, no cookies → no CSRF surface), and denies anonymous/wrong-token requests with 403 while the public stream keeps running. Never deploy the route without the token.
+
 **Latency honesty:** ingest-to-publish latency is measured with real trace ids on the local path (see `/api/live/status` and `qa/perf-live.txt`). No p50/p95 is quoted for Azure services that were not running.
 
 ## Cloud-native judging proof, not slideware

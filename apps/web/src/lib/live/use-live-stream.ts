@@ -141,5 +141,16 @@ export function useLiveStream(enabled: boolean, speed: 1 | 2 | 4 = 2): UseLiveSt
     };
   }, [enabled, speed, nonce]);
 
+  // Self-healing resync loop: when a resync attempt could not fetch a
+  // snapshot (status 'reconnecting' — e.g. the host socket layer wedged),
+  // re-open the transport after a short backoff. The fresh connection
+  // delivers hello + snapshot over SSE, which applies and restores
+  // 'connected' — no manual retry, no permanent wedge, truthful throughout.
+  useEffect(() => {
+    if (state.status !== 'reconnecting') return;
+    const timer = setTimeout(() => setNonce((n) => n + 1), 3000);
+    return () => clearTimeout(timer);
+  }, [state.status]);
+
   return useMemo(() => ({ state, disconnect, reconnect }), [state, disconnect, reconnect]);
 }

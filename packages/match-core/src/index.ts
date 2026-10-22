@@ -171,11 +171,10 @@ export {
   type StreamEnvelope,
   type LiveFrame,
   type LiveConnectionStatus,
-  type StreamTrackingTrack,
+  type RemovedTrackingKey,
 } from './stream/wire';
 export {
   LiveProjectionWorker,
-  internTracking,
   type WorkerAdmissionResult,
   type QuarantineRecord,
   type LiveWorkerOptions,
@@ -185,9 +184,4 @@ export {
   type ProducerChaos,
   type ProducerOptions,
 } from './stream/local-producer';
-export {
-  LiveSyncController,
-  deintern,
-  type SyncEvent,
-  type LiveSyncOptions,
-} from './stream/client-sync';
+export { LiveSyncController, type SyncEvent, type LiveSyncOptions } from './stream/client-sync';

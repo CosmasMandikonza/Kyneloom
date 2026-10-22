@@ -13,16 +13,24 @@ import type { MatchEvent, TrackingSample } from '@kyneloom/contracts';
  * adapter and the Azure adapter exercise IDENTICAL semantics (docs/04
  * fast path; docs/09 Event Hubs policy).
  *
+ * v2 (review gates): the snapshot now carries the FULL canonical tracking
+ * samples (lossless — the interned scene format lost confidence precision,
+ * source-frame ids and reconstruction disclosures), and deltas carry
+ * `removedTracking` tombstone removals plus replacement-by-identity event
+ * corrections. Incompatible with v1 peers by design — they fail closed.
+ *
  * Versioning law (KYN-12 gate-3 lesson): event-envelope `revisionCount`
  * does NOT move when only tracking coordinates change, so the authoritative
- * state version is a CONTENT FINGERPRINT over the whole accepted set
- * (canonical events + canonical tracking) — a tracking-only correction
- * necessarily changes it. Delivery carries a monotonic `seq` per stream
- * session INDEPENDENT of the content version, so clients detect gaps
- * deterministically.
+ * state version is a CONTENT FINGERPRINT over the whole accepted set —
+ * every normalized accepted field (see acceptedSetFingerprint) — so any
+ * materially different corpus necessarily has a different version.
+ * Delivery carries a monotonic `seq` per stream session INDEPENDENT of the
+ * content version AND of snapshot issuance (snapshots are read-only with
+ * respect to the broadcast sequence), so clients detect real gaps
+ * deterministically and never resynchronize because another viewer joined.
  */
 
-export const STREAM_CONTRACT_VERSION = 'kyneloom-live-wire-v1';
+export const STREAM_CONTRACT_VERSION = 'kyneloom-live-wire-v2';
 
 /** Wire message admitted into a transport (server→worker and replay). */
 export interface StreamEnvelope {
@@ -39,6 +47,12 @@ export interface StreamEnvelope {
   readonly traceId: string;
 }
 
+/** A tombstoned tracking sample a delta REMOVES from the accepted corpus. */
+export interface RemovedTrackingKey {
+  readonly entityId: string;
+  readonly sampleTimeMs: number;
+}
+
 /** Server→client frames over the delivery transport (SSE today, Web PubSub when provisioned). */
 export type LiveFrame =
   | {
@@ -47,14 +61,15 @@ export type LiveFrame =
       readonly sessionId: string;
       /** Content fingerprint of the accepted set this snapshot contains. */
       readonly stateVersion: string;
-      /** Monotonic delivery sequence (resets only on worker restart, disclosed). */
+      /** Current broadcast position (read-only: snapshots NEVER advance it). */
       readonly seq: number;
       readonly sourceRevision: number;
       readonly matchTimeMs: number;
       readonly traceId: string;
       readonly acceptedEvents: readonly MatchEvent[];
-      /** Interned compact tracking — the same shape scene-client rehydrates. */
-      readonly tracking: readonly StreamTrackingTrack[];
+      /** FULL canonical tracking samples — lossless (client verifies the
+       *  fingerprint over exactly what the server fingerprinted). */
+      readonly tracking: readonly TrackingSample[];
       readonly trackingAvailable: boolean;
     }
   | {
@@ -69,10 +84,16 @@ export type LiveFrame =
       readonly sourceRevision: number;
       readonly matchTimeMs: number;
       readonly traceId: string;
-      /** New accepted event envelopes (includes corrections). */
+      /** New accepted event envelopes. Corrections REPLACE the superseded
+       *  revision in the sender's accepted set; clients apply the same
+       *  replacement-by-identity ((providerId, eventId) — the reducer's
+       *  acceptedEvents law), NOT append. */
       readonly newEvents: readonly MatchEvent[];
       /** New accepted tracking samples (append-only ticks). */
       readonly newTracking: readonly TrackingSample[];
+      /** Tombstoned samples REMOVED from the accepted corpus by conflict
+       *  rules (client must remove them before applying newTracking). */
+      readonly removedTracking: readonly RemovedTrackingKey[];
       readonly trackingAvailable: boolean;
     }
   | {
@@ -88,24 +109,19 @@ export type LiveFrame =
 export type LiveConnectionStatus =
   'connecting' | 'connected' | 'reconnecting' | 'degraded' | 'resynchronizing' | 'disconnected';
 
-/** Interned tracking track (matches the scene-data wire format). */
-export interface StreamTrackingTrack {
-  readonly entityId: string;
-  readonly t: readonly number[];
-  readonly xyz: readonly number[];
-  readonly o: readonly number[];
-  readonly v: readonly number[];
-  readonly c: readonly number[];
-  readonly f: readonly number[];
-}
-
 // ---------------------------------------------------------------------------
 // Content fingerprint — THE state version.
 
 /**
- * Fingerprint over the full accepted set. Canonical JSON of sorted event
- * identities/revisions + sorted (time, entity) sample coordinates. Any
- * accepted change — event, correction, or tracking-only — flips it.
+ * Fingerprint over the FULL normalized accepted set (review gate C): the
+ * canonical JSON of every accepted event (identity + team/actor/attributes/
+ * provenance/correction links) and every accepted tracking sample
+ * (coordinates + confidence + visibility + origin + source frame +
+ * reconstruction disclosure). Distinct accepted corpora — including
+ * same-coordinates-different-assurance — necessarily produce distinct
+ * versions; identical sets in any array order produce the same version
+ * (stable sorts). Serialization is the contracts' canonical JSON (sorted
+ * keys), so it is deterministic and bounded by the accepted corpus itself.
  */
 export function acceptedSetFingerprint(
   events: readonly MatchEvent[],
@@ -119,16 +135,10 @@ export function acceptedSetFingerprint(
         (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0) ||
         a.sourceRevision - b.sourceRevision,
     )
-    .map(
-      (event) =>
-        `${event.providerId}/${event.eventId}@r${String(event.sourceRevision)}:${String(event.occurredAtMs)}:${event.kind}`,
-    );
+    .map((event) => canonicalJsonStringify(event));
   const trackingParts = [...tracking]
     .sort((a, b) => a.sampleTimeMs - b.sampleTimeMs || (a.entityId < b.entityId ? -1 : 1))
-    .map(
-      (sample) =>
-        `${sample.entityId}@${String(sample.sampleTimeMs)}:${String(sample.xM)},${String(sample.yM)},${String(sample.zM)}`,
-    );
+    .map((sample) => canonicalJsonStringify(sample));
   return fnv1aHex(
     canonicalJsonStringify({
       contractVersion: STREAM_CONTRACT_VERSION,
@@ -170,6 +180,19 @@ export function validateLiveFrame(value: unknown): LiveFrame | null {
       typeof frame.trackingAvailable !== 'boolean'
     ) {
       return null;
+    }
+    if (frame.removedTracking !== undefined) {
+      if (!Array.isArray(frame.removedTracking)) return null;
+      for (const key of frame.removedTracking) {
+        if (
+          typeof key !== 'object' ||
+          key === null ||
+          typeof (key as RemovedTrackingKey).entityId !== 'string' ||
+          !Number.isInteger((key as RemovedTrackingKey).sampleTimeMs)
+        ) {
+          return null;
+        }
+      }
     }
     return frame as unknown as LiveFrame;
   }

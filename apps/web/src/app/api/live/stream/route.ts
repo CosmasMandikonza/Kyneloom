@@ -60,6 +60,8 @@ export async function GET(request: Request): Promise<Response> {
         transport: 'local-sse',
         subscriberId,
       });
+      // Deterministic reconnect cadence for the browser's EventSource retry.
+      controller.enqueue(encoder.encode('retry: 3000\n\n'));
       try {
         while (Date.now() - startedAt < MAX_STREAM_MS) {
           const frames = service.drain(subscriberId, 8);

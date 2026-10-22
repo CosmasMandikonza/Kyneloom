@@ -25,6 +25,8 @@ import { chromium } from 'playwright';
 const PORT = 3179;
 const BASE = `http://127.0.0.1:${PORT}`;
 const OUT_DIR = path.resolve('qa', 'video');
+/** Local operator token for this recording run (see /api/live/control auth). */
+const QA_CONTROL_TOKEN = 'kyneloom-local-qa';
 const FRAME_DIR = path.join(OUT_DIR, 'live-frames');
 const VIDEO_NAME = 'live-stream-demo.mp4';
 
@@ -45,6 +47,7 @@ async function startServer(): Promise<() => Promise<void>> {
   const child = spawn('pnpm', ['--filter', '@kyneloom/web', 'start', '--port', String(PORT)], {
     shell: true,
     stdio: 'pipe',
+    env: { ...process.env, KYNELOOM_LIVE_CONTROL_TOKEN: QA_CONTROL_TOKEN },
   });
   const deadline = Date.now() + 60_000;
   for (;;) {
@@ -150,7 +153,10 @@ async function main(): Promise<void> {
     // GENUINE interruption: the operator control route stops the producer —
     // the SSE stream tells the truth and closes; the chip must stop
     // claiming LIVE.
-    await page.request.post(`${BASE}/api/live/control`, { data: { action: 'stop' } });
+    await page.request.post(`${BASE}/api/live/control`, {
+      headers: { 'x-kyneloom-live-control': QA_CONTROL_TOKEN },
+      data: { action: 'stop' },
+    });
     await page.waitForFunction(
       () => {
         const status =
@@ -165,7 +171,10 @@ async function main(): Promise<void> {
 
     // Restoration: restart the producer — the browser's EventSource retry
     // reconnects and the client resynchronizes from the canonical snapshot.
-    await page.request.post(`${BASE}/api/live/control`, { data: { action: 'start' } });
+    await page.request.post(`${BASE}/api/live/control`, {
+      headers: { 'x-kyneloom-live-control': QA_CONTROL_TOKEN },
+      data: { action: 'start' },
+    });
     await page.waitForFunction(
       () => {
         const status =

@@ -71,7 +71,13 @@ export class LocalSseTransport implements LiveTransport {
 
   async fetchSnapshot(): Promise<LiveFrame | null> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/live/snapshot`, { cache: 'no-store' });
+      // Bounded: an exhausted host socket layer (observed on the QA host
+      // after an hour of connections: ERR_NO_BUFFER_SPACE) can leave a
+      // fetch pending forever — abort instead of wedging the resync loop.
+      const res = await fetch(`${this.baseUrl}/api/live/snapshot`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(8000),
+      });
       if (!res.ok) return null;
       const body = (await res.json()) as { ok: boolean; frame?: LiveFrame };
       return body.ok === true ? (body.frame ?? null) : null;

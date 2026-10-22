@@ -10,8 +10,8 @@ import {
   acceptedSetFingerprint,
   STREAM_CONTRACT_VERSION,
   type LiveFrame,
+  type RemovedTrackingKey,
   type StreamEnvelope,
-  type StreamTrackingTrack,
 } from './wire';
 
 /**
@@ -213,6 +213,7 @@ export class LiveProjectionWorker {
     // always take the full path below).
     let trackingChanged = false;
     const effectiveNewTracking: TrackingSample[] = [];
+    const removedTracking: RemovedTrackingKey[] = [];
     for (const sample of newTracking) {
       const key = `${sample.entityId}@${String(sample.sampleTimeMs)}`;
       const canonical = canonicalJsonStringify(sample);
@@ -231,10 +232,15 @@ export class LiveProjectionWorker {
       group.canonicals.add(canonical);
       if (group.canonicals.size === 2) {
         // Conflict: remove the previously accepted sample and tombstone the
-        // pair permanently (no later payload resurrects it).
+        // pair permanently (no later payload resurrects it). The removal is
+        // published in the delta so clients mirror the accepted corpus.
         this.acceptedTracking = this.acceptedTracking.filter(
           (existing) => existing !== group.sample,
         );
+        removedTracking.push({
+          entityId: group.sample.entityId,
+          sampleTimeMs: group.sample.sampleTimeMs,
+        });
         trackingChanged = true;
       }
       // Further conflicting payloads only widen the tombstone.
@@ -268,11 +274,17 @@ export class LiveProjectionWorker {
           traceId: batch[0]?.traceId ?? '',
         });
       }
+      // The delta carries exactly the ACCEPTED set difference: envelopes
+      // present in the projection's acceptedEvents now but not before.
+      // A poisoned correction is quarantined by the reducer and therefore
+      // NOT carried; a valid correction REPLACES its superseded revision
+      // (clients apply replacement-by-identity, the reducer's law — not
+      // append), keeping both corpora byte-equivalent.
       const beforeEventIds = new Set(
         this.acceptedEvents.map((e) => `${e.providerId}|${e.eventId}|${String(e.sourceRevision)}`),
       );
       this.acceptedEvents = [...this.projection.acceptedEvents];
-      for (const event of newEvents) {
+      for (const event of this.acceptedEvents) {
         if (
           !beforeEventIds.has(
             `${event.providerId}|${event.eventId}|${String(event.sourceRevision)}`,
@@ -316,6 +328,7 @@ export class LiveProjectionWorker {
       traceId: batch[0]?.traceId ?? '',
       newEvents: effectiveNewEvents,
       newTracking: effectiveNewTracking,
+      removedTracking,
       trackingAvailable: this.acceptedTracking.length > 0,
     };
     this.pendingFrame = frame;
@@ -332,9 +345,15 @@ export class LiveProjectionWorker {
 
   private pendingFrame: LiveFrame | null = null;
 
-  /** Build the canonical snapshot frame at the current version. */
+  /**
+   * Build the canonical snapshot frame at the current version. READ-ONLY
+   * with respect to the broadcast sequence (review gate B): the snapshot
+   * carries the CURRENT seq — the position of the last published delta —
+   * so its issuance (new subscriber, GET /api/live/snapshot, resync) never
+   * burns sequence numbers and never pushes connected viewers into a false
+   * gap. The next delta remains exactly lastSeq + 1 for every viewer.
+   */
   snapshot(): LiveFrame {
-    this.seq += 1;
     return {
       type: 'snapshot',
       matchId: this.options.matchId,
@@ -345,7 +364,7 @@ export class LiveProjectionWorker {
       matchTimeMs: this.matchTimeMs,
       traceId: '',
       acceptedEvents: this.acceptedEvents,
-      tracking: internTracking(this.acceptedTracking),
+      tracking: this.acceptedTracking,
       trackingAvailable: this.acceptedTracking.length > 0,
     };
   }
@@ -374,40 +393,4 @@ export class LiveProjectionWorker {
 interface LatencySample {
   readonly atMs: number;
   readonly traceId: string;
-}
-
-/** Interning in the scene-data wire format (t/xyz/o/v/c/f tables). */
-export function internTracking(samples: readonly TrackingSample[]): readonly StreamTrackingTrack[] {
-  const byEntity = new Map<string, TrackingSample[]>();
-  for (const sample of samples) {
-    const list = byEntity.get(sample.entityId) ?? [];
-    list.push(sample);
-    byEntity.set(sample.entityId, list);
-  }
-  const tracks: StreamTrackingTrack[] = [];
-  for (const [entityId, list] of byEntity) {
-    list.sort((a, b) => a.sampleTimeMs - b.sampleTimeMs);
-    tracks.push({
-      entityId,
-      t: list.map((s) => s.sampleTimeMs),
-      xyz: list.flatMap((s) => [s.xM, s.yM, s.zM]),
-      o: list.map((s) => originIndex(s.origin)),
-      v: list.map((s) => (s.visibility === 'tracked' ? 0 : 1)),
-      c: list.map((s) => Math.round(s.confidence * 100)),
-      f: list.map((s) => Number(s.sourceFrameId.replace(/^frame-/, ''))),
-    });
-  }
-  tracks.sort((a, b) => (a.entityId < b.entityId ? -1 : 1));
-  return tracks;
-}
-
-const ORIGIN_ORDER = [
-  'source_observed',
-  'synthetic_ground_truth',
-  'interpolated',
-  'extrapolated',
-] as const;
-function originIndex(origin: string): number {
-  const index = (ORIGIN_ORDER as readonly string[]).indexOf(origin);
-  return index === -1 ? 0 : index;
 }

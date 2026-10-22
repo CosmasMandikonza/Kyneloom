@@ -5,7 +5,7 @@ import {
   validateLiveFrame,
   type LiveConnectionStatus,
   type LiveFrame,
-  type StreamTrackingTrack,
+  type RemovedTrackingKey,
 } from './wire';
 
 /**
@@ -15,10 +15,18 @@ import {
  * - First frame must be a SNAPSHOT; its stateVersion becomes the base.
  * - Deltas apply only against the EXACT base version; a version mismatch or
  *   a non-contiguous seq is a GAP → `resynchronizing` (the caller fetches a
- *   fresh snapshot; nothing is guessed).
+ *   fresh snapshot; nothing is guessed). Snapshot issuance never advances
+ *   the broadcast sequence (wire v2), so another viewer joining can NEVER
+ *   cause a false gap here.
+ * - DELTA SEMANTICS MIRROR THE REDUCER (review gate): event corrections
+ *   REPLACE the superseded revision by identity ((providerId, eventId)) —
+ *   append-only application would fork the client corpus from the server's
+ *   accepted set and force permanent resync loops; `removedTracking`
+ *   tombstone removals are applied before new ticks append.
  * - The client INDEPENDENTLY recomputes the accepted-set fingerprint from
- *   the applied corpus (match-core is isomorphic) and asserts it equals the
- *   frame's stateVersion — end-to-end integrity, not trust.
+ *   the applied corpus (match-core is isomorphic; snapshots are lossless)
+ *   and asserts it equals the frame's stateVersion — end-to-end integrity,
+ *   not trust. A failed verification rolls the corpus back completely.
  * - Bounded backlog: applied-corpus tracking grows only by admitted
  *   envelopes (server-bounded); presentation coalescing happens at the
  *   engine bridge, not here.
@@ -53,6 +61,7 @@ export interface LiveSyncOptions {
 export class LiveSyncController {
   private status: LiveConnectionStatus = 'connecting';
   private baseVersion: string | null = null;
+  private sessionId: string | null = null;
   private lastSeq: number | null = null;
   private acceptedEvents: MatchEvent[] = [];
   private acceptedTracking: TrackingSample[] = [];
@@ -120,7 +129,7 @@ export class LiveSyncController {
 
     if (frame.type === 'snapshot') {
       this.acceptedEvents = [...frame.acceptedEvents];
-      this.acceptedTracking = deintern(frame.tracking);
+      this.acceptedTracking = [...frame.tracking];
       this.lastSeq = frame.seq;
       const verified = acceptedSetFingerprint(this.acceptedEvents, this.acceptedTracking);
       if (verified !== frame.stateVersion) {
@@ -128,7 +137,11 @@ export class LiveSyncController {
         void this.onReconnect();
         return false;
       }
+      // A snapshot ADOPTS its session generation: after a producer restart
+      // the sequence space resets, and any in-flight frames from the dead
+      // session are a stale generation by definition.
       this.baseVersion = frame.stateVersion;
+      this.sessionId = frame.sessionId;
       this.timeline = createTimeline(this.acceptedTracking);
       this.options.onEvent({
         type: 'applied',
@@ -148,6 +161,17 @@ export class LiveSyncController {
     if (this.baseVersion === null) {
       // No snapshot yet — a delta can never be the first frame.
       void this.onReconnect();
+      return false;
+    }
+    if (frame.sessionId !== this.sessionId) {
+      // STALE GENERATION: this delta belongs to a session the client has
+      // already moved beyond (a producer restart resets the sequence
+      // space; a starved renderer can dispatch such in-flight frames long
+      // after the new session's snapshot was applied). Its sequence is
+      // meaningless in the current generation and its content is superseded
+      // by the adopted snapshot — ignoring it is correct; treating it as a
+      // gap would livelock the resync loop (every fresh snapshot invalidated
+      // by another stale frame).
       return false;
     }
     if (frame.baseVersion !== this.baseVersion) {
@@ -171,26 +195,45 @@ export class LiveSyncController {
       return false;
     }
 
-    const nextTracking = [...this.acceptedTracking, ...frame.newTracking];
+    // Apply with reducer-mirroring semantics; keep the previous corpus for
+    // full rollback if end-to-end verification fails.
+    const previousEvents = this.acceptedEvents;
+    const previousTracking = this.acceptedTracking;
+
+    // 1. Tombstone removals (conflict rule) leave the corpus first.
+    const removals = removedTrackingKeys(frame.removedTracking);
+    let tracking = this.acceptedTracking;
+    if (removals.size > 0) {
+      tracking = this.acceptedTracking.filter(
+        (sample) => !removals.has(`${sample.entityId}@${String(sample.sampleTimeMs)}`),
+      );
+    }
+    // 2. Event corrections REPLACE superseded revisions by identity — the
+    //    reducer's acceptedEvents law (append would fork the corpus).
+    const replacedIdentities = new Set(
+      frame.newEvents.map((event) => `${event.providerId}|${event.eventId}`),
+    );
+    const events =
+      replacedIdentities.size > 0
+        ? this.acceptedEvents.filter(
+            (event) => !replacedIdentities.has(`${event.providerId}|${event.eventId}`),
+          )
+        : this.acceptedEvents;
+    const nextTracking = [...tracking, ...frame.newTracking];
     if (nextTracking.length > this.maxTrackingSamples) {
       // Bounded: refuse beyond the ceiling (server is also bounded; this is
       // defense in depth) and resync rather than truncate silently.
       void this.onReconnect();
       return false;
     }
-    this.acceptedEvents = [...this.acceptedEvents, ...frame.newEvents];
+    this.acceptedEvents = [...events, ...frame.newEvents];
     this.acceptedTracking = nextTracking;
+
     const verified = acceptedSetFingerprint(this.acceptedEvents, this.acceptedTracking);
     if (verified !== frame.stateVersion) {
-      // Integrity failure: roll back this delta's corpus and resync.
-      this.acceptedEvents = this.acceptedEvents.slice(
-        0,
-        this.acceptedEvents.length - frame.newEvents.length,
-      );
-      this.acceptedTracking = this.acceptedTracking.slice(
-        0,
-        this.acceptedTracking.length - frame.newTracking.length,
-      );
+      // Integrity failure: roll back this delta's corpus entirely and resync.
+      this.acceptedEvents = previousEvents;
+      this.acceptedTracking = previousTracking;
       void this.onReconnect();
       return false;
     }
@@ -212,32 +255,10 @@ export class LiveSyncController {
   }
 }
 
-/** Rehydrate interned tracks back to canonical samples (scene-client parity). */
-export function deintern(tracks: readonly StreamTrackingTrack[]): TrackingSample[] {
-  const origins = [
-    'source_observed',
-    'synthetic_ground_truth',
-    'interpolated',
-    'extrapolated',
-  ] as const;
-  const samples: TrackingSample[] = [];
-  for (const track of tracks) {
-    for (let i = 0; i < track.t.length; i += 1) {
-      samples.push({
-        schemaVersion: '1.0',
-        matchId: '',
-        sampleTimeMs: track.t[i]!,
-        entityId: track.entityId,
-        xM: track.xyz[i * 3]!,
-        yM: track.xyz[i * 3 + 1]!,
-        zM: track.xyz[i * 3 + 2]!,
-        origin: origins[track.o[i] ?? 1] ?? 'synthetic_ground_truth',
-        confidence: (track.c[i] ?? 100) / 100,
-        visibility: (track.v[i] ?? 0) === 0 ? 'tracked' : 'partial',
-        sourceFrameId: `frame-${String(track.f[i] ?? 0)}`,
-      });
-    }
+function removedTrackingKeys(keys: readonly RemovedTrackingKey[] | undefined): Set<string> {
+  const set = new Set<string>();
+  for (const key of keys ?? []) {
+    set.add(`${key.entityId}@${String(key.sampleTimeMs)}`);
   }
-  samples.sort((a, b) => a.sampleTimeMs - b.sampleTimeMs || (a.entityId < b.entityId ? -1 : 1));
-  return samples;
+  return set;
 }

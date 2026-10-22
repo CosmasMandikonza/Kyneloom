@@ -12,6 +12,8 @@ import path from 'node:path';
 const PORT = 3181;
 const BASE = `http://127.0.0.1:${PORT}`;
 const TARGET_SAMPLES = 160;
+/** Local operator token for this measurement run (see /api/live/control auth). */
+const QA_CONTROL_TOKEN = 'kyneloom-local-qa';
 
 interface StatusBody {
   status: {
@@ -32,6 +34,7 @@ async function startServer(): Promise<() => Promise<void>> {
   const child = spawn('pnpm', ['--filter', '@kyneloom/web', 'start', '--port', String(PORT)], {
     shell: true,
     stdio: 'pipe',
+    env: { ...process.env, KYNELOOM_LIVE_CONTROL_TOKEN: QA_CONTROL_TOKEN },
   });
   const deadline = Date.now() + 60_000;
   for (;;) {
@@ -78,7 +81,7 @@ async function main(): Promise<void> {
   try {
     const start = await fetch(`${BASE}/api/live/control`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-kyneloom-live-control': QA_CONTROL_TOKEN },
       body: JSON.stringify({ action: 'start' }),
     });
     if (!start.ok) throw new Error(`control start failed: ${String(start.status)}`);
@@ -96,7 +99,7 @@ async function main(): Promise<void> {
     }
     await fetch(`${BASE}/api/live/control`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-kyneloom-live-control': QA_CONTROL_TOKEN },
       body: JSON.stringify({ action: 'stop' }),
     });
 
