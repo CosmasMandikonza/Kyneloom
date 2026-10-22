@@ -106,8 +106,15 @@ export class LiveSyncController {
         this.setStatus('reconnecting', 'snapshot unavailable — will retry');
         return;
       }
-      this.applyFrame(snapshot);
-      this.setStatus('connected', 'resynchronized from canonical snapshot');
+      // FAIL CLOSED (review round 2): 'connected' only after the candidate
+      // snapshot PASSED shape + fingerprint verification. A rejected
+      // snapshot keeps the last verified state and a truthful retryable
+      // status — never a green light on unverified data.
+      if (this.applyFrame(snapshot)) {
+        this.setStatus('connected', 'resynchronized from canonical snapshot');
+      } else {
+        this.setStatus('reconnecting', 'snapshot verification failed — will retry');
+      }
     } finally {
       this.resyncing = false;
     }
@@ -128,15 +135,22 @@ export class LiveSyncController {
     }
 
     if (frame.type === 'snapshot') {
-      this.acceptedEvents = [...frame.acceptedEvents];
-      this.acceptedTracking = [...frame.tracking];
-      this.lastSeq = frame.seq;
-      const verified = acceptedSetFingerprint(this.acceptedEvents, this.acceptedTracking);
+      // Verify FIRST, commit LAST (review round 2): a tampered snapshot
+      // (shape-valid but fingerprint-incorrect) must NEVER touch the last
+      // verified corpus, sequence or timeline. Everything is computed into
+      // candidates; state mutates only after verification passes.
+      const candidateEvents = [...frame.acceptedEvents];
+      const candidateTracking = [...frame.tracking];
+      const verified = acceptedSetFingerprint(candidateEvents, candidateTracking);
       if (verified !== frame.stateVersion) {
-        // Snapshot failed end-to-end integrity: reject and resync.
+        // Snapshot failed end-to-end integrity: reject (no mutation) and
+        // resync for a retryable replacement.
         void this.onReconnect();
         return false;
       }
+      this.acceptedEvents = candidateEvents;
+      this.acceptedTracking = candidateTracking;
+      this.lastSeq = frame.seq;
       // A snapshot ADOPTS its session generation: after a producer restart
       // the sequence space resets, and any in-flight frames from the dead
       // session are a stale generation by definition.

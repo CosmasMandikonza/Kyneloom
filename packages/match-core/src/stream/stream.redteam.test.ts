@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { MatchEvent, TrackingSample } from '@kyneloom/contracts';
-import { acceptedSetFingerprint, STREAM_CONTRACT_VERSION, type StreamEnvelope } from './wire';
+import {
+  acceptedSetFingerprint,
+  STREAM_CONTRACT_VERSION,
+  type LiveFrame,
+  type StreamEnvelope,
+} from './wire';
 import { LiveProjectionWorker } from './worker';
 import { LiveSyncController, type SyncEvent } from './client-sync';
 
@@ -543,3 +548,112 @@ function makeController(
   }
   return controller;
 }
+
+describe('KYN-13 review round 2 — snapshot verification fails closed', () => {
+  function trackingEnvelope(sampleTimeMs: number, xM: number, envelopeId: string): StreamEnvelope {
+    return {
+      contractVersion: STREAM_CONTRACT_VERSION,
+      envelopeId,
+      matchId: 'synthetic-derby-01',
+      kind: 'tracking',
+      tracking: {
+        schemaVersion: '1.0',
+        matchId: 'synthetic-derby-01',
+        sampleTimeMs,
+        entityId: 'home-01',
+        xM,
+        yM: 2,
+        zM: 0,
+        origin: 'synthetic_ground_truth',
+        confidence: 1,
+        visibility: 'tracked',
+        sourceFrameId: `frame-${String(Math.round(sampleTimeMs / 100))}`,
+      } as TrackingSample,
+      emittedAt: Date.now(),
+      traceId: 'trc-e',
+    };
+  }
+
+  /** Controller with a CONTROLLABLE snapshot supplier (resync path). */
+  function controllerWithSupplier(supply: () => unknown, events: SyncEvent[]): LiveSyncController {
+    return new LiveSyncController({
+      onEvent: (event) => events.push(event),
+      fetchSnapshot: async () => supply() as LiveFrame | null,
+    });
+  }
+
+  it('E1. a tampered snapshot is rejected WITHOUT touching the last verified state, and recovery follows', async () => {
+    const worker = new LiveProjectionWorker({ matchId: 'synthetic-derby-01', sessionId: 's' });
+    // Valid applied state: the EMPTY snapshot first (client law), then the
+    // first delta — exactly the live delivery order.
+    let supplier: () => unknown = () => worker.snapshot();
+    const events: SyncEvent[] = [];
+    const controller = controllerWithSupplier(() => supplier(), events);
+    expect(controller.applyFrame(worker.snapshot())).toBe(true);
+    worker.admit([trackingEnvelope(1000, 1, 'env-e1-1')]);
+    const d1 = worker.takePendingDelta()!;
+    expect(controller.applyFrame(d1)).toBe(true);
+    const versionBefore = controller.currentStateVersion;
+    const appliedBefore = events.filter((e) => e.type === 'applied').length;
+    expect(versionBefore).toBe(worker.currentVersion);
+
+    // Tamper: same shape, coordinates mutated, stateVersion kept — the
+    // fingerprint can never match.
+    const good = worker.snapshot();
+    if (good.type !== 'snapshot') throw new Error('snapshot expected');
+    const tampered = {
+      ...good,
+      tracking: good.tracking.map((sample, i) =>
+        i === 0 ? { ...sample, xM: sample.xM + 7 } : sample,
+      ),
+    };
+    expect(controller.applyFrame(tampered)).toBe(false);
+    // NO new applied event, NO corpus/version mutation, NO 'connected'.
+    expect(events.filter((e) => e.type === 'applied').length).toBe(appliedBefore);
+    expect(controller.currentStateVersion).toBe(versionBefore);
+    const statuses = events.filter((e) => e.type === 'status').map((e) => e.status);
+    expect(statuses[statuses.length - 1]).not.toBe('connected');
+    // The rejection also queued an asynchronous resync (client law). Let it
+    // settle deterministically before continuing — its eagerly-captured
+    // snapshot reflects this instant's state, by design.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The last verified SEQUENCE survived: the next contiguous delta applies.
+    worker.admit([trackingEnvelope(1100, 2, 'env-e1-2')]);
+    const d2 = worker.takePendingDelta()!;
+    if (d2.type !== 'delta') throw new Error('delta expected');
+    expect(controller.applyFrame(d2)).toBe(true);
+
+    // Recovery: the resync path fetches a GOOD snapshot and reconnects.
+    supplier = () => worker.snapshot();
+    await controller.onReconnect();
+    expect(controller.currentStatus).toBe('connected');
+    expect(controller.currentStateVersion).toBe(worker.currentVersion);
+  });
+
+  it('E2. onReconnect reports connected ONLY on verified snapshots; a rejected one keeps a retryable status', async () => {
+    const worker = new LiveProjectionWorker({ matchId: 'synthetic-derby-01', sessionId: 's' });
+    worker.admit([trackingEnvelope(1000, 1, 'env-e2-1')]);
+    const events: SyncEvent[] = [];
+    let supplier: () => unknown = () => worker.snapshot();
+    const controller = controllerWithSupplier(() => supplier(), events);
+    expect(controller.applyFrame(worker.snapshot())).toBe(true);
+    const versionBefore = controller.currentStateVersion;
+
+    // The resync fetch returns a TAMPERED snapshot: fail closed.
+    const good = worker.snapshot();
+    if (good.type !== 'snapshot') throw new Error('snapshot expected');
+    supplier = () => ({
+      ...good,
+      stateVersion: 'deadbeef', // wrong fingerprint claim
+    });
+    await controller.onReconnect();
+    expect(controller.currentStatus).toBe('reconnecting'); // NOT connected
+    expect(controller.currentStateVersion).toBe(versionBefore); // preserved
+
+    // Retry with the genuine snapshot: recovers cleanly.
+    supplier = () => worker.snapshot();
+    await controller.onReconnect();
+    expect(controller.currentStatus).toBe('connected');
+    expect(controller.currentStateVersion).toBe(worker.currentVersion);
+  });
+});

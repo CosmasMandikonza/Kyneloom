@@ -363,8 +363,11 @@ export class LiveProjectionWorker {
       sourceRevision: this.projection.revisionCount,
       matchTimeMs: this.matchTimeMs,
       traceId: '',
-      acceptedEvents: this.acceptedEvents,
-      tracking: this.acceptedTracking,
+      // COPIES, never live references: the worker's arrays mutate in place
+      // on the next admission, and an in-flight frame whose payload mutates
+      // after issuance would fail its own fingerprint at the receiver.
+      acceptedEvents: [...this.acceptedEvents],
+      tracking: [...this.acceptedTracking],
       trackingAvailable: this.acceptedTracking.length > 0,
     };
   }

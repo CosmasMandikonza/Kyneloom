@@ -68,7 +68,15 @@ export class LiveMatchService {
   }
 
   readonly matchId = 'synthetic-derby-01';
-  readonly sessionId = `live-${String(Date.now())}`;
+  /**
+   * CURRENT stream generation. Rotated on every genuinely NEW producer
+   * session (review round 2): frames carry it, and clients treat a session
+   * change as a new sequence space (stale-generation deltas are ignored —
+   * see LiveSyncController). Never changes on an idempotent start while
+   * running.
+   */
+  private sessionId = `live-1-${String(Date.now())}`;
+  private sessionCounter = 1;
   private worker: LiveProjectionWorker;
   private producer: LocalFixtureProducer | null = null;
   private stopProducer: (() => void) | null = null;
@@ -118,8 +126,18 @@ export class LiveMatchService {
     return this.speed;
   }
 
-  /** Start the local producer (idempotent). Loads the committed fixture. */
-  async start(options?: { speed?: LiveSpeed; chaos?: ProducerChaos }): Promise<void> {
+  /**
+   * Start the local producer. IDEMPOTENT while running (same generation);
+   * after a stop this allocates a NEW session id — a fresh generation with
+   * a reset sequence space, so reconnecting clients adopt it via snapshot
+   * and stale-generation frames become distinguishable and ignorable.
+   * `sessionId` is a test seam for deterministic generations.
+   */
+  async start(options?: {
+    speed?: LiveSpeed;
+    chaos?: ProducerChaos;
+    sessionId?: string;
+  }): Promise<void> {
     if (this.running) return;
     const golden = await loadGoldenMatch();
     if (!golden.ok) throw new Error('golden fixture unavailable — live stream cannot start');
@@ -132,6 +150,9 @@ export class LiveMatchService {
       rawGolden.ok ? rawGolden.data.projected.acceptedTracking : []
     ) as TrackingSample[];
     this.speed = options?.speed ?? this.speed;
+    this.sessionCounter += 1;
+    this.sessionId =
+      options?.sessionId ?? `live-${String(this.sessionCounter)}-${String(Date.now())}`;
     this.producer = new LocalFixtureProducer({
       matchId: this.matchId,
       events,
@@ -191,6 +212,7 @@ export class LiveMatchService {
       path.join(this.archiveDir, 'checkpoint.json'),
       JSON.stringify({
         checkpointEnvelopeId: this.checkpointEnvelopeId,
+        sessionId: this.sessionId,
         stateVersion: this.worker.currentVersion,
         seq: this.worker.currentSeq,
         at: Date.now(),
