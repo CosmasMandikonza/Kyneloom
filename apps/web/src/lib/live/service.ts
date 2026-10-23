@@ -77,6 +77,10 @@ export class LiveMatchService {
    */
   private sessionId = `live-1-${String(Date.now())}`;
   private sessionCounter = 1;
+  /** Bumped by every stop: invalidates in-flight initializations. */
+  private lifecycleEpoch = 0;
+  /** The single in-flight start initialization (single-flight guard). */
+  private initialization: Promise<void> | null = null;
   private worker: LiveProjectionWorker;
   private producer: LocalFixtureProducer | null = null;
   private stopProducer: (() => void) | null = null;
@@ -132,6 +136,12 @@ export class LiveMatchService {
    * a reset sequence space, so reconnecting clients adopt it via snapshot
    * and stale-generation frames become distinguishable and ignorable.
    * `sessionId` is a test seam for deterministic generations.
+   *
+   * SINGLE-FLIGHT (review round 4): the `running` guard runs before any
+   * await, so two simultaneous viewers hitting a stopped service must not
+   * each build a producer/worker/generation. Concurrent callers share the
+   * one in-flight initialization; a stop during initialization invalidates
+   * it (lifecycle epoch) so obsolete work can never activate.
    */
   async start(options?: {
     speed?: LiveSpeed;
@@ -139,16 +149,39 @@ export class LiveMatchService {
     sessionId?: string;
   }): Promise<void> {
     if (this.running) return;
+    if (this.initialization !== null) {
+      // Share the in-flight initialization. If it was abandoned (stopped
+      // meanwhile) or failed, `running` is still false — fall through and
+      // become the new authoritative initializer.
+      await this.initialization.catch(() => undefined);
+      if (this.running) return;
+    }
+    const epoch = this.lifecycleEpoch;
+    const init = this.initialize(options, epoch);
+    this.initialization = init;
+    try {
+      await init;
+    } finally {
+      if (this.initialization === init) this.initialization = null;
+    }
+  }
+
+  private async initialize(
+    options: { speed?: LiveSpeed; chaos?: ProducerChaos; sessionId?: string } | undefined,
+    epoch: number,
+  ): Promise<void> {
     const golden = await loadGoldenMatch();
     if (!golden.ok) throw new Error('golden fixture unavailable — live stream cannot start');
+    if (epoch !== this.lifecycleEpoch) {
+      // Superseded by a stop/restart during the async fixture load: never
+      // activate an obsolete generation (no producer, no session rotation).
+      return;
+    }
     const events = golden.data.projected.acceptedEvents as MatchEvent[];
     // The recorded fixture's accepted tracking IS the source corpus; the
     // producer replays the RAW committed samples (allEventRevisions carries
     // every valid envelope incl. corrections for true replay).
-    const rawGolden = await loadGoldenMatch();
-    const tracking = (
-      rawGolden.ok ? rawGolden.data.projected.acceptedTracking : []
-    ) as TrackingSample[];
+    const tracking = golden.data.projected.acceptedTracking as TrackingSample[];
     this.speed = options?.speed ?? this.speed;
     this.sessionCounter += 1;
     this.sessionId =
@@ -167,6 +200,9 @@ export class LiveMatchService {
   }
 
   stop(): void {
+    // Invalidate any in-flight initialization: a stop must be the final
+    // word even while a start is between its guard and its activation.
+    this.lifecycleEpoch += 1;
     this.stopProducer?.();
     this.stopProducer = null;
     this.running = false;

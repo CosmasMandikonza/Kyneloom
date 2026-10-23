@@ -64,7 +64,9 @@ export async function GET(request: Request): Promise<Response> {
       send({
         type: 'hello',
         matchId: service.matchId,
-        sessionId: service.status.sessionId,
+        // The connection's OWN generation (captured at subscribe above) —
+        // a live read here could already name a replacement generation.
+        sessionId: generation,
         transport: 'local-sse',
         subscriberId,
       });
@@ -72,12 +74,14 @@ export async function GET(request: Request): Promise<Response> {
       controller.enqueue(encoder.encode('retry: 3000\n\n'));
       try {
         while (Date.now() - startedAt < MAX_STREAM_MS) {
-          const frames = service.drain(subscriberId, 8);
-          for (const frame of frames) send(frame);
-          // The producer genuinely stopped (operator control / stream end),
-          // OR this connection's generation was rotated out by an immediate
-          // restart that completed between polls: tell the truth and CLOSE —
-          // reconnecting clients resynchronize onto the new generation.
+          // GENERATION GUARD FIRST — before reading or transmitting ANY
+          // subscriber frame (review round 4): an immediate restart can
+          // enqueue NEW-generation deltas into this (still-registered) old
+          // subscriber's queue before its next poll. Draining first would
+          // transmit foreign-generation frames on a retired socket. The
+          // check and the drain/send below are one synchronous block, so no
+          // broadcast can interleave between them; after every await the
+          // guard re-runs before anything is sent.
           if (!service.status.running || service.status.sessionId !== generation) {
             send({
               type: 'status',
@@ -90,6 +94,8 @@ export async function GET(request: Request): Promise<Response> {
             });
             break;
           }
+          const frames = service.drain(subscriberId, 8);
+          for (const frame of frames) send(frame);
           // Keep-alive comment so proxies don't idle the connection.
           controller.enqueue(encoder.encode(': keep-alive\n\n'));
           await new Promise((resolve) => setTimeout(resolve, POLL_MS));

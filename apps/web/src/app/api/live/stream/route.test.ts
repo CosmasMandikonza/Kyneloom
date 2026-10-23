@@ -116,28 +116,85 @@ describe('immediate restart between poll intervals (two existing SSE viewers)', 
     await service.start({ sessionId: 'gen-b', speed: 4 });
     expect(service.status.sessionId).toBe('gen-b');
 
+    // FORCE a generation-B delta into the STILL-REGISTERED old subscriber
+    // queues (broadcast() enqueues to every subscriber) — deterministically
+    // before their next poll drains anything: same synchronous continuation
+    // as the restart, and the guard-first loop never transmits it either way.
+    service.ingest([
+      {
+        contractVersion: 'kyneloom-live-wire-v2',
+        envelopeId: 'env-route-forced-b1',
+        matchId: 'synthetic-derby-01',
+        kind: 'tracking',
+        tracking: {
+          schemaVersion: '1.0',
+          matchId: 'synthetic-derby-01',
+          sampleTimeMs: 4_000_000,
+          entityId: 'home-01',
+          xM: 5,
+          yM: 2,
+          zM: 0,
+          origin: 'synthetic_ground_truth',
+          confidence: 1,
+          visibility: 'tracked',
+          sourceFrameId: 'frame-40000',
+        },
+        emittedAt: 1,
+        traceId: 'trc-forced',
+      },
+    ]);
+
     // Both existing connections must be closed TRUTHFULLY: disconnected
     // status frame(s) — stop()'s queued frame and/or the loop's
-    // generation-check frame — then end-of-stream (forcing the browser's
-    // EventSource reconnect). No new-generation snapshot/delta is ever
-    // delivered on the dead connection.
+    // generation-check frame (which names the CURRENT session) — then
+    // end-of-stream. NO new-generation SNAPSHOT or DELTA is ever
+    // transmitted on the dead connections (guard runs before the drain).
     for (const viewer of [viewer1, viewer2]) {
       const status = await drainUntil(viewer, (e) => e.kind === 'status', 10_000);
       expect(status.data.status).toBe('disconnected');
       for (;;) {
         const tail = await viewer.next(10_000);
         if (tail === null) break; // stream ended
-        expect(tail.kind).toBe('status');
+        expect(tail.kind).toBe('status'); // only status frames remain
         expect(tail.data.status).toBe('disconnected');
       }
     }
 
-    // A fresh connection adopts the NEW generation.
-    const viewer3 = await openStream();
-    const hello3 = await drainUntil(viewer3, (e) => e.kind === 'hello', 10_000);
-    expect(hello3.data.sessionId).toBe('gen-b');
-    const snapshot3 = await drainUntil(viewer3, (e) => e.kind === 'snapshot', 10_000);
-    expect(snapshot3.data.sessionId).toBe('gen-b');
+    // BOTH viewers reconnect (the EventSource retry path) and adopt the NEW
+    // generation through verified snapshots; subsequent generation-B deltas
+    // apply contiguously (seq === snapshot.seq + 1) with no false gaps.
+    for (const viewer of [await openStream(), await openStream()]) {
+      const hello = await drainUntil(viewer, (e) => e.kind === 'hello', 10_000);
+      expect(hello.data.sessionId).toBe('gen-b');
+      const snapshot = await drainUntil(viewer, (e) => e.kind === 'snapshot', 10_000);
+      expect(snapshot.data.sessionId).toBe('gen-b');
+      service.ingest([
+        {
+          contractVersion: 'kyneloom-live-wire-v2',
+          envelopeId: 'env-route-forced-b2',
+          matchId: 'synthetic-derby-01',
+          kind: 'tracking',
+          tracking: {
+            schemaVersion: '1.0',
+            matchId: 'synthetic-derby-01',
+            sampleTimeMs: 4_000_100,
+            entityId: 'home-01',
+            xM: 6,
+            yM: 2,
+            zM: 0,
+            origin: 'synthetic_ground_truth',
+            confidence: 1,
+            visibility: 'tracked',
+            sourceFrameId: 'frame-40001',
+          },
+          emittedAt: 2,
+          traceId: 'trc-forced',
+        },
+      ]);
+      const delta = await drainUntil(viewer, (e) => e.kind === 'delta', 10_000);
+      expect(delta.data.sessionId).toBe('gen-b');
+      expect(delta.data.seq).toBe(Number(snapshot.data.seq) + 1);
+    }
     service.stop();
   });
 });
