@@ -34,7 +34,9 @@ export interface AzureLiveConfig {
   readonly matchId: string;
 }
 
-export function azureConfigFromEnv(env: NodeJS.ProcessEnv): AzureLiveConfig | null {
+export function azureConfigFromEnv(env: {
+  readonly [key: string]: string | undefined;
+}): AzureLiveConfig | null {
   const namespace = env.KYN_EVENTHUBS_NAMESPACE;
   const hub = env.KYN_EVENTHUB_NAME;
   const group = env.KYN_EVENTHUBS_CONSUMER_GROUP;

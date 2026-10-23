@@ -35,6 +35,7 @@
     "qa:record:lens": "tsx scripts/record-lens-live.ts",
     "lens:perf": "tsx scripts/measure-lens-perf.ts",
     "live:perf": "tsx scripts/measure-live-perf.ts",
+    "live:fixture:send": "tsx scripts/send-fixture-to-event-hubs.ts",
     "intelligence:demo": "tsx scripts/intelligence-demo.ts",
     "intelligence:sensitivity": "tsx scripts/intelligence-sensitivity.ts"
   },

@@ -356,10 +356,23 @@ export class LiveMatchService {
     return frames;
   }
 
+  /**
+   * Cloud fan-out hook (KYN-14): when the Azure runtime is active, every
+   * authoritative frame the service broadcasts to local SSE subscribers is
+   * ALSO delivered to the Web PubSub match group — one publication point,
+   * one wire contract, no second protocol.
+   */
+  private publishHook: ((frame: LiveFrame) => void) | null = null;
+
+  setPublishHook(hook: ((frame: LiveFrame) => void) | null): void {
+    this.publishHook = hook;
+  }
+
   private broadcast(frame: LiveFrame): void {
     for (const subscriber of this.subscribers.values()) {
       this.pushToSubscriber(subscriber, frame);
     }
+    this.publishHook?.(frame);
   }
 
   private pushToSubscriber(subscriber: Subscriber, frame: LiveFrame): void {

@@ -35,7 +35,13 @@ export async function GET(request: Request): Promise<Response> {
   // reconnect can never reverse the operator's decision by hitting this
   // endpoint. Only an explicitly issued start() (the authorized control
   // route) clears the operator-stopped state.
-  if (!service.status.running && !service.isOperatorStopped) {
+  // KYN-14: in AZURE mode (full adapter env contract present) the local
+  // producer NEVER auto-starts — envelopes arrive from Event Hubs via the
+  // in-process ingestion worker, and a second producer would violate the
+  // one-authoritative-producer law.
+  const azureMode =
+    (await import('@/lib/live/azure-adapters')).azureConfigFromEnv(process.env) !== null;
+  if (!service.status.running && !service.isOperatorStopped && !azureMode) {
     try {
       await service.start({ speed });
     } catch (error) {
