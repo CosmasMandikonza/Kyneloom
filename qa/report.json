@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-23T03:44:41.431Z",
+  "generatedAt": "2026-10-23T06:19:59.863Z",
   "viewports": [
     "1440x900",
     "1280x800",
@@ -31,7 +31,7 @@
         "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129",
         "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":30504}",
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":31562}",
         "landingRepeatNav": "ok (Δgeo +0, Δtex +0)"
       }
     },
@@ -73,7 +73,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 24,
-        "scene3dReadyMs": 3019,
+        "scene3dReadyMs": 3032,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "lensFanDefault": true,
@@ -103,12 +103,12 @@
         "playerYawDeterministic": "identical",
         "cameraOverheadConverged": "yes 0.0/92.0/0.0",
         "cameraFollowConverged": "yes 5.0/4.4/8.9",
-        "cameraKeeperConverged": "yes 41.5/2.8/5.6",
+        "cameraKeeperConverged": "yes 41.4/2.8/5.6",
         "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
         "directedSeekDeterministic": "identical",
         "escapeExitsDirected": "true",
         "rapidChangesConverge": "yes",
-        "orbitBoundsAfterGestures": "ok pos -64.2/74.9/82.0 target -64.2/0.0/82.0",
+        "orbitBoundsAfterGestures": "ok pos -63.0/74.9/82.0 target -63.0/0.0/82.0",
         "orbitExitConverged": "yes",
         "xrayOverlaysRendered": "yes (3 lines + label)",
         "xrayWorldInvariant": "identical",
@@ -122,7 +122,7 @@
         "xrayKeyboard": "yes",
         "xrayResourcesBounded": "ok (Δgeo +0, Δtex +0 after 4 on/off rounds × 3 phases)",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":1004.1,\"p95Ms\":1086.1,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":1001.9,\"p95Ms\":1073.2,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -204,7 +204,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 24,
-        "scene3dReadyMs": 2982,
+        "scene3dReadyMs": 3027,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "lensFanDefault": true,
@@ -242,7 +242,7 @@
         "fixtureSamplesShown": "5,129",
         "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
         "landingSkip": "yes",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"ready\"],\"startCount\":1,\"ms\":13881}"
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"ready\"],\"startCount\":1,\"ms\":14648}"
       }
     },
     {
@@ -283,7 +283,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 24,
-        "scene3dReadyMs": 2886,
+        "scene3dReadyMs": 2839,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "lensFanDefault": true,
@@ -331,7 +331,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":962.2,\"p95Ms\":1015.9,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":957.9,\"p95Ms\":1004.8,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -376,7 +376,7 @@
         "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129",
         "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":16523}"
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":22010}"
       }
     },
     {
@@ -417,7 +417,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 24,
-        "scene3dReadyMs": 2700,
+        "scene3dReadyMs": 2682,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "lensFanDefault": true,
@@ -465,7 +465,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":909.8,\"p95Ms\":965.8,\"drawCalls\":150,\"triangles\":608104,\"geometries\":43,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":902.7,\"p95Ms\":963.5,\"drawCalls\":150,\"triangles\":608104,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -548,7 +548,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 24,
-        "scene3dReadyMs": 1430,
+        "scene3dReadyMs": 1409,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "lensFanDefault": true,
@@ -576,7 +576,7 @@
         "ballMeshAtSource": "exact",
         "ballSpinDeterministic": "identical",
         "playerYawDeterministic": "identical",
-        "cameraOverheadConverged": "yes 0.0/91.9/0.1",
+        "cameraOverheadConverged": "yes 0.1/91.9/0.1",
         "cameraFollowConverged": "yes 5.0/4.6/8.9",
         "cameraKeeperConverged": "yes 41.2/2.8/5.7",
         "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
@@ -596,7 +596,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":2,\"p50Ms\":487.1,\"p95Ms\":522.4,\"drawCalls\":88,\"triangles\":304242,\"geometries\":45,\"textures\":48,\"samples\":240}",
+        "perf": "{\"fps\":2,\"p50Ms\":486.3,\"p95Ms\":520.5,\"drawCalls\":88,\"triangles\":304242,\"geometries\":45,\"textures\":48,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -640,7 +640,7 @@
         "ctaText": "Enter the moment\n→",
         "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129",
-        "landingReducedMotion": "direct handoff in 10479ms; phases [\"idle\",\"ready\"]"
+        "landingReducedMotion": "direct handoff in 10663ms; phases [\"idle\",\"ready\"]"
       }
     },
     {
@@ -680,7 +680,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 24,
-        "scene3dReadyMs": 1455,
+        "scene3dReadyMs": 1418,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "lensFanDefault": true,
@@ -754,7 +754,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 24,
-        "scene3dReadyMs": 2131,
+        "scene3dReadyMs": 2118,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "lensFanDefault": true,
@@ -784,7 +784,7 @@
         "playerYawDeterministic": "identical",
         "cameraOverheadConverged": "yes 0.1/91.9/0.1",
         "cameraFollowConverged": "yes 5.0/4.5/8.9",
-        "cameraKeeperConverged": "yes 41.5/2.8/5.6",
+        "cameraKeeperConverged": "yes 41.3/2.8/5.6",
         "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
         "directedSeekDeterministic": "identical",
         "escapeExitsDirected": "true",
@@ -802,7 +802,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":707.6,\"p95Ms\":780.4,\"drawCalls\":139,\"triangles\":607810,\"geometries\":47,\"textures\":50,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":708.3,\"p95Ms\":775.7,\"drawCalls\":140,\"triangles\":607842,\"geometries\":47,\"textures\":50,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },

@@ -30,7 +30,12 @@ export async function GET(request: Request): Promise<Response> {
       ? (Number(speedParam) as 1 | 2 | 4)
       : 2;
 
-  if (!service.status.running) {
+  // PUBLIC auto-start ONLY for the initial idle demo (review round 5): an
+  // intentional operator STOP must stay stopped — a viewer's EventSource
+  // reconnect can never reverse the operator's decision by hitting this
+  // endpoint. Only an explicitly issued start() (the authorized control
+  // route) clears the operator-stopped state.
+  if (!service.status.running && !service.isOperatorStopped) {
     try {
       await service.start({ speed });
     } catch (error) {

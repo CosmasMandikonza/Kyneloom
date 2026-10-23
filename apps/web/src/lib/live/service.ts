@@ -81,6 +81,10 @@ export class LiveMatchService {
   private lifecycleEpoch = 0;
   /** The single in-flight start initialization (single-flight guard). */
   private initialization: Promise<void> | null = null;
+  /** The lifecycle epoch the in-flight initialization belongs to. */
+  private initializationEpoch: number | null = null;
+  /** True after an intentional stop: public auto-start must not revive. */
+  private operatorStopped = false;
   private worker: LiveProjectionWorker;
   private producer: LocalFixtureProducer | null = null;
   private stopProducer: (() => void) | null = null;
@@ -131,38 +135,74 @@ export class LiveMatchService {
   }
 
   /**
+   * True after an intentional operator stop: the public stream GET must
+   * NOT auto-start the service in this state (a viewer reconnecting can
+   * never reverse the operator's decision). Cleared only by an explicitly
+   * issued start() that successfully activates.
+   */
+  get isOperatorStopped(): boolean {
+    return this.operatorStopped;
+  }
+
+  /**
    * Start the local producer. IDEMPOTENT while running (same generation);
    * after a stop this allocates a NEW session id — a fresh generation with
    * a reset sequence space, so reconnecting clients adopt it via snapshot
    * and stale-generation frames become distinguishable and ignorable.
    * `sessionId` is a test seam for deterministic generations.
    *
-   * SINGLE-FLIGHT (review round 4): the `running` guard runs before any
-   * await, so two simultaneous viewers hitting a stopped service must not
-   * each build a producer/worker/generation. Concurrent callers share the
-   * one in-flight initialization; a stop during initialization invalidates
-   * it (lifecycle epoch) so obsolete work can never activate.
+   * SINGLE-FLIGHT LIFECYCLE (review rounds 4+5). States and transitions:
+   * - IDLE → INITIALIZING(epoch E): the first caller of epoch E creates the
+   *   ONE initialization; every other caller of the SAME epoch shares its
+   *   exact outcome (success, failure, or abandonment) — a waiter can never
+   *   fork a second initializer, duplicate a retry, or convert an old
+   *   request into a fresh post-stop start.
+   * - stop() → epoch E+1: every start request issued under E is invalidated
+   *   (their shared initialization abandons without activating). Only a
+   *   start explicitly issued under the CURRENT epoch may initialize.
+   * - INITIALIZING/FAILED → RUNNING: exactly one producer, one worker, one
+   *   generation per epoch; failure leaves the service recoverable by a
+   *   later explicit start.
+   * - operatorStopped: an authorized STOP stays stopped — the public GET
+   *   auto-start path refuses to revive it; only an explicit start() (the
+   *   authorized control route, tests) clears the flag on activation.
+   *
+   * Exclusivity is guaranteed without locks: from the null-check to
+   * `this.initialization = init` there is no await, so only one synchronous
+   * caller can ever take the create path.
    */
   async start(options?: {
     speed?: LiveSpeed;
     chaos?: ProducerChaos;
     sessionId?: string;
   }): Promise<void> {
+    const entryEpoch = this.lifecycleEpoch;
     if (this.running) return;
     if (this.initialization !== null) {
-      // Share the in-flight initialization. If it was abandoned (stopped
-      // meanwhile) or failed, `running` is still false — fall through and
-      // become the new authoritative initializer.
+      if (this.initializationEpoch === entryEpoch) {
+        // Same lifecycle epoch: share the authoritative initializer's exact
+        // outcome — success, failure, or abandonment. Never fork.
+        return this.initialization;
+      }
+      // The in-flight initialization belongs to an older, STOPPED lifecycle
+      // and will abandon when its load resolves. A request issued under the
+      // CURRENT epoch takes authority after it drains; requests issued
+      // before the stop returned already via the shared outcome above.
       await this.initialization.catch(() => undefined);
       if (this.running) return;
+      if (entryEpoch !== this.lifecycleEpoch) return; // invalidated meanwhile
+      if (this.initialization !== null) return this.initialization; // a peer won
     }
-    const epoch = this.lifecycleEpoch;
-    const init = this.initialize(options, epoch);
+    const init = this.initialize(options, entryEpoch);
     this.initialization = init;
+    this.initializationEpoch = entryEpoch;
     try {
       await init;
     } finally {
-      if (this.initialization === init) this.initialization = null;
+      if (this.initialization === init) {
+        this.initialization = null;
+        this.initializationEpoch = null;
+      }
     }
   }
 
@@ -196,16 +236,21 @@ export class LiveMatchService {
     this.worker = new LiveProjectionWorker({ matchId: this.matchId, sessionId: this.sessionId });
     mkdirSync(this.archiveDir, { recursive: true });
     this.running = true;
+    this.operatorStopped = false;
     this.stopProducer = this.producer.start((batch) => this.ingest(batch));
   }
 
   stop(): void {
-    // Invalidate any in-flight initialization: a stop must be the final
-    // word even while a start is between its guard and its activation.
+    // Invalidate any in-flight initialization AND every start request
+    // issued under the current epoch: a stop is the final word.
     this.lifecycleEpoch += 1;
     this.stopProducer?.();
     this.stopProducer = null;
     this.running = false;
+    // An intentional stop must STAY stopped: the public GET auto-start
+    // refuses to revive the stream until an explicitly issued start()
+    // (authorized control route / operator) clears this on activation.
+    this.operatorStopped = true;
     for (const subscriber of this.subscribers.values()) {
       this.pushToSubscriber(subscriber, {
         type: 'status',
