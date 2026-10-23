@@ -1,0 +1,12 @@
+# KYN-13 live streaming latency — LOCAL transport (production server, SSE fan-out)
+# measured 2026-10-22T01:12:30.835Z · 50 samples · 50 distinct trace ids
+# ingest-to-publish: producer envelope accepted → authoritative frame published to subscribers
+# HONEST SCOPE: local Node process; no Azure service was running (Event Hubs/Web PubSub NOT deployed).
+# These are not cloud numbers and no cloud SLA is claimed.
+
+overall: n=50 min=3ms p50=3ms p95=3ms max=3ms
+by frame kind:
+  tracking: n=50 p50=3ms p95=3ms max=3ms
+
+final state: match=synthetic-derby-01 seq=5 quarantined=0 archived=116 projectionMean=2ms fingerprint=8d4d4d25…
+sample trace ids (first 8): trc-f2feb040, trc-e360e515, trc-1dfd85ab, trc-c59460e6, trc-d9eae311, trc-91daa8aa, trc-ee561f7f, trc-9057b3f0

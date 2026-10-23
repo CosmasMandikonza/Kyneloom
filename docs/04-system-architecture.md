@@ -1,6 +1,6 @@
 # 04 — System architecture: event truth → playable experience
 
-> **State:** Proposed architecture. No services are claimed as deployed.
+> **State:** Proposed architecture. No services are claimed as deployed. The data plane's live path exists as a working local implementation (KYN-13) — see the note under *Separation of planes*.
 
 ## Architectural invariants
 
@@ -39,6 +39,8 @@ flowchart TB
 ## Separation of planes
 
 **Data plane (fast):** ingest → validate → canonicalize → event-time reduce → broadcast compact state deltas. No LLM calls on this path. The renderer interpolates authoritative timestamped samples client-side; it does not compute tactical state via an LLM.
+
+> **Implemented (KYN-13, local):** this exact plane runs today on the local transport — an async producer replays the committed synthetic fixture (with deterministic chaos: duplicates, reordering, dropped tracking, disconnect windows) through `LiveProjectionWorker` (the same reducer semantics as batch `projectMatch`), then SSE fan-out with bounded per-subscriber queues (superseded *presentation* deltas compacted, *authoritative* frames never dropped), durable archive → projection → quarantine → checkpoint ordering, and a snapshot+delta resync protocol where the client verifies every delta's base version and sequence and re-snapshots on any gap rather than guessing. The topology diagram's Event Hubs/Web PubSub nodes have contract-true adapters and reviewable Bicep but are **not deployed** ([09](09-azure-platform.md)).
 
 **Experience plane (durable):** moment candidate → agents/tools → constrained draft → deterministic and editorial validation → revision → signed release. Latency is measured separately from live-update latency.
 

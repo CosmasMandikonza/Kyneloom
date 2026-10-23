@@ -1,6 +1,6 @@
 # 09 — Azure-native platform and operations
 
-> **Status:** Target deployment topology and operational requirements. No Azure infrastructure is currently declared running.
+> **Status:** Target deployment topology and operational requirements. No Azure infrastructure is currently declared running. The live-match streaming path (KYN-13) is **implemented locally end to end** with contract-true Azure adapters and reviewable Bicep — see [Live streaming implementation status (KYN-13)](#live-streaming-implementation-status-kyn-13).
 
 ## Service choices and their jobs
 
@@ -69,6 +69,30 @@ Every log/trace should include `tenantId`, `matchId`, `momentId`, `workflowId` a
 - Backup restore must be tested; specify RPO/RTO after observing cost and usage rather than inventing SLAs.
 - A failed worker restart must not duplicate a release.
 - A revoked release must not remain accessible through direct assets/manifest URLs.
+
+## Live streaming implementation status (KYN-13)
+
+What exists is a genuine streaming vertical slice, honestly labeled — **no Azure resources are provisioned** (no `az` CLI on this host and no deployment authorization), and every number below was measured on the local transport, never claimed as cloud latency.
+
+**Implemented and running (local):**
+
+- A real async producer replays the committed `synthetic-derby-01` fixture in source-time order (1×/2×/4×), with seeded, deterministic chaos: duplicate envelopes, reordering, dropped tracking frames, and disconnect windows — envelope ids and trace ids stay reproducible.
+- One canonical incremental projection (`LiveProjectionWorker`) reuses the reducer's exact semantics (identity, revision chains, conflict tombstones); tracking-only corrections advance a content-fingerprint state version because `revisionCount` provably does not move for them.
+- Delivery over SSE with per-subscriber bounded queues: superseded **presentation** deltas are compacted, **authoritative** frames are never dropped; overflow degrades to snapshot resync rather than data loss.
+- Durable order on ingest: append-only envelope archive → projection → quarantine file (malformed/mismatched envelopes with trace ids) → checkpoint, all before the checkpoint advances. Archive is a separate store from any transport retention.
+- Snapshot + delta resync protocol: the client verifies the base version and sequence contiguity of every delta and **re-snapshots on any gap — it never guesses**; the applied corpus is fingerprint-verified with rollback on mismatch.
+- The viewer shows Recorded Replay vs Live Synthetic Stream with truthful status (Connecting / Connected / Reconnecting / Degraded / Resynchronizing / Disconnected); the green LIVE state requires the defined health rule, not optimism.
+- Operator interruption is genuine: `/api/live/control` stops the real producer; the SSE loop closes with a truthful `disconnected` frame; the client reconnects and resyncs from a fresh snapshot with no duplicate goals or phantom movement.
+
+**Contract-true but not deployed:** `apps/web/src/lib/live/azure-adapters.ts` implements the Event Hubs ingestion path (partition key `matchId`, explicit reducer consumer group, checkpoint only after the batch's durable work) and Web PubSub fan-out + **narrow negotiation** (the browser token carries join-leave-group for `match:{id}` only — a viewer can never publish match state), compiled against the official SDKs. `infra/live-stream.bicep` declares the smallest honest topology (Event Hubs + dedicated consumer group, Storage for checkpoints/archive/quarantine with no public access, Web PubSub). Activating it requires only environment variables plus an authorized deployment; until then the local transport serves every contract-level test.
+
+**Correctness laws enforced at the wire (review round):**
+- The state version fingerprints the **fully normalized accepted fields** — events including team/actor/attributes/provenance, tracking including confidence/visibility/origin/source-frame/reconstruction disclosures — so materially different corpora can never share a version; identical sets in any arrival order always do.
+- Snapshot issuance is **read-only with respect to the broadcast sequence**: snapshots carry the current seq; only authoritative publishes advance it. A viewer joining, an HTTP snapshot read, or a resync can never push another viewer into a false gap.
+- Corrections and conflict tombstones travel with **reducer-mirroring semantics** (replacement by identity + explicit removals), so client corpora converge byte-equal to the server's accepted set without spurious resyncs — proven end-to-end with two simultaneous viewers.
+- **Operator control is fail-closed**: the producer stop/start route is disabled unless `KYNELOOM_LIVE_CONTROL_TOKEN` is provisioned in the server environment, requires the token header (constant-time compare, no cookies → no CSRF surface), and denies anonymous/wrong-token requests with 403 while the public stream keeps running. Never deploy the route without the token.
+
+**Latency honesty:** ingest-to-publish latency is measured with real trace ids on the local path (see `/api/live/status` and `qa/perf-live.txt`). No p50/p95 is quoted for Azure services that were not running.
 
 ## Cloud-native judging proof, not slideware
 

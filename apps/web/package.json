@@ -11,6 +11,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@azure/event-hubs": "^6.0.4",
+    "@azure/eventhubs-checkpointstore-blob": "^2.0.0",
+    "@azure/storage-blob": "^12.34.0",
+    "@azure/web-pubsub": "^1.2.0",
+    "@azure/web-pubsub-client": "^1.1.0",
     "@kyneloom/contracts": "workspace:*",
     "@kyneloom/scene-renderer": "workspace:*",
     "@react-three/drei": "^10.7.9",

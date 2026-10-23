@@ -17,6 +17,8 @@ import { chromium } from 'playwright';
 const PORT = 3173;
 const BASE = `http://127.0.0.1:${PORT}`;
 const OUT_DIR = path.resolve('qa');
+/** Local operator token for this QA run (see /api/live/control auth). */
+const QA_CONTROL_TOKEN = 'kyneloom-local-qa';
 
 const VIEWPORTS = [
   { name: '1440x900', width: 1440, height: 900 },
@@ -85,6 +87,13 @@ declare global {
       state(): string;
       fragmentCount(): number;
       markerCount(): number;
+    };
+    __kyneloomLiveProbe?: {
+      status(): string;
+      stateVersion(): string | null;
+      seq(): number;
+      trackingCount(): number;
+      matchTimeMs(): number;
     };
     __kyneloomLandingHold?: boolean;
     __kyneloomLandingPerf?: {
@@ -163,6 +172,10 @@ async function startServer(): Promise<() => Promise<void>> {
   const child = spawn('pnpm', ['--filter', '@kyneloom/web', 'start', '--port', String(PORT)], {
     shell: true,
     stdio: 'pipe',
+    // Operator control token for THIS QA run only (review gate A): the
+    // control route is disabled unless the server environment provisions a
+    // token, and the QA's authorized requests must present the same one.
+    env: { ...process.env, KYNELOOM_LIVE_CONTROL_TOKEN: QA_CONTROL_TOKEN },
   });
   const stdout: string[] = [];
   child.stdout?.on('data', (d: Buffer) => stdout.push(d.toString()));
@@ -206,6 +219,35 @@ async function startServer(): Promise<() => Promise<void>> {
 }
 
 /**
+ * WebGL-bearing evidence capture with ONE retry: this host's software
+ * renderer can stall a canvas readback past the screenshot timeout (the
+ * documented SwiftShader wedge). A single retry after the stall usually
+ * succeeds; a second failure is RECORDED as a run failure — never a silent
+ * skip — and the matrix continues so the remaining evidence still lands.
+ */
+async function evidenceShot(
+  page: import('playwright').Page,
+  file: string,
+  failures: string[],
+): Promise<void> {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await page.screenshot({
+        path: path.join(OUT_DIR, 'screenshots', file),
+        timeout: attempt === 1 ? 30_000 : 60_000,
+      });
+      return;
+    } catch (error) {
+      if (attempt === 2) {
+        failures.push(`screenshot ${file} failed twice: ${String(error).slice(0, 90)}`);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
+}
+
+/**
  * Wait until the R3F canvas is sized and the scene QA hook is live (the perf
  * hook warms up separately — on SwiftShader headless it publishes honest
  * partial stats after ~8 rendered frames, which can take a while). Returns
@@ -234,6 +276,226 @@ async function waitSceneReady(page: import('playwright').Page): Promise<number |
   }
 }
 
+/**
+ * KYN-09 desktop landing transition, extracted so it can be retried on a
+ * fresh page: capturing the WebGL canvas mid-flight can wedge this host's
+ * software renderer (synchronous readback stall — see the mobile note in
+ * main). A fresh page means a fresh renderer process; the retry runs the
+ * identical assertions, never a silent pass.
+ */
+async function runLandingDesktopTransition(
+  page: import('playwright').Page,
+  viewportName: string,
+  checks: Record<string, boolean | number | string>,
+  failures: string[],
+): Promise<void> {
+  // KYN-09 — the orb→stadium transition, exercised end to end at
+  // the three desktop viewports (full choreography + skip + rapid
+  // double-click). Mobile (390/375) keeps the idle/budget/CTA
+  // checks plus the reduced-motion direct handoff: the mid-flight
+  // canvas screenshot can wedge this host's software renderer for
+  // minutes (synchronous readback stall), and the transition
+  // logic is viewport-independent — KYN-09's committed
+  // i3-mobile-* captures remain the mobile visual evidence.
+  const flowStart = Date.now();
+  // The idle phase is traced from inside the canvas render loop; on a slow
+  // (or retried) page the first frame can land AFTER this point, which would
+  // start the recorded history at 'intro'. Wait for the trace's idle entry
+  // before starting the machine — first attempt and retry alike.
+  await page.waitForFunction(
+    () => {
+      try {
+        const parsed = JSON.parse(
+          window.sessionStorage.getItem('kyneloom.landing.phases') ?? '{"phases":[]}',
+        ) as { phases?: string[] };
+        return (parsed.phases ?? [])[0] === 'idle';
+      } catch {
+        return false;
+      }
+    },
+    undefined,
+    { timeout: 45_000, polling: 250 },
+  );
+  // Hold the READY handoff (the landing honors
+  // __kyneloomLandingHold) so the reveal capture cannot race the
+  // hard navigation on slow renderers.
+  await page.evaluate(() => {
+    (window as { __kyneloomLandingHold?: boolean }).__kyneloomLandingHold = true;
+  });
+  await page.getByTestId('enter-the-moment').click();
+  if (viewportName === '1024x768') {
+    // Acceptance 6: rapid repeated clicks — a second activation
+    // while the transition runs must never duplicate it.
+    await page
+      .getByTestId('enter-the-moment')
+      .click({ force: true, noWaitAfter: true })
+      .catch(() => undefined);
+  }
+  if (viewportName === '1280x800') {
+    // Acceptance 7: Skip during the intro phase. Release the hold
+    // FIRST — the skip path has no reveal capture, and waiting for
+    // /explore before the release would deadlock on the hold.
+    await page.waitForTimeout(300);
+    await page.getByTestId('skip-intro').click();
+    await page.evaluate(() => {
+      (window as { __kyneloomLandingHold?: boolean }).__kyneloomLandingHold = false;
+    });
+    await page.waitForFunction(() => window.location.pathname === '/explore', undefined, {
+      timeout: 60_000,
+      polling: 250,
+    });
+    checks.landingSkip = 'yes';
+  } else {
+    // Fragment + reveal captures by elapsed time (the FSM budgets
+    // are wall-clock deterministic; slow renderers cannot skip).
+    // Screenshots only at 1440x900: capturing a WebGL frame
+    // mid-flight can stall this host's software renderer (one
+    // retry allowed below); flow assertions run everywhere.
+    const captureShots = viewportName === '1440x900';
+    await page.waitForTimeout(2050);
+    if (captureShots) {
+      await page.screenshot({
+        path: path.join(OUT_DIR, 'screenshots', `landing-fragments-${viewportName}.png`),
+      });
+    }
+    await page.waitForFunction(
+      () =>
+        (window as { __kyneloomLanding?: { state(): string } }).__kyneloomLanding?.state() ===
+          'pitch_reveal' || window.location.pathname === '/explore',
+      undefined,
+      { timeout: 60_000, polling: 250 },
+    );
+    await page.waitForTimeout(900);
+    if (captureShots) {
+      await page.screenshot({
+        path: path.join(OUT_DIR, 'screenshots', `landing-reveal-${viewportName}.png`),
+      });
+    }
+  }
+  await page.evaluate(() => {
+    (window as { __kyneloomLandingHold?: boolean }).__kyneloomLandingHold = false;
+  });
+  await page.waitForFunction(() => window.location.pathname === '/explore', undefined, {
+    timeout: 60_000,
+  });
+  await page.waitForFunction(
+    () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+    undefined,
+    { timeout: 45_000 },
+  );
+  await page.waitForTimeout(1800); // handoff settle + broadcast sweep
+  const ready = await page.evaluate(() => ({
+    playhead: window.__kyneloomScene?.playheadMs?.() ?? null,
+    players: window.__kyneloomScene?.snapshot?.().players.length ?? null,
+    landingGone: (window as { __kyneloomLanding?: unknown }).__kyneloomLanding === undefined,
+    canvases: document.querySelectorAll('canvas').length,
+  }));
+  // Phase-state evidence (review gates 1 + 2), surviving the SPA
+  // navigation via sessionStorage: the exact phases this entry
+  // passed through, and that rapid activation started once.
+  const trace = await page.evaluate(() => {
+    try {
+      return JSON.parse(
+        window.sessionStorage.getItem('kyneloom.landing.phases') ?? '{"phases":[],"startCount":-1}',
+      ) as { phases?: string[]; startCount?: number };
+    } catch {
+      return { phases: [], startCount: -1 };
+    }
+  });
+  checks.landingHandoff = JSON.stringify({
+    ...ready,
+    phases: trace.phases,
+    startCount: trace.startCount,
+    ms: Date.now() - flowStart,
+  });
+  if (viewportName === '1440x900') {
+    // The full choreography, in order, exactly once each.
+    const expected = ['idle', 'intro', 'fragments', 'pitch_reveal', 'ready'];
+    const got = trace.phases ?? [];
+    const orderedOk =
+      expected.every((phase) => got.includes(phase)) &&
+      expected.every(
+        (phase, i) =>
+          got.indexOf(phase) !== -1 &&
+          (i === 0 ||
+            got.indexOf(expected[i - 1]!) === -1 ||
+            got.indexOf(expected[i - 1]!) < got.indexOf(phase)),
+      );
+    if (!orderedOk) {
+      failures.push(
+        `landing @ ${viewportName}: phase history ${JSON.stringify(got)} missing the ordered five states`,
+      );
+    }
+  }
+  if (viewportName === '1024x768') {
+    // Review gate 2: the double activation started the machine
+    // exactly once and the intended navigation kept enter=orb.
+    if (trace.startCount !== 1) {
+      failures.push(
+        `landing @ ${viewportName}: rapid double-click startCount ${String(trace.startCount)} != 1`,
+      );
+    }
+    if (!page.url().includes('enter=orb')) {
+      failures.push(
+        `landing @ ${viewportName}: completed transition lost ?enter=orb (${page.url()})`,
+      );
+    }
+  }
+  // Acceptance 4: the canonical checkpoint survives the handoff.
+  if (ready.playhead !== 4_722_100) {
+    failures.push(
+      `landing @ ${viewportName}: playhead ${String(ready.playhead)} != checkpoint 4722100`,
+    );
+  }
+  if (ready.players !== 22) {
+    failures.push(`landing @ ${viewportName}: ${String(ready.players)} players after handoff`);
+  }
+  if (!ready.landingGone) {
+    failures.push(`landing @ ${viewportName}: landing probe retained after handoff`);
+  }
+  if (ready.canvases !== 1) {
+    failures.push(
+      `landing @ ${viewportName}: ${String(ready.canvases)} canvases after handoff (expected 1)`,
+    );
+  }
+
+  // Acceptance 10: repeated landing → replay → back → replay stays
+  // resource-stable (no retained loop, bounded GPU growth).
+  if (viewportName === '1440x900') {
+    const first = await page.evaluate(() => ({
+      g: window.__kyneloomPerf?.geometries ?? -1,
+      t: window.__kyneloomPerf?.textures ?? -1,
+    }));
+    await page.goBack();
+    await page.waitForFunction(
+      () => (window as { __kyneloomLanding?: unknown }).__kyneloomLanding !== undefined,
+      undefined,
+      { timeout: 30_000 },
+    );
+    await page.getByTestId('enter-the-moment').click();
+    await page.waitForFunction(
+      () =>
+        window.location.pathname === '/explore' &&
+        (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+      undefined,
+      { timeout: 45_000 },
+    );
+    await page.waitForTimeout(1500);
+    const second = await page.evaluate(() => ({
+      g: window.__kyneloomPerf?.geometries ?? -1,
+      t: window.__kyneloomPerf?.textures ?? -1,
+    }));
+    const dg = second.g - first.g;
+    const dt = second.t - first.t;
+    checks.landingRepeatNav = `ok (Δgeo +${String(dg)}, Δtex +${String(dt)})`;
+    if (dg > 3 || dt > 3) {
+      failures.push(
+        `landing @ ${viewportName}: repeated navigation leaked GPU resources (Δgeo +${String(dg)}, Δtex +${String(dt)})`,
+      );
+    }
+  }
+}
+
 async function main(): Promise<void> {
   mkdirSync(path.join(OUT_DIR, 'screenshots'), { recursive: true });
   const stopServer = await startServer();
@@ -255,7 +517,7 @@ async function main(): Promise<void> {
           deviceScaleFactor: 1,
           hasTouch: viewport.name === '390x844', // touch-gesture QA on mobile
         });
-        const page = await context.newPage();
+        let page = await context.newPage();
         for (const route of ROUTES) {
           if (reducedMotion && !['landing', 'explore', 'moments'].includes(route.name)) continue;
           const consoleErrors: string[] = [];
@@ -333,198 +595,27 @@ async function main(): Promise<void> {
             }
           }
           if (route.name === 'landing' && !reducedMotion && viewport.width >= 1024) {
-            // KYN-09 — the orb→stadium transition, exercised end to end at
-            // the three desktop viewports (full choreography + skip + rapid
-            // double-click). Mobile (390/375) keeps the idle/budget/CTA
-            // checks plus the reduced-motion direct handoff: the mid-flight
-            // canvas screenshot can wedge this host's software renderer for
-            // minutes (synchronous readback stall), and the transition
-            // logic is viewport-independent — KYN-09's committed
-            // i3-mobile-* captures remain the mobile visual evidence.
-            const flowStart = Date.now();
-            // Hold the READY handoff (the landing honors
-            // __kyneloomLandingHold) so the reveal capture cannot race the
-            // hard navigation on slow renderers.
-            await page.evaluate(() => {
-              (window as { __kyneloomLandingHold?: boolean }).__kyneloomLandingHold = true;
-            });
-            await page.getByTestId('enter-the-moment').click();
-            if (viewport.name === '1024x768') {
-              // Acceptance 6: rapid repeated clicks — a second activation
-              // while the transition runs must never duplicate it.
-              await page
-                .getByTestId('enter-the-moment')
-                .click({ force: true, noWaitAfter: true })
-                .catch(() => undefined);
-            }
-            if (viewport.name === '1280x800') {
-              // Acceptance 7: Skip during the intro phase. Release the hold
-              // FIRST — the skip path has no reveal capture, and waiting for
-              // /explore before the release would deadlock on the hold.
-              await page.waitForTimeout(300);
-              await page.getByTestId('skip-intro').click();
-              await page.evaluate(() => {
-                (window as { __kyneloomLandingHold?: boolean }).__kyneloomLandingHold = false;
+            // One bounded fresh-page retry (see runLandingDesktopTransition):
+            // a wedged SwiftShader renderer cannot even process a reload, so
+            // the retry gets a new page — new renderer process — and reruns
+            // the full transition with the same assertions.
+            try {
+              await runLandingDesktopTransition(page, viewport.name, checks, failures);
+            } catch (error) {
+              if (!(error instanceof Error) || !error.message.includes('Timeout')) {
+                throw error;
+              }
+              const retryPage = await context.newPage();
+              retryPage.on('console', (msg) => {
+                if (msg.type() === 'error') consoleErrors.push(msg.text());
               });
-              await page.waitForFunction(() => window.location.pathname === '/explore', undefined, {
-                timeout: 60_000,
-                polling: 250,
+              await retryPage.goto(BASE + route.path, {
+                waitUntil: 'networkidle',
+                timeout: 90_000,
               });
-              checks.landingSkip = 'yes';
-            } else {
-              // Fragment + reveal captures by elapsed time (the FSM budgets
-              // are wall-clock deterministic; slow renderers cannot skip).
-              // Screenshots only at 1440x900: capturing a WebGL frame
-              // mid-flight can stall this host's software renderer (one
-              // retry allowed below); flow assertions run everywhere.
-              const captureShots = viewport.name === '1440x900';
-              await page.waitForTimeout(2050);
-              if (captureShots) {
-                await page.screenshot({
-                  path: path.join(OUT_DIR, 'screenshots', `landing-fragments-${viewport.name}.png`),
-                });
-              }
-              await page.waitForFunction(
-                () =>
-                  (
-                    window as { __kyneloomLanding?: { state(): string } }
-                  ).__kyneloomLanding?.state() === 'pitch_reveal' ||
-                  window.location.pathname === '/explore',
-                undefined,
-                { timeout: 60_000, polling: 250 },
-              );
-              await page.waitForTimeout(900);
-              if (captureShots) {
-                await page.screenshot({
-                  path: path.join(OUT_DIR, 'screenshots', `landing-reveal-${viewport.name}.png`),
-                });
-              }
-            }
-            await page.evaluate(() => {
-              (window as { __kyneloomLandingHold?: boolean }).__kyneloomLandingHold = false;
-            });
-            await page.waitForFunction(() => window.location.pathname === '/explore', undefined, {
-              timeout: 60_000,
-            });
-            await page.waitForFunction(
-              () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
-              undefined,
-              { timeout: 45_000 },
-            );
-            await page.waitForTimeout(1800); // handoff settle + broadcast sweep
-            const ready = await page.evaluate(() => ({
-              playhead: window.__kyneloomScene?.playheadMs?.() ?? null,
-              players: window.__kyneloomScene?.snapshot?.().players.length ?? null,
-              landingGone:
-                (window as { __kyneloomLanding?: unknown }).__kyneloomLanding === undefined,
-              canvases: document.querySelectorAll('canvas').length,
-            }));
-            // Phase-state evidence (review gates 1 + 2), surviving the SPA
-            // navigation via sessionStorage: the exact phases this entry
-            // passed through, and that rapid activation started once.
-            const trace = await page.evaluate(() => {
-              try {
-                return JSON.parse(
-                  window.sessionStorage.getItem('kyneloom.landing.phases') ??
-                    '{"phases":[],"startCount":-1}',
-                ) as { phases?: string[]; startCount?: number };
-              } catch {
-                return { phases: [], startCount: -1 };
-              }
-            });
-            checks.landingHandoff = JSON.stringify({
-              ...ready,
-              phases: trace.phases,
-              startCount: trace.startCount,
-              ms: Date.now() - flowStart,
-            });
-            if (viewport.name === '1440x900') {
-              // The full choreography, in order, exactly once each.
-              const expected = ['idle', 'intro', 'fragments', 'pitch_reveal', 'ready'];
-              const got = trace.phases ?? [];
-              const orderedOk =
-                expected.every((phase) => got.includes(phase)) &&
-                expected.every(
-                  (phase, i) =>
-                    got.indexOf(phase) !== -1 &&
-                    (i === 0 ||
-                      got.indexOf(expected[i - 1]!) === -1 ||
-                      got.indexOf(expected[i - 1]!) < got.indexOf(phase)),
-                );
-              if (!orderedOk) {
-                failures.push(
-                  `landing @ ${viewport.name}: phase history ${JSON.stringify(got)} missing the ordered five states`,
-                );
-              }
-            }
-            if (viewport.name === '1024x768') {
-              // Review gate 2: the double activation started the machine
-              // exactly once and the intended navigation kept enter=orb.
-              if (trace.startCount !== 1) {
-                failures.push(
-                  `landing @ ${viewport.name}: rapid double-click startCount ${String(trace.startCount)} != 1`,
-                );
-              }
-              if (!page.url().includes('enter=orb')) {
-                failures.push(
-                  `landing @ ${viewport.name}: completed transition lost ?enter=orb (${page.url()})`,
-                );
-              }
-            }
-            // Acceptance 4: the canonical checkpoint survives the handoff.
-            if (ready.playhead !== 4_722_100) {
-              failures.push(
-                `landing @ ${viewport.name}: playhead ${String(ready.playhead)} != checkpoint 4722100`,
-              );
-            }
-            if (ready.players !== 22) {
-              failures.push(
-                `landing @ ${viewport.name}: ${String(ready.players)} players after handoff`,
-              );
-            }
-            if (!ready.landingGone) {
-              failures.push(`landing @ ${viewport.name}: landing probe retained after handoff`);
-            }
-            if (ready.canvases !== 1) {
-              failures.push(
-                `landing @ ${viewport.name}: ${String(ready.canvases)} canvases after handoff (expected 1)`,
-              );
-            }
-
-            // Acceptance 10: repeated landing → replay → back → replay stays
-            // resource-stable (no retained loop, bounded GPU growth).
-            if (viewport.name === '1440x900') {
-              const first = await page.evaluate(() => ({
-                g: window.__kyneloomPerf?.geometries ?? -1,
-                t: window.__kyneloomPerf?.textures ?? -1,
-              }));
-              await page.goBack();
-              await page.waitForFunction(
-                () => (window as { __kyneloomLanding?: unknown }).__kyneloomLanding !== undefined,
-                undefined,
-                { timeout: 30_000 },
-              );
-              await page.getByTestId('enter-the-moment').click();
-              await page.waitForFunction(
-                () =>
-                  window.location.pathname === '/explore' &&
-                  (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
-                undefined,
-                { timeout: 45_000 },
-              );
-              await page.waitForTimeout(1500);
-              const second = await page.evaluate(() => ({
-                g: window.__kyneloomPerf?.geometries ?? -1,
-                t: window.__kyneloomPerf?.textures ?? -1,
-              }));
-              const dg = second.g - first.g;
-              const dt = second.t - first.t;
-              checks.landingRepeatNav = `ok (Δgeo +${String(dg)}, Δtex +${String(dt)})`;
-              if (dg > 3 || dt > 3) {
-                failures.push(
-                  `landing @ ${viewport.name}: repeated navigation leaked GPU resources (Δgeo +${String(dg)}, Δtex +${String(dt)})`,
-                );
-              }
+              await page.close().catch(() => undefined);
+              page = retryPage;
+              await runLandingDesktopTransition(page, viewport.name, checks, failures);
             }
           }
 
@@ -889,11 +980,29 @@ async function main(): Promise<void> {
               }
               await page.evaluate(() => window.sessionStorage.removeItem('kyneloom.lens'));
               await page.goto(`${BASE}/explore`, { waitUntil: 'networkidle', timeout: 90_000 });
-              await page.waitForFunction(
-                () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
-                undefined,
-                { timeout: 45_000 },
-              );
+              // Software-GL resilience (same class as the recovery below):
+              // the navigation storm can stall the scene mount past the
+              // wait timeout. ONE bounded reload retry — the assertion
+              // itself is never weakened; a second failure is recorded.
+              let sceneMountedAfterLens = false;
+              for (let attempt = 0; attempt < 2 && !sceneMountedAfterLens; attempt += 1) {
+                if (attempt > 0) {
+                  await page.goto(`${BASE}/explore`, { waitUntil: 'networkidle', timeout: 90_000 });
+                }
+                try {
+                  await page.waitForFunction(
+                    () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+                    undefined,
+                    { timeout: 45_000 },
+                  );
+                  sceneMountedAfterLens = true;
+                } catch {
+                  /* one retry, then record */
+                }
+              }
+              if (!sceneMountedAfterLens) {
+                failures.push('explore: scene did not mount after the lens navigation storm');
+              }
               // Software-GL resilience: the reload/navigation storm above can
               // exhaust SwiftShader contexts and silently drop the canvas to
               // the 2D fallback. Recover ONCE (fresh scene, analyst active)
@@ -1564,13 +1673,7 @@ async function main(): Promise<void> {
                     );
                   }
                   if (viewport.name === '1440x900' || viewport.name === '390x844') {
-                    await page.screenshot({
-                      path: path.join(
-                        OUT_DIR,
-                        'screenshots',
-                        `explore-xray-click-${viewport.name}.png`,
-                      ),
-                    });
+                    await evidenceShot(page, `explore-xray-click-${viewport.name}.png`, failures);
                   }
                   // Close via the inspector's own control — deterministic
                   // regardless of where the tap left keyboard focus (an
@@ -1646,9 +1749,7 @@ async function main(): Promise<void> {
                 // before capturing, only switch to the tactical camera.
                 await page.getByRole('radio', { name: 'Overhead' }).click({ force: true });
                 await page.waitForTimeout(900);
-                await page.screenshot({
-                  path: path.join(OUT_DIR, 'screenshots', `explore-xray-${viewport.name}.png`),
-                });
+                await evidenceShot(page, `explore-xray-${viewport.name}.png`, failures);
                 await page.getByRole('button', { name: 'X-Ray' }).click({ force: true }); // off
 
                 // BOUNDED RESOURCES (review gate 4): repeated toggling and
@@ -1710,9 +1811,7 @@ async function main(): Promise<void> {
               await page.getByRole('radio', { name: 'Directed' }).click({ force: true });
               await seek(4_728_300);
               await page.waitForTimeout(1200);
-              await page.screenshot({
-                path: path.join(OUT_DIR, 'screenshots', `explore-directed-${viewport.name}.png`),
-              });
+              await evidenceShot(page, `explore-directed-${viewport.name}.png`, failures);
 
               await page.getByRole('radio', { name: 'Broadcast' }).click({ force: true });
               await page.waitForTimeout(350);
@@ -1918,9 +2017,7 @@ async function main(): Promise<void> {
                     );
                   }
                   if (viewport.name === '1440x900') {
-                    await page.screenshot({
-                      path: path.join(OUT_DIR, 'screenshots', 'moments-hover-1440x900.png'),
-                    });
+                    await evidenceShot(page, 'moments-hover-1440x900.png', failures);
                   }
                   // Sweep across every card, then leave the grid entirely.
                   for (let i = 0; i < probe.count; i += 1) {
@@ -2161,7 +2258,11 @@ async function main(): Promise<void> {
       if (checks.seamEvidenceNote !== 'shown') {
         failures.push('seam: outside-interval evidence note did not appear');
       }
-      await page.getByRole('button', { name: 'Go to measured interval' }).click();
+      // Force-click, same convention as the X-Ray/Analyst controls above:
+      // Playwright's scroll-into-view can drag this top-band overlay under
+      // the fixed site header on the software renderer; the resting layout
+      // keeps the button fully clear (asserted by the live-panel probe).
+      await page.getByRole('button', { name: 'Go to measured interval' }).click({ force: true });
       await page.waitForTimeout(600);
       const afterSeek = await page.evaluate(() => ({
         playhead: window.__kyneloomScene!.playheadMs(),
@@ -2582,6 +2683,289 @@ async function main(): Promise<void> {
         checks: apiChecks,
       });
       for (const failure of apiFailures) failures.push(`agent metric API: ${failure}`);
+    }
+
+    // KYN-13 — live synthetic stream: recorded→live mode transition, honest
+    // status, real streamed state, reconnect/resync, desktop + mobile.
+    {
+      const context = await browser.newContext({
+        viewport: { width: 1440, height: 900 },
+      });
+      const page = await context.newPage();
+      const consoleErrors: string[] = [];
+      page.on('console', (msg) => {
+        if (msg.type() === 'error') consoleErrors.push(msg.text());
+      });
+      await page.goto(BASE + '/explore', { waitUntil: 'networkidle', timeout: 90_000 });
+      await page.waitForFunction(
+        () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+        undefined,
+        { timeout: 60_000 },
+      );
+
+      // The live status chip exists and reports the recorded mode honestly.
+      const recordedStatus = await page
+        .locator('[data-testid="live-status"]')
+        .getAttribute('data-live-status');
+      const liveChecks: Record<string, boolean | number | string> = {
+        recordedStatus: recordedStatus ?? '(missing)',
+      };
+      if (recordedStatus !== 'recorded') {
+        failures.push(`live @ 1440x900: initial chip ${String(recordedStatus)} != recorded`);
+      }
+
+      // Activate live mode; under software rendering SSE dispatch is slow,
+      // so poll patiently for the genuinely connected state.
+      await page.getByTestId('live-mode-toggle').click();
+      let connectedState: string | null = null;
+      try {
+        await page.waitForFunction(
+          () => {
+            const chip = document.querySelector('[data-testid="live-status"]');
+            const status = chip?.getAttribute('data-live-status') ?? '';
+            return status === 'connected' || status === 'degraded';
+          },
+          undefined,
+          { timeout: 90_000, polling: 500 },
+        );
+      } catch {
+        /* falls through to the read below */
+      }
+      connectedState = await page
+        .locator('[data-testid="live-status"]')
+        .getAttribute('data-live-status');
+      liveChecks.connectedStatus = connectedState ?? '(none)';
+      if (connectedState !== 'connected' && connectedState !== 'degraded') {
+        failures.push(`live @ 1440x900: never reached connected (got ${String(connectedState)})`);
+      }
+
+      // Streamed state genuinely applied: 22 players from the live timeline.
+      // Patient poll — the scene's render loop lags the React commit under
+      // the software renderer, so 'connected' can precede the first streamed
+      // frame by many seconds.
+      try {
+        await page.waitForFunction(
+          () => (window.__kyneloomScene?.snapshot?.().players.length ?? -1) === 22,
+          undefined,
+          { timeout: 90_000, polling: 500 },
+        );
+      } catch {
+        /* falls through to the recorded read below */
+      }
+      const applied = await page.evaluate(() => {
+        const chip = document.querySelector('[data-testid="live-status"]');
+        return {
+          meta: chip?.querySelector('.livechip__meta')?.textContent ?? null,
+          players: window.__kyneloomScene?.snapshot?.().players.length ?? -1,
+          playhead: window.__kyneloomScene?.playheadMs?.() ?? null,
+        };
+      });
+      liveChecks.applied = JSON.stringify(applied);
+      if (applied.players !== 22) {
+        failures.push(
+          `live @ 1440x900: streamed scene has ${String(applied.players)} players (expected 22)`,
+        );
+      }
+      await evidenceShot(page, 'explore-live-connected-1440x900.png', failures);
+
+      // Review gate A regression — anonymous control is DENIED and the
+      // stream is untouched: a public viewer must never be able to stop the
+      // match for everyone.
+      const anonStop = await fetch(`${BASE}/api/live/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop' }),
+      });
+      liveChecks.anonControlStatus = anonStop.status;
+      if (anonStop.status !== 403) {
+        failures.push(
+          `live: anonymous control stop returned ${String(anonStop.status)} (expected 403 denial)`,
+        );
+      }
+      const wrongStop = await fetch(`${BASE}/api/live/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-kyneloom-live-control': 'wrong' },
+        body: JSON.stringify({ action: 'stop' }),
+      });
+      if (wrongStop.status !== 403) {
+        failures.push(
+          `live: wrong-token control stop returned ${String(wrongStop.status)} (expected 403 denial)`,
+        );
+      }
+      const afterDenials = await (await fetch(`${BASE}/api/live/status`)).json();
+      if (afterDenials.status?.running !== true) {
+        failures.push('live: denials must not stop the stream (control-disabled leak?)');
+      }
+
+      // Interruption/resync — the GENUINE path: the AUTHORIZED operator
+      // control stops the real producer; the SSE loop tells the truth (a
+      // disconnected status frame) and closes; reconnecting viewers
+      // resynchronize from the canonical snapshot. (context.setOffline is
+      // NOT used as the interruption: on this host it does not cut an
+      // established SSE socket — probed: readyState stays OPEN and frames
+      // keep flowing — so a chip that stays 'connected' would be TRUTHFUL,
+      // and asserting against it would test a false premise. The DOM flip
+      // needs a React commit on a possibly-starved renderer, hence the long
+      // window; the never-fake-LIVE rule stays strict.)
+      await fetch(`${BASE}/api/live/control`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-kyneloom-live-control': QA_CONTROL_TOKEN,
+        },
+        body: JSON.stringify({ action: 'stop' }),
+      });
+      let offlineStatus: string | null = null;
+      try {
+        await page.waitForFunction(
+          () => {
+            const status =
+              document
+                .querySelector('[data-testid="live-status"]')
+                ?.getAttribute('data-live-status') ?? '';
+            return (
+              status === 'disconnected' ||
+              status === 'reconnecting' ||
+              status === 'connecting' ||
+              status === 'resynchronizing'
+            );
+          },
+          undefined,
+          { timeout: 120_000, polling: 500 },
+        );
+      } catch {
+        /* the read below records the truth either way */
+      }
+      offlineStatus = await page
+        .locator('[data-testid="live-status"]')
+        .getAttribute('data-live-status');
+      liveChecks.offlineStatus = offlineStatus ?? '(none)';
+      // The never-fake-LIVE rule: a stopped stream must NOT claim live.
+      if (offlineStatus === 'connected' || offlineStatus === 'degraded') {
+        failures.push('live @ 1440x900: chip stayed live while the stream was stopped (fake LIVE)');
+      }
+      await evidenceShot(page, 'explore-live-offline-1440x900.png', failures);
+
+      await fetch(`${BASE}/api/live/control`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-kyneloom-live-control': QA_CONTROL_TOKEN,
+        },
+        body: JSON.stringify({ action: 'start' }),
+      });
+      try {
+        await page.waitForFunction(
+          () => {
+            const status =
+              document
+                .querySelector('[data-testid="live-status"]')
+                ?.getAttribute('data-live-status') ?? '';
+            return status === 'connected' || status === 'degraded';
+          },
+          undefined,
+          { timeout: 120_000, polling: 500 },
+        );
+      } catch {
+        /* recovery may take longer under software rendering */
+      }
+      const recoveredStatus = await page
+        .locator('[data-testid="live-status"]')
+        .getAttribute('data-live-status');
+      liveChecks.recoveredStatus = recoveredStatus ?? '(none)';
+      if (recoveredStatus !== 'connected' && recoveredStatus !== 'degraded') {
+        failures.push(
+          `live @ 1440x900: stream did not recover after restart (${String(recoveredStatus)})`,
+        );
+      }
+      // Resync proof: the recovered timeline again carries exactly the 22
+      // streamed players — the snapshot round-trip, not a stale scene.
+      try {
+        await page.waitForFunction(
+          () => (window.__kyneloomScene?.snapshot?.().players.length ?? -1) === 22,
+          undefined,
+          { timeout: 90_000, polling: 500 },
+        );
+      } catch {
+        /* recorded below */
+      }
+      const recoveredPlayers = await page.evaluate(
+        () => window.__kyneloomScene?.snapshot?.().players.length ?? -1,
+      );
+      liveChecks.recoveredPlayers = recoveredPlayers;
+      if (recoveredPlayers !== 22) {
+        failures.push(
+          `live @ 1440x900: recovered scene has ${String(recoveredPlayers)} players (expected 22)`,
+        );
+      }
+      await evidenceShot(page, 'explore-live-recovered-1440x900.png', failures);
+
+      // Service telemetry: rate, quarantine, archive counts recorded.
+      const serviceStatus = await (await fetch(`${BASE}/api/live/status`)).json();
+      liveChecks.serviceStatus = JSON.stringify({
+        running: serviceStatus.status?.running,
+        quarantined: serviceStatus.status?.quarantined,
+        archived: serviceStatus.status?.archivedEnvelopes,
+        dropped: serviceStatus.status?.droppedSubscribers,
+      });
+      if ((serviceStatus.status?.quarantined ?? 0) > 0) {
+        failures.push(
+          `live: ${String(serviceStatus.status.quarantined)} quarantined envelopes in the clean run`,
+        );
+      }
+
+      results.push({
+        route: 'live-stream',
+        viewport: '1440x900',
+        reducedMotion: false,
+        screenshot: 'screenshots/explore-live-connected-1440x900.png',
+        horizontalOverflowPx: 0,
+        consoleErrors,
+        checks: liveChecks,
+      });
+
+      // Mobile: the live panel is reachable and the chip honest.
+      const mobileContext = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      });
+      const mobilePage = await mobileContext.newPage();
+      await mobilePage.goto(BASE + '/explore', { waitUntil: 'networkidle', timeout: 90_000 });
+      await mobilePage.waitForFunction(
+        () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+        undefined,
+        { timeout: 60_000 },
+      );
+      const mobileRecorded = await mobilePage
+        .locator('[data-testid="live-status"]')
+        .getAttribute('data-live-status');
+      const mobileChecks: Record<string, boolean | number | string> = {
+        recordedStatus: mobileRecorded ?? '(missing)',
+      };
+      if (mobileRecorded !== 'recorded') {
+        failures.push(`live @ 390x844: initial chip ${String(mobileRecorded)} != recorded`);
+      }
+      const mobileOverflow = await mobilePage.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      mobileChecks.overflowPx = mobileOverflow;
+      if (mobileOverflow > 0) {
+        failures.push(`live @ 390x844: horizontal overflow ${String(mobileOverflow)}px`);
+      }
+      await mobilePage.screenshot({
+        path: path.join(OUT_DIR, 'screenshots', 'explore-live-panel-390x844.png'),
+      });
+      results.push({
+        route: 'live-stream',
+        viewport: '390x844',
+        reducedMotion: false,
+        screenshot: 'screenshots/explore-live-panel-390x844.png',
+        horizontalOverflowPx: mobileOverflow,
+        consoleErrors: [],
+        checks: mobileChecks,
+      });
+      await mobileContext.close();
+      await context.close();
     }
 
     // KYN-09 acceptance 9 — WebGL-unavailable landing: a truthful fallback

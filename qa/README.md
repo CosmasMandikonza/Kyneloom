@@ -1,4 +1,4 @@
-# qa/ — visual QA artifacts (KYN-05, extended KYN-06)
+# qa/ — visual QA artifacts (KYN-05, extended KYN-06 through KYN-13)
 
 Everything here is produced by the committed scripts — nothing is hand-edited.
 
@@ -187,6 +187,42 @@ distinct Analyst/Accessible presentations with the verified metric and
 live description, session persistence with malformed revert, remembered
 lens never overriding chapter timestamps, projected player selection, and
 `explore-lens-*.png` evidence per viewport.
+
+### Live stream checks (KYN-13)
+
+The `/explore` pass extends to the streaming contract: recorded replay is
+the default mode; activating **Live Synthetic Stream** must reach
+`connected` (patient polling — SSE dispatch on SwiftShader takes seconds)
+with the truthful status chip live and the scene QA hook reporting the
+**streamed snapshot's 22 players / 0 missing**
+(`explore-live-connected-1440x900.png`); an **anonymous and a wrong-token
+control stop must both be denied 403 with the stream left running**
+(fail-closed operator control — the QA server provisions a local token
+and only the authorized interruption proceeds); the genuine producer stop
+must take the chip off live-green to the honest
+disconnected/reconnecting state with the scene preserved
+(`explore-live-offline-1440x900.png`), and a restart must resynchronize
+from the canonical snapshot with 22 players again
+(`explore-live-recovered-1440x900.png`); at 390×844 the live panel fits
+without overflow (`explore-live-panel-390x844.png`), and the service
+telemetry endpoint reports **zero quarantined envelopes** on the clean
+run. The desktop landing-transition flow runs with one bounded fresh-page
+retry (a mid-flight WebGL canvas capture can wedge this host's software
+renderer; a new page gets a new renderer process and reruns the identical
+assertions).
+
+## `qa:record:stream` (scripts/record-live-demo.ts)
+
+KYN-13's live evidence: a continuous compositor capture of the full
+streaming journey — recorded replay → activate **Live Synthetic Stream** →
+genuine SSE connection with snapshot + deltas → streamed tracking
+repositions the players → **operator stop mid-stream (the producer really
+stops; the SSE loop closes with a truthful disconnected frame)** → restart
+→ resynchronization → stream continues — into
+`qa/video/live-stream-demo.mp4` (+ `.webm` twin), same compositor-capture
+honesty rules as the other recorders. This run: 43.8 s, 716 frames at a
+measured 16.4 fps, adjacent-frame motion Δ9.21 Y-units (ffmpeg-verified),
+ending `connected` with 22 players.
 
 ## `qa:record:lens` and `lens:perf` (KYN-11)
 

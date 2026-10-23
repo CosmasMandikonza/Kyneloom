@@ -1467,3 +1467,108 @@
   letter-spacing: 0.06em;
   opacity: 0.85;
 }
+
+/* KYN-13 — live mode panel + honest status chip. */
+.stage__live-panel {
+  position: absolute;
+  top: calc(var(--header-h) + var(--space-3));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  pointer-events: auto;
+}
+
+.stage__live-panel .stage__mode-btn--live[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--mint-500) 65%, transparent);
+  color: var(--mint-500);
+}
+
+/* The evidence-context note (KYN-11) and the live panel (KYN-13) share the
+   top-center band; when the panel is mounted the note clears below it. */
+.stage:has(.stage__live-panel) .stage__evidence-context {
+  top: calc(var(--header-h) + var(--space-3) + 3.1rem);
+}
+
+.livechip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.32rem 0.7rem;
+  background: var(--surface-glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-full);
+  font-size: var(--step--1);
+}
+
+.livechip__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--amber-400);
+}
+.livechip__dot--recorded {
+  background: var(--line);
+}
+.livechip__dot--live {
+  background: var(--mint-500);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--mint-500) 70%, transparent);
+  animation: livechip-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes livechip-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.livechip__label {
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+[data-live-status='connected'] .livechip__label,
+[data-live-status='connected'] .livechip__dot--live {
+  color: var(--mint-500);
+}
+
+.livechip__meta {
+  color: var(--text-muted);
+  opacity: 0.75;
+  font-size: 0.62rem;
+}
+
+[data-live-status='degraded'] {
+  border-color: color-mix(in srgb, var(--amber-400) 50%, transparent);
+}
+[data-live-status='degraded'] .livechip__label {
+  color: var(--amber-400);
+}
+[data-live-status='disconnected'] .livechip__dot,
+[data-live-status='reconnecting'] .livechip__dot,
+[data-live-status='resynchronizing'] .livechip__dot {
+  background: var(--amber-400);
+}
+
+@media (max-width: 48rem) {
+  .stage__live-panel {
+    top: auto;
+    bottom: calc(var(--space-2) + 0.25rem);
+    left: var(--space-3);
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .livechip__dot--live {
+    animation: none;
+  }
+}
