@@ -33,16 +33,15 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 }
 
 // RBAC (scoped to THIS vault, by role name).
-resource keyVaultSecretsUserRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: 'Key Vault Secrets User'
-}
+// Verified built-in role definition GUID (Key Vault Secrets User, Microsoft Learn
+// built-in-roles reference) — display names are NOT stable identifiers.
+var keyVaultSecretsUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17eb-44cb-8b45-409dd3ee2f9e')
 
 resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: keyVault
   name: guid(keyVault.name, principalId, 'keyvault-secrets-user')
   properties: {
-    roleDefinitionId: keyVaultSecretsUserRole.id
+    roleDefinitionId: keyVaultSecretsUserRoleId
     principalId: principalId
     principalType: 'ServicePrincipal'
   }

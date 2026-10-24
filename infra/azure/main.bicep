@@ -121,12 +121,15 @@ module liveApp 'modules/container-apps.bicep' = if (deployApp) {
     containerImage: containerImage
     targetPort: 3000
     logAnalyticsWorkspaceId: monitor.outputs.workspaceId
+    logAnalyticsCustomerId: monitor.outputs.workspaceCustomerId
     managedIdentityId: liveIdentity.id
     keyVaultUri: keyVault.outputs.keyVaultUri
+    managedIdentityClientId: liveIdentity.properties.clientId
     eventHubsNamespaceName: eventHubs.outputs.namespaceName
     eventHubName: eventHubs.outputs.eventHubName
     consumerGroupName: eventHubs.outputs.reducerConsumerGroupName
     checkpointContainerUrl: storage.outputs.checkpointContainerUrl
+    envelopeArchiveContainerUrl: storage.outputs.envelopeArchiveContainerUrl
     webPubSubHubName: 'live'
     matchId: matchId
   }
@@ -141,6 +144,7 @@ output eventHubName string = eventHubs.outputs.eventHubName
 output reducerConsumerGroupName string = eventHubs.outputs.reducerConsumerGroupName
 output fixtureSenderRuleName string = eventHubs.outputs.fixtureSenderRuleName
 output checkpointContainerUrl string = storage.outputs.checkpointContainerUrl
+output envelopeArchiveContainerUrl string = storage.outputs.envelopeArchiveContainerUrl
 output webPubSubHostName string = webPubSub.outputs.webPubSubHostName
 output keyVaultName string = keyVault.outputs.keyVaultName
 output keyVaultUri string = keyVault.outputs.keyVaultUri

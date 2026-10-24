@@ -29,9 +29,23 @@ export interface AzureLiveConfig {
   readonly eventHubName: string;
   readonly consumerGroup: string;
   readonly checkpointStorageContainerUrl: string;
+  /** Durable envelope-archive container (NOT Event Hubs retention). */
+  readonly archiveStorageContainerUrl: string;
   readonly webPubSubConnectionString: string;
   readonly hubName: string;
   readonly matchId: string;
+  /** User-assigned managed identity CLIENT ID (DefaultAzureCredential). */
+  readonly identityClientId: string;
+}
+
+/** The ONE Web PubSub group identity, used on every boundary (KYN-14 D). */
+export function webPubSubGroupName(matchId: string): string {
+  return `match.${matchId}`;
+}
+
+/** Fully qualified Event Hubs namespace the SDK expects (not the name). */
+export function eventHubsFqdn(namespaceName: string): string {
+  return `${namespaceName}.servicebus.windows.net`;
 }
 
 export function azureConfigFromEnv(env: {
@@ -41,16 +55,22 @@ export function azureConfigFromEnv(env: {
   const hub = env.KYN_EVENTHUB_NAME;
   const group = env.KYN_EVENTHUBS_CONSUMER_GROUP;
   const container = env.KYN_CHECKPOINT_CONTAINER_URL;
+  const archive = env.KYN_ARCHIVE_CONTAINER_URL;
   const wps = env.KYN_WEBPUBSUB_CONNECTION_STRING;
   const wpsHub = env.KYN_WEBPUBSUB_HUB;
+  const identityClientId = env.KYN_AZURE_CLIENT_ID;
   if (
     namespace === undefined ||
     hub === undefined ||
     group === undefined ||
     container === undefined ||
+    archive === undefined ||
     wps === undefined ||
-    wpsHub === undefined
+    wpsHub === undefined ||
+    identityClientId === undefined
   ) {
+    // Fail closed: an incomplete Azure contract never produces a
+    // seemingly-healthy cloud mode (KYN-14 review B).
     return null;
   }
   return {
@@ -58,9 +78,11 @@ export function azureConfigFromEnv(env: {
     eventHubName: hub,
     consumerGroup: group,
     checkpointStorageContainerUrl: container,
+    archiveStorageContainerUrl: archive,
     webPubSubConnectionString: wps,
     hubName: wpsHub,
     matchId: env.KYN_LIVE_MATCH_ID ?? 'synthetic-derby-01',
+    identityClientId,
   };
 }
 
@@ -74,23 +96,72 @@ export function azureConfigFromEnv(env: {
  * Checkpoint law: `updateCheckpoint` runs ONLY after `onBatch` (which must
  * archive durably) resolves — an in-memory handler receipt is never enough.
  */
+/**
+ * Injectable SDK boundary (KYN-14 review B): tests substitute these to
+ * assert the REAL constructor contracts — fully qualified namespace, the
+ * DefaultAzureCredential instance, the checkpoint store, and the exact
+ * Web PubSub group — without any Azure account.
+ */
+export const azureClientFactories = {
+  async createCredential(config: AzureLiveConfig): Promise<object> {
+    const { DefaultAzureCredential } = await import('@azure/identity');
+    return new DefaultAzureCredential({
+      managedIdentityClientId: config.identityClientId,
+    });
+  },
+  async createCheckpointStore(config: AzureLiveConfig, credential: object): Promise<object> {
+    const { BlobCheckpointStore } = await import('@azure/eventhubs-checkpointstore-blob');
+    const { ContainerClient } = await import('@azure/storage-blob');
+    // Private containers REQUIRE a credential — an anonymous ContainerClient
+    // cannot read the checkpoint store (KYN-14 review B).
+    const container = new ContainerClient(
+      config.checkpointStorageContainerUrl,
+      credential as never,
+    );
+    return new BlobCheckpointStore(container);
+  },
+  async createConsumerClient(
+    config: AzureLiveConfig,
+    credential: object,
+    checkpointStore: object,
+  ): Promise<object> {
+    const { EventHubConsumerClient } = await import('@azure/event-hubs');
+    // The pinned SDK's AAD overload is POSITIONAL:
+    //   (consumerGroup, fullyQualifiedNamespace, eventHubName,
+    //    credential, checkpointStore, options?) — verified against
+    //   @azure/event-hubs@6.0.4's eventHubConsumerClient.d.ts.
+    return new EventHubConsumerClient(
+      config.consumerGroup,
+      eventHubsFqdn(config.eventHubsNamespace),
+      config.eventHubName,
+      credential as never,
+      checkpointStore as never,
+    );
+  },
+};
+
 export async function startEventHubsIngestion(
   config: AzureLiveConfig,
   onBatch: (batch: readonly StreamEnvelope[]) => Promise<void>,
   signal: AbortSignal,
+  factories: typeof azureClientFactories = azureClientFactories,
 ): Promise<void> {
-  const { EventHubConsumerClient } = await import('@azure/event-hubs');
-  const { BlobCheckpointStore } = await import('@azure/eventhubs-checkpointstore-blob');
-  const { ContainerClient } = await import('@azure/storage-blob');
-
-  const container = new ContainerClient(config.checkpointStorageContainerUrl);
-  const checkpointStore = new BlobCheckpointStore(container);
-  const client = new EventHubConsumerClient(
-    config.consumerGroup,
-    config.eventHubsNamespace,
-    config.eventHubName,
-    checkpointStore,
-  );
+  const credential = await factories.createCredential(config);
+  const checkpointStore = await factories.createCheckpointStore(config, credential);
+  const client = (await factories.createConsumerClient(config, credential, checkpointStore)) as {
+    subscribe(handlers: {
+      processEvents: (
+        events: {
+          body: unknown;
+          offset?: number;
+          sequenceNumber?: number;
+          enqueuedTimeUtc?: Date;
+        }[],
+        context: { updateCheckpoint: (event: unknown) => Promise<void> },
+      ) => Promise<void>;
+      processError: (err: unknown) => Promise<void>;
+    }): { close(): Promise<void> };
+  };
 
   const subscriptions = client.subscribe({
     processEvents: async (events, context) => {
@@ -149,7 +220,9 @@ export async function broadcastViaWebPubSub(
 ): Promise<void> {
   const { WebPubSubServiceClient } = await import('@azure/web-pubsub');
   const service = new WebPubSubServiceClient(config.webPubSubConnectionString, config.hubName);
-  const group = service.group(config.matchId);
+  // The ONE group identity — identical on broadcast, negotiation and any
+  // future browser subscription (KYN-14 review D).
+  const group = service.group(webPubSubGroupName(config.matchId));
   await group.sendToAll(JSON.stringify(frame), { contentType: 'text/plain' });
 }
 
@@ -164,8 +237,9 @@ export async function negotiateWebPubSubAccess(
   const { WebPubSubServiceClient } = await import('@azure/web-pubsub');
   const service = new WebPubSubServiceClient(config.webPubSubConnectionString, config.hubName);
   // Join/leave the synthetic match group ONLY — no publish permission, so a
-  // viewer can never inject match state through negotiated access.
-  const roles = [`webpubsub.joinLeaveGroup.match.${config.matchId}`];
+  // viewer can never inject match state through negotiated access. The role
+  // suffix is EXACTLY the group the server broadcasts to.
+  const roles = [`webpubsub.joinLeaveGroup.${webPubSubGroupName(config.matchId)}`];
   const result = await service.getClientAccessToken({ roles });
   return { url: result.url, scopes: roles };
 }

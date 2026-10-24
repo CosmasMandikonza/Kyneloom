@@ -26,8 +26,14 @@ param containerImage string
 @description('Target port of the Next.js server')
 param targetPort int = 3000
 
-@description('Log Analytics workspace resource id (system logs stream to it; the shared key is read at DEPLOY time and never output)')
+@description('Log Analytics workspace resource id (listKeys at DEPLOY time; the shared key never appears in outputs)')
 param logAnalyticsWorkspaceId string
+
+@description('Log Analytics workspace customerId (passed directly — never re-derived by string surgery on resource ids)')
+param logAnalyticsCustomerId string
+
+@description('User-assigned managed identity CLIENT ID (what DefaultAzureCredential needs at runtime)')
+param managedIdentityClientId string
 
 @description('User-assigned managed identity resource id (gets vault + data-plane roles)')
 param managedIdentityId string
@@ -40,6 +46,8 @@ param eventHubsNamespaceName string
 param eventHubName string
 param consumerGroupName string
 param checkpointContainerUrl string
+@description('Durable envelope-archive container URL (blob-archive.ts)')
+param envelopeArchiveContainerUrl string
 param webPubSubHubName string
 param matchId string
 
@@ -50,7 +58,7 @@ resource caEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
-        customerId: reference(split(logAnalyticsWorkspaceId, '/providers/')[0], '2023-09-01').customerId
+        customerId: logAnalyticsCustomerId
         sharedKey: listKeys(logAnalyticsWorkspaceId, '2023-09-01').primarySharedKey
       }
     }
@@ -110,8 +118,10 @@ resource liveApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'KYN_EVENTHUB_NAME', value: eventHubName }
             { name: 'KYN_EVENTHUBS_CONSUMER_GROUP', value: consumerGroupName }
             { name: 'KYN_CHECKPOINT_CONTAINER_URL', value: checkpointContainerUrl }
+            { name: 'KYN_ARCHIVE_CONTAINER_URL', value: envelopeArchiveContainerUrl }
             { name: 'KYN_WEBPUBSUB_HUB', value: webPubSubHubName }
             { name: 'KYN_WEBPUBSUB_CONNECTION_STRING', secretRef: 'webpubsub-connection-string' }
+            { name: 'KYN_AZURE_CLIENT_ID', value: managedIdentityClientId }
             { name: 'KYN_LIVE_MATCH_ID', value: matchId }
           ]
           probes: [
@@ -125,9 +135,12 @@ resource liveApp 'Microsoft.App/containerApps@2024-03-01' = {
               failureThreshold: 3
             }
             {
+              // Worker readiness, NOT process liveness: /api/live/ready is
+              // 200 only when a real stream session is active (local
+              // producer running OR cloud-fed external session started).
               type: 'Readiness'
               httpGet: {
-                path: '/api/live/status'
+                path: '/api/live/ready'
                 port: targetPort
               }
               periodSeconds: 10

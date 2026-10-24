@@ -67,16 +67,15 @@ resource fixtureSenderRule 'Microsoft.EventHub/namespaces/eventhubs/authorizatio
 }
 
 // Data-plane RBAC (scoped to THIS namespace, by role name).
-resource eventHubsReceiverRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: 'Azure Event Hubs Data Receiver'
-}
+// Verified built-in role definition GUID (Azure Event Hubs Data Receiver, Microsoft Learn
+// built-in-roles reference) — display names are NOT stable identifiers.
+var eventHubsReceiverRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a638d3c7-ab3a-418d-83e6-5f17a39d4fde')
 
 resource eventHubsRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: namespace
   name: guid(namespace.name, principalId, 'eventhubs-receiver')
   properties: {
-    roleDefinitionId: eventHubsReceiverRole.id
+    roleDefinitionId: eventHubsReceiverRoleId
     principalId: principalId
     principalType: 'ServicePrincipal'
   }

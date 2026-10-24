@@ -51,6 +51,12 @@ jobs:
             echo "$m OK"
           done
 
+      - name: Compiled-ARM semantic validation (verified GUIDs, SKU, references, probes)
+        run: |
+          curl -fsSL -o bicep https://github.com/Azure/bicep/releases/download/v0.48.1/bicep-linux-x64
+          chmod +x bicep && sudo mv bicep /usr/local/bin/bicep
+          KYN_BICEP=bicep pnpm infra:validate
+
       - name: No secrets in compiled outputs
         run: |
           ! grep -rEi 'accessKey|primaryKey|connectionString.{0,20}[A-Za-z0-9+/=]{20,}' build/ \

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@azure/event-hubs": "^6.0.4",
+    "@azure/identity": "^4.13.0",
     "@azure/eventhubs-checkpointstore-blob": "^2.0.0",
     "@azure/storage-blob": "^12.34.0",
     "@azure/web-pubsub": "^1.2.0",

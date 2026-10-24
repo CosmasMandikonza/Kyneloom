@@ -1,4 +1,5 @@
-// KYN-14 — Azure Monitor: a Log Analytics workspace that collects the
+// KYN-14 — Azure Monitor: a Log Analytics workspace (PerGB2018 pay-as-you-go
+// — the 5 GB/month free tier covers the judge window) that collects the
 // Container App's console + platform metrics (the deployment's health and
 // failure signals for the runbook). Application Insights SDK integration
 // in the Next.js app is DEFERRED until runtime tracing is actually wired —
@@ -19,7 +20,7 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   location: location
   properties: {
     sku: {
-      name: 'CapacityReservation'
+      name: 'PerGB2018' // pay-as-you-go ingestion (5 GB/mo free tier)
     }
     retentionInDays: retentionDays
     publicNetworkAccessForIngestion: 'Enabled'

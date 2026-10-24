@@ -214,6 +214,46 @@ describe('LiveMatchService single-flight initialization (real lifecycle)', () =>
     service.stop();
   });
 
+  it('KYN-14 — external (cloud-fed) sessions: begin/serve/end truthfully, never operator-stopped', async () => {
+    const service = LiveMatchService.get();
+    service.stop();
+    // BEGIN: a legitimate cloud-fed session — running, new generation, and
+    // the snapshot route contract (snapshotFrame serves verified state).
+    service.beginExternalSession('cloud-gen-1');
+    expect(service.status.running).toBe(true);
+    expect(service.isExternalSession).toBe(true);
+    expect(service.isOperatorStopped).toBe(false);
+    const snapshot = service.snapshotFrame() as { sessionId?: string };
+    expect(snapshot.sessionId).toBe('cloud-gen-1');
+    service.subscribe('cloud-viewer');
+    // END: truthful disconnect frames, service stopped, but NOT
+    // operator-stopped — a subsequent explicit activation is not blocked.
+    service.endExternalSession('test end');
+    expect(service.status.running).toBe(false);
+    expect(service.isExternalSession).toBe(false);
+    expect(service.isOperatorStopped).toBe(false);
+    const frames = service.drain('cloud-viewer', 8);
+    const statusFrame = frames.find((f) => f.type === 'status') as
+      { status?: string; detail?: string } | undefined;
+    expect(statusFrame?.status).toBe('disconnected');
+    expect(statusFrame?.detail).toContain('cloud ingestion ended');
+    // beginExternalSession is IDEMPOTENT while running.
+    service.beginExternalSession('cloud-gen-2');
+    service.beginExternalSession('cloud-gen-3'); // ignored
+    expect(service.status.sessionId).toBe('cloud-gen-2');
+    // A local start AFTER the external session ends is a legitimate
+    // explicit activation (fixture loader not exercised — lifecycle only).
+    service.endExternalSession('cleanup');
+    const local = service.start({ sessionId: 'local-after-cloud', speed: 4 });
+    await waitCalls(1);
+    releaseNextFixture();
+    await local;
+    expect(service.status.running).toBe(true);
+    expect(service.isExternalSession).toBe(false);
+    expect(service.status.sessionId).toBe('local-after-cloud');
+    service.stop();
+  });
+
   it('round 5 — waiters issued before a stop NEVER fork a fresh initialization after it', async () => {
     const service = LiveMatchService.get();
     service.stop();

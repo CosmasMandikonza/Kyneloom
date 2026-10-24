@@ -59,16 +59,15 @@ resource quarantineContainer 'Microsoft.Storage/storageAccounts/blobServices/con
 // Data-plane RBAC (scoped to THIS account, by role name resolved at deploy
 // time). guid() over the account name + principal keeps redeploys
 // idempotent.
-resource blobDataContributorRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: 'Storage Blob Data Contributor'
-}
+// Verified built-in role definition GUID (Storage Blob Data Contributor, Microsoft Learn
+// built-in-roles reference) — display names are NOT stable identifiers.
+var storageBlobDataContributorRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
 
 resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: archiveStorage
   name: guid(archiveStorage.name, principalId, 'blob-data-contributor')
   properties: {
-    roleDefinitionId: blobDataContributorRole.id
+    roleDefinitionId: storageBlobDataContributorRoleId
     principalId: principalId
     principalType: 'ServicePrincipal'
   }
@@ -77,5 +76,7 @@ resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
 output storageAccountName string = archiveStorage.name
 #disable-next-line no-hardcoded-env-urls // single public-cloud target; see runbook
 output checkpointContainerUrl string = 'https://${archiveStorage.name}.blob.core.windows.net/${checkpointsContainer.name}'
+#disable-next-line no-hardcoded-env-urls // single public-cloud target; see runbook
+output envelopeArchiveContainerUrl string = 'https://${archiveStorage.name}.blob.core.windows.net/${envelopeArchiveContainer.name}'
 output envelopeArchiveContainerName string = envelopeArchiveContainer.name
 output quarantineContainerName string = quarantineContainer.name

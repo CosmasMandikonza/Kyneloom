@@ -85,6 +85,8 @@ export class LiveMatchService {
   private initializationEpoch: number | null = null;
   /** True after an intentional stop: public auto-start must not revive. */
   private operatorStopped = false;
+  /** True while the session is fed by the CLOUD ingestion worker (KYN-14). */
+  private externalSession = false;
   private worker: LiveProjectionWorker;
   private producer: LocalFixtureProducer | null = null;
   private stopProducer: (() => void) | null = null;
@@ -142,6 +144,53 @@ export class LiveMatchService {
    */
   get isOperatorStopped(): boolean {
     return this.operatorStopped;
+  }
+
+  /** True while a cloud-fed (external ingestion) session is active. */
+  get isExternalSession(): boolean {
+    return this.externalSession;
+  }
+
+  /**
+   * KYN-14 — begin an EXTERNALLY FED stream session (the cloud worker).
+   * Same generation laws as a local start — new session id, new worker,
+   * sequence space reset — but NO local producer: envelopes arrive from
+   * Event Hubs via the runtime. Idempotent while running. The LiveMatch
+   * service stays the ONE canonical reducer owner either way.
+   */
+  beginExternalSession(sessionId?: string): void {
+    if (this.running) return;
+    this.lifecycleEpoch += 1; // invalidate any stale initialization
+    this.sessionCounter += 1;
+    this.sessionId = sessionId ?? `live-${String(this.sessionCounter)}-${String(Date.now())}`;
+    this.worker = new LiveProjectionWorker({ matchId: this.matchId, sessionId: this.sessionId });
+    this.running = true;
+    this.externalSession = true;
+    this.operatorStopped = false;
+  }
+
+  /**
+   * End the external session TRUTHFULLY (ingestion stopped/failed). Unlike
+   * an operator stop this does NOT set operatorStopped — the next
+   * authorized activation (local start or a new external session) is not
+   * blocked; viewers see a truthful disconnected frame.
+   */
+  endExternalSession(detail: string): void {
+    if (!this.running) return;
+    this.lifecycleEpoch += 1;
+    this.running = false;
+    this.externalSession = false;
+    for (const subscriber of this.subscribers.values()) {
+      this.pushToSubscriber(subscriber, {
+        type: 'status',
+        matchId: this.matchId,
+        sessionId: this.sessionId,
+        seq: this.worker.currentSeq,
+        status: 'disconnected',
+        detail: `cloud ingestion ended — ${detail}`,
+        traceId: '',
+      });
+    }
   }
 
   /**
@@ -237,6 +286,7 @@ export class LiveMatchService {
     mkdirSync(this.archiveDir, { recursive: true });
     this.running = true;
     this.operatorStopped = false;
+    this.externalSession = false;
     this.stopProducer = this.producer.start((batch) => this.ingest(batch));
   }
 
@@ -247,6 +297,7 @@ export class LiveMatchService {
     this.stopProducer?.();
     this.stopProducer = null;
     this.running = false;
+    this.externalSession = false;
     // An intentional stop must STAY stopped: the public GET auto-start
     // refuses to revive the stream until an explicitly issued start()
     // (authorized control route / operator) clears this on activation.

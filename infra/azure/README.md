@@ -93,15 +93,38 @@ SEND_SPEED=4 pnpm live:fixture:send
 - Security checks: anonymous/wrong-token `POST /api/live/control` → **403**;
   storage containers are private (`az storage container list --show-next-object-hierarchy`
   without credentials fails); the vault is RBAC-only.
-- Worker restart: `az containerapp revision restart` — Event Hubs redelivers
-  from the last checkpoint; the worker's envelope-id dedupe makes
-  redelivery idempotent (no duplicate externally visible publication —
-  the KYN-13 round-1/2 regressions prove the law).
+- Worker restart: `az containerapp revision restart` — on boot the runtime
+  REPLAYS the durable envelope archive (Blob) into a fresh session before
+  consuming, so the authoritative corpus is reconstructed even for source
+  the Event Hubs checkpoints already consumed; envelope-id dedupe makes any
+  redelivery idempotent (no duplicate externally visible publication — the
+  KYN-14 runtime regressions prove the ordering).
+- **Authorized deployment smoke test (post stage 3):**
+  1. `curl <fqdn>/api/live/ready` → 503 before ingestion, `mode:"cloud-fed"`
+     + 200 once the session begins.
+  2. `curl <fqdn>/api/live/status` → `azureRuntime.replayedEnvelopes` and
+     `archivedBatches` grow as the fixture streams.
+  3. Open `<fqdn>/explore` → toggle **Live Synthetic Stream** → connected
+     with 22 streamed players (the verified SSE judge path).
+  4. Anonymous/wrong-token `POST /api/live/control` → 403.
+  5. `az containerapp revision restart` → replay + recovery without
+     duplicate goals.
 - Rollback: `az deployment group create … -p …` with the previous
   `containerImage` (activeRevisionsMode Single makes revisions explicit);
   or `az containerapp revision list` → reactivate the previous revision.
 - **Teardown (everything, immediately):**
   `az group delete -n kyneloom-dev-rg --yes --no-wait`
+
+## The judge path (one real transport, honestly labeled)
+
+**Cloud-fed SSE is the verified viewer path**: browsers consume the SAME
+SSE/snapshot/resync protocol used locally, fed by the Event Hubs worker
+through the one LiveMatchService. **Direct browser Web PubSub consumption
+is DEFERRED and unverified**: the server-side broadcast adapter and the
+narrow join-only negotiation exist and are unit-tested, but no browser
+Web PubSub route is wired into the app — a server-side `sendToAll` is NOT
+evidence a viewer received anything, so none is claimed. The provisioned
+Web PubSub instance serves the (tested) server fan-out capability.
 
 ## Cost (LIST-PRICE ESTIMATES — not measured; verify against your billing)
 
@@ -112,7 +135,7 @@ SEND_SPEED=4 pnpm live:fixture:send
 | Storage | LRS, GBs | ~$0.02/GB + tx | <$1 | <$0.10 |
 | Container Apps | consumption, 0.75 vCPU/1.5 GiB always-on | ~$0.000024/vCPU-s | ~$56 | ~$4 |
 | Key Vault | standard ops | ~$0.03/10k ops | <$1 | <$0.10 |
-| Log Analytics | 5 GB/mo free tier | first 5 GB free | ~$0 | ~$0 |
+| Log Analytics | **PerGB2018** pay-as-you-go | first 5 GB/mo free, then ~$2.3/GB | ~$0 (demo volume) | ~$0 |
 | **Total** | | | **≈ $125/mo** | **≈ $9** |
 
 Destroy with the teardown command immediately after judging to pay only the
@@ -123,12 +146,14 @@ window. These are public list prices as of 2026-10 assembled for planning —
 
 | Item | Status |
 |---|---|
-| IaC code (`infra/azure`, 7 templates) | ✅ implemented |
-| Bicep compilation (pinned v0.48.1, CI-gated) | ✅ validated (local + `Infra CI` workflow) |
-| Runtime seam (instrumentation → azure-runtime → same LiveMatchService) | ✅ implemented, unit-tested (env gating, wiring) |
+| IaC code (`infra/azure`, 7 templates) | ✅ implemented — role GUIDs verified, workspace references direct, PerGB2018 |
+| Bicep compilation (pinned v0.48.1, CI-gated) | ✅ validated + **compiled-ARM semantic assertions** (`pnpm infra:validate`, in Infra CI) |
+| Real AAD auth in adapters (DefaultAzureCredential, user-assigned; FQDN; credentialed Blob) | ✅ implemented; **constructor boundary verified locally against the pinned SDKs** (real client instances, FQDN/hub getters) |
+| Runtime seam (replay → external session → durable-before-checkpoint ingestion) | ✅ implemented; unit-tested incl. failure injection (archive failure, startup failure, duplicate starts) |
 | Fixture sender command | ✅ implemented, type-checked (not executed — no hub) |
+| Browser viewer path | ✅ cloud-fed SSE (the judge path); browser Web PubSub **deferred/unverified** |
 | Container image | ⛔ not built (no registry auth on this host) — Dockerfile authored |
 | Cloud resources provisioned | ⛔ blocked: no `az`, no subscription, no owner authorization |
-| Runtime integration exercised | ⛔ blocked by the above |
+| Runtime integration exercised | ⛔ blocked by the above (all local tests use fakes/real-clients-unconnected) |
 | Deployment evidence | ⛔ none — and none claimed |
 | Superseded `infra/live-stream.bicep` | 🗑 removed — it never compiled (containers parented on the storage account) |
