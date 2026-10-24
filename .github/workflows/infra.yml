@@ -1,17 +1,24 @@
 name: Infra CI
 
-# KYN-14 — every infra change must COMPILE against the pinned Bicep tool.
-# This is real template validation (types + linter), independent of any
+# KYN-14 — every infra change must COMPILE against the pinned Bicep tool,
+# and the compiled ARM must pass semantic validation. This is real template
+# validation (types + linter + property assertions), independent of any
 # Azure subscription. Deployment itself is owner-authorized (runbook).
 on:
   push:
     branches: [main]
     paths:
       - 'infra/**'
+      - 'scripts/validate-arm.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
       - '.github/workflows/infra.yml'
   pull_request:
     paths:
       - 'infra/**'
+      - 'scripts/validate-arm.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
       - '.github/workflows/infra.yml'
 
 permissions:
@@ -19,10 +26,19 @@ permissions:
 
 jobs:
   bicep:
-    name: Bicep build (pinned v0.48.1)
+    name: Bicep build + ARM validation (pinned v0.48.1)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
       - name: Install pinned Bicep CLI
         run: |
@@ -30,6 +46,9 @@ jobs:
           chmod +x bicep
           sudo mv bicep /usr/local/bin/bicep
           bicep --version
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
 
       - name: Compile main template (modules included)
         run: |
@@ -43,6 +62,9 @@ jobs:
           assert len(resources) >= 6, 'expected the full resource chain'
           PY
 
+      - name: Compiled-ARM semantic validation (GUIDs, SKU, references, probes)
+        run: KYN_BICEP=bicep pnpm infra:validate
+
       - name: Compile every module standalone
         run: |
           set -e
@@ -50,12 +72,6 @@ jobs:
             bicep build "infra/azure/modules/$m.bicep" --outfile "build/$m.json"
             echo "$m OK"
           done
-
-      - name: Compiled-ARM semantic validation (verified GUIDs, SKU, references, probes)
-        run: |
-          curl -fsSL -o bicep https://github.com/Azure/bicep/releases/download/v0.48.1/bicep-linux-x64
-          chmod +x bicep && sudo mv bicep /usr/local/bin/bicep
-          KYN_BICEP=bicep pnpm infra:validate
 
       - name: No secrets in compiled outputs
         run: |
