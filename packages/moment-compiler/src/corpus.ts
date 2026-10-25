@@ -382,6 +382,39 @@ export function buildCompileCorpus(source: CompilerSourceContext): CompileCorpus
       })),
     },
     {
+      id: 'defect-mismatched-metric-ref',
+      label: 'Correct number, false provenance',
+      description:
+        'The reception overlay references the separation metric while citing only the reception event as evidence. The number would be right; the attribution would be a lie. Rejected (the review regression).',
+      expect: 'invalid',
+      expectedCode: 'invalid_value',
+      proposal: defect((p) => ({
+        ...p,
+        overlays: p.overlays.map((overlay) =>
+          overlay.id === 'ov-reception'
+            ? {
+                ...overlay,
+                metricRef: `metric-separation-delta-away-03-home-09-w${String(candidate.startMs)}-${String(candidate.endMs)}`,
+              }
+            : overlay,
+        ),
+      })),
+    },
+    {
+      id: 'defect-asset-traversal',
+      label: 'Asset URL directory traversal',
+      description:
+        "A URL that literally starts with the tenant's asset prefix — but ../ resolves into another tenant's directory. Canonical parsing rejects it.",
+      expect: 'invalid',
+      expectedCode: 'cross_tenant_reference',
+      proposal: defect((p) => ({
+        ...p,
+        assetUrls: [
+          `${source.assetUrlPrefixes[0] ?? 'https://assets.kyneloom.local/tenants/demo-org/'}../other-org/secret.svg`,
+        ],
+      })),
+    },
+    {
       id: 'defect-stale-revision',
       label: 'Stale source revision',
       description:

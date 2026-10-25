@@ -27,7 +27,13 @@ import {
 } from '@kyneloom/match-core';
 import { eventFactSentence, metricFactSentence } from './facts';
 import { metricToolContextFrom, type CompilerSourceContext } from './source-context';
-import { buildManifestPresentation } from './presentation';
+import { buildManifestPresentation, type OverlayBinding } from './presentation';
+import {
+  describeAssetLocation,
+  isAssetUrlWithinScopes,
+  parseAssetScope,
+  type AssetScope,
+} from './asset-scope';
 
 /**
  * The deterministic Playable Moment compiler (KYN-16, docs/06 gates 1–6).
@@ -310,14 +316,25 @@ export function compileMomentProposal(
       `rights policy "${proposal.rightsPolicyRef}" does not permit tenant "${source.tenantId}" for these sources; allowed: ${source.rightsPolicyAllowlist.join(', ')}`,
     );
   }
-  for (const [index, url] of proposal.assetUrls.entries()) {
-    const scoped = source.assetUrlPrefixes.some((prefix) => url.startsWith(prefix));
-    if (!scoped) {
-      errors.add(
-        `assetUrls[${String(index)}]`,
-        'cross_tenant_reference',
-        `asset URL "${url}" is outside this tenant's asset scope (${source.assetUrlPrefixes.join(' or ')})`,
-      );
+  // Asset authorization compares the CANONICAL, parsed location against the
+  // configured tenant scopes — never raw string prefixes, which accept
+  // `../` and percent-encoded traversal into other tenants' directories.
+  const assetScopes = source.assetUrlPrefixes.map(parseAssetScope);
+  if (source.assetUrlPrefixes.some((_, index) => assetScopes[index] === null)) {
+    errors.add(
+      '(root)',
+      'constraint_violation',
+      'a configured asset scope prefix is not a valid https directory URL — fail closed',
+    );
+  } else {
+    for (const [index, url] of proposal.assetUrls.entries()) {
+      if (!isAssetUrlWithinScopes(url, assetScopes as readonly AssetScope[])) {
+        errors.add(
+          `assetUrls[${String(index)}]`,
+          'cross_tenant_reference',
+          `asset URL resolves to "${describeAssetLocation(url)}", outside this tenant's authorized asset scope (${source.assetUrlPrefixes.join(' or ')})`,
+        );
+      }
     }
   }
 
@@ -519,26 +536,148 @@ export function compileMomentProposal(
     });
   }
 
-  // Overlay metric references resolve against the aliases minted above.
-  for (const [index, overlay] of proposal.overlays.entries()) {
-    if (overlay.metricRef !== undefined && !aliases.has(overlay.metricRef)) {
-      errors.add(
-        `overlays[${String(index)}].metricRef`,
-        'missing_reference',
-        `overlay cites metric "${overlay.metricRef}" which no derived_metric evidence in this proposal computes (minted: ${[...aliases].join(', ') || 'none'})`,
-      );
-    }
-  }
-
-  // ---- Gate 7: claim validation under the TEXT LAW ------------------------
-  // calculated/observed claim text is GENERATED from the verified source;
-  // hypotheses pass their (schema-guarded, number-free) editorial text.
+  // ---- Gate 6.5: overlay semantic binding (no false provenance) -----------
+  // Every overlay's audience-facing content must be SUPPORTED by the
+  // evidence it cites — a correct number may never be displayed under
+  // mismatched or unrelated evidence attribution (KYN-16 final review,
+  // blocker 1). The binding computed here is the ONLY input the
+  // presentation builder may use; no opportunistic re-resolution exists.
   const metricsByEvidenceId = new Map(metrics.map((metric) => [metric.evidenceId, metric]));
   const eventsByEvidenceId = new Map(
     resolved.flatMap((item) =>
       item.event === undefined ? [] : [[item.entry.id, item.event] as const],
     ),
   );
+  const overlayBindings: OverlayBinding[] = [];
+
+  for (const [index, overlay] of proposal.overlays.entries()) {
+    const path = `overlays[${String(index)}]`;
+    const citedMetrics = overlay.evidenceIds
+      .map((id) => metricsByEvidenceId.get(id))
+      .filter((metric): metric is VerifiedMetric => metric !== undefined);
+    const citedEventIds = overlay.evidenceIds.filter((id) => eventsByEvidenceId.has(id));
+
+    if (overlay.kind === 'caption') {
+      if (overlay.metricRef !== undefined) {
+        errors.add(
+          `${path}.metricRef`,
+          'invalid_value',
+          'caption overlays cannot reference metrics — captions are the editorial (hypothesis) channel and must not acquire factual or numerical meaning',
+        );
+        continue;
+      }
+      // The caption's text is a hypothesis claim sharing its evidence; the
+      // cue cites the CLAIM's own evidence, never unrelated overlay ids.
+      const claim = proposal.claims.find(
+        (candidate) =>
+          candidate.status === 'hypothesis' &&
+          candidate.evidenceIds.some((id) => overlay.evidenceIds.includes(id)),
+      );
+      if (claim === undefined) {
+        errors.add(
+          `${path}.evidenceIds`,
+          'missing_reference',
+          'caption overlays must cite evidence shared with a hypothesis claim — that editorial text is the caption',
+        );
+        continue;
+      }
+      overlayBindings.push({
+        overlay,
+        channel: { kind: 'caption', claimId: claim.id },
+      });
+      continue;
+    }
+
+    if (overlay.kind === 'event_marker') {
+      if (overlay.metricRef !== undefined) {
+        errors.add(
+          `${path}.metricRef`,
+          'invalid_value',
+          `event-marker overlays display a cited source event and cannot reference metrics — metricRef "${overlay.metricRef}" would silently turn the marker into a metric cue (cited evidence: [${overlay.evidenceIds.join(', ')}])`,
+        );
+        continue;
+      }
+      if (citedEventIds.length === 0) {
+        errors.add(
+          `${path}.evidenceIds`,
+          'missing_reference',
+          'event-marker overlays must cite accepted source-event evidence (the cited evidence contains no source event)',
+        );
+        continue;
+      }
+      if (citedMetrics.length > 0) {
+        errors.add(
+          `${path}.evidenceIds`,
+          'invalid_value',
+          'event-marker overlays may cite only source-event evidence — citing a derived metric they do not display is false provenance',
+        );
+        continue;
+      }
+      if (citedEventIds.length > 1) {
+        errors.add(
+          `${path}.evidenceIds`,
+          'invalid_value',
+          `event-marker overlays cite exactly one source event (got ${String(citedEventIds.length)}); the displayed fact would be ambiguous`,
+        );
+        continue;
+      }
+      overlayBindings.push({
+        overlay,
+        channel: { kind: 'event', evidenceId: citedEventIds[0]! },
+      });
+      continue;
+    }
+
+    // Data overlays (distance/trajectory/zone/source_quality) display a
+    // verified metric — and ONLY a metric computed by evidence this same
+    // overlay cites.
+    if (overlay.metricRef !== undefined) {
+      if (!aliases.has(overlay.metricRef)) {
+        errors.add(
+          `${path}.metricRef`,
+          'missing_reference',
+          `overlay cites metric "${overlay.metricRef}" which no derived_metric evidence in this proposal computes (minted: ${[...aliases].join(', ') || 'none'})`,
+        );
+        continue;
+      }
+      const supported = citedMetrics.some((metric) => metric.alias === overlay.metricRef);
+      if (!supported) {
+        errors.add(
+          `${path}.metricRef`,
+          'invalid_value',
+          `metric "${overlay.metricRef}" is not computed by any evidence this overlay cites ([${overlay.evidenceIds.join(', ')}]) — a correct number may not be displayed under mismatched provenance`,
+        );
+        continue;
+      }
+      const metric = citedMetrics.find((candidate) => candidate.alias === overlay.metricRef)!;
+      overlayBindings.push({ overlay, channel: { kind: 'metric', evidenceId: metric.evidenceId } });
+      continue;
+    }
+    if (citedMetrics.length === 0) {
+      errors.add(
+        `${path}.evidenceIds`,
+        'missing_reference',
+        'data overlays must cite derived-metric evidence — the displayed value is the verified metric',
+      );
+      continue;
+    }
+    if (citedMetrics.length > 1) {
+      errors.add(
+        `${path}.evidenceIds`,
+        'invalid_value',
+        `overlay cites ${String(citedMetrics.length)} derived-metric evidence entries without a metricRef; the displayed value would be ambiguous`,
+      );
+      continue;
+    }
+    overlayBindings.push({
+      overlay,
+      channel: { kind: 'metric', evidenceId: citedMetrics[0]!.evidenceId },
+    });
+  }
+
+  // ---- Gate 7: claim validation under the TEXT LAW ------------------------
+  // calculated/observed claim text is GENERATED from the verified source;
+  // hypotheses pass their (schema-guarded, number-free) editorial text.
   const compiledClaims: Claim[] = [];
 
   for (const [index, c] of proposal.claims.entries()) {
@@ -711,8 +850,7 @@ export function compileMomentProposal(
     rightsPolicyRef: proposal.rightsPolicyRef,
     presentation: buildManifestPresentation({
       claims: compiledClaims,
-      overlays: proposal.overlays,
-      metrics,
+      bindings: overlayBindings,
       metricsByEvidenceId,
       eventsByEvidenceId,
       headline: proposal.recapHeadline,

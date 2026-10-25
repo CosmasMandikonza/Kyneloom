@@ -3,96 +3,92 @@ import { eventCueText, metricCueText } from './facts';
 import type { VerifiedMetric } from './compile';
 
 /**
- * Presentation assembly (KYN-16, review blocker B): the broadcast cues and
- * recap the audience sees are BUILT INTO the manifest's content-addressed
- * `presentation` section, so the single approval hash covers every visible
- * word. Everything here is compiler-authored:
+ * Presentation assembly (KYN-16, review blockers B and final-1).
  *
- * - metric cues quote the verified metric (facts.ts);
- * - event cues quote the accepted source event;
- * - caption cues carry a HYPOTHESIS claim's editorial text — the one channel
- *   for model prose, number-free by schema and hashed here like everything
- *   else;
- * - recap lines mirror the compiled claims (generated fact sentences for
- *   observed/calculated, editorial text for hypotheses).
+ * The broadcast cues and recap the audience sees are BUILT INTO the
+ * manifest's content-addressed `presentation` section (one hash covers
+ * every visible word), and every cue's CONTENT comes from a compile-verified
+ * overlay binding — this module performs NO resolution of its own. A metric
+ * cue cites exactly the evidence that computes the displayed value; an
+ * event cue cites exactly the cited source event; a caption carries a
+ * verified hypothesis claim's editorial text and cites the CLAIM's own
+ * evidence. False provenance is structurally impossible here because the
+ * compiler rejects unsupported bindings before this code runs.
  *
  * Cue times are OFFSETS from the moment start (the manifest clock law);
  * consumers convert to the absolute match clock exactly once.
  */
 
+/** The compile-verified channel behind one overlay. */
+export type OverlayBinding =
+  | {
+      readonly overlay: VisualOverlay;
+      readonly channel: { readonly kind: 'metric'; readonly evidenceId: string };
+    }
+  | {
+      readonly overlay: VisualOverlay;
+      readonly channel: { readonly kind: 'event'; readonly evidenceId: string };
+    }
+  | {
+      readonly overlay: VisualOverlay;
+      readonly channel: { readonly kind: 'caption'; readonly claimId: string };
+    };
+
 export function buildManifestPresentation(input: {
   readonly claims: readonly Claim[];
-  readonly overlays: readonly VisualOverlay[];
-  readonly metrics: readonly VerifiedMetric[];
+  readonly bindings: readonly OverlayBinding[];
   readonly metricsByEvidenceId: ReadonlyMap<string, VerifiedMetric>;
   readonly eventsByEvidenceId: ReadonlyMap<string, MatchEvent>;
   readonly headline: string;
 }): ManifestPresentation {
-  const aliases = new Set(input.metrics.map((metric) => metric.alias));
-
-  const broadcast = [];
-  for (const overlay of input.overlays) {
-    // Caption overlays are the editorial voice: a hypothesis claim sharing
-    // evidence with the overlay. Its number-free text is hashed into the
-    // artifact; a caption with no matching editorial claim renders no cue.
-    if (overlay.kind === 'caption') {
-      const hypothesis = input.claims.find(
-        (claim) =>
-          claim.status === 'hypothesis' &&
-          claim.evidenceIds.some((id) => overlay.evidenceIds.includes(id)),
-      );
-      if (hypothesis !== undefined) {
-        broadcast.push({
-          id: overlay.id,
-          kind: 'caption' as const,
-          startMs: overlay.startMs,
-          endMs: overlay.endMs,
-          text: hypothesis.text,
-          evidenceIds: [...overlay.evidenceIds],
-        });
+  const broadcast = input.bindings.map((binding): ManifestPresentation['broadcast'][number] => {
+    const overlay = binding.overlay;
+    const channel = binding.channel;
+    if (channel.kind === 'metric') {
+      const metric = input.metricsByEvidenceId.get(channel.evidenceId);
+      if (metric === undefined) {
+        throw new Error('presentation binding references an unverified metric');
       }
-      continue;
+      return {
+        id: overlay.id,
+        kind: 'metric' as const,
+        startMs: overlay.startMs,
+        endMs: overlay.endMs,
+        text: metricCueText(metric),
+        // Exactly the evidence that computes the displayed number.
+        evidenceIds: [metric.evidenceId],
+        metricAlias: metric.alias,
+      };
     }
-
-    // Data overlays quote verified content: an explicitly referenced metric,
-    // or the verified metric a cited derived_metric evidence entry computed.
-    const alias =
-      overlay.metricRef !== undefined && aliases.has(overlay.metricRef)
-        ? overlay.metricRef
-        : (overlay.evidenceIds
-            .map((id) => input.metricsByEvidenceId.get(id))
-            .find((metric) => metric !== undefined)?.alias ?? null);
-    if (alias !== null) {
-      const metric = input.metrics.find((entry) => entry.alias === alias);
-      if (metric !== undefined) {
-        broadcast.push({
-          id: overlay.id,
-          kind: 'metric' as const,
-          startMs: overlay.startMs,
-          endMs: overlay.endMs,
-          text: metricCueText(metric),
-          evidenceIds: [...overlay.evidenceIds],
-          metricAlias: alias,
-        });
-        continue;
+    if (channel.kind === 'event') {
+      const event = input.eventsByEvidenceId.get(channel.evidenceId);
+      if (event === undefined) {
+        throw new Error('presentation binding references an unaccepted event');
       }
-    }
-
-    // Event cue: a cited source_event evidence entry names a real event.
-    const eventEntry = overlay.evidenceIds
-      .map((id) => input.eventsByEvidenceId.get(id))
-      .find((event) => event !== undefined);
-    if (eventEntry !== undefined) {
-      broadcast.push({
+      return {
         id: overlay.id,
         kind: 'event_marker' as const,
         startMs: overlay.startMs,
         endMs: overlay.endMs,
-        text: eventCueText(eventEntry),
-        evidenceIds: [...overlay.evidenceIds],
-      });
+        text: eventCueText(event),
+        // Exactly the cited source event.
+        evidenceIds: [channel.evidenceId],
+      };
     }
-  }
+    const claim = input.claims.find((candidate) => candidate.id === channel.claimId);
+    if (claim === undefined) {
+      throw new Error('presentation binding references an unknown claim');
+    }
+    return {
+      id: overlay.id,
+      kind: 'caption' as const,
+      startMs: overlay.startMs,
+      endMs: overlay.endMs,
+      text: claim.text,
+      // The editorial claim's own support — the caption displays its words.
+      evidenceIds: [...claim.evidenceIds],
+    };
+  });
 
   broadcast.sort((a, b) => a.startMs - b.startMs || (a.id < b.id ? -1 : 1));
 

@@ -64,6 +64,14 @@ export interface SchemaMigration {
  * valid v0.2.0 documents whose optional `presentation` section is absent),
  * proven by the corpus tests that parse every committed 0.1.0 fixture
  * through it. Nothing may bypass this registry.
+ *
+ * PUBLICATION GATE (KYN-16 final review, for KYN-18): a stamp-migrated
+ * document is a DIFFERENT document. `schemaVersion` is inside the hashed
+ * `approvalContentPayload`, so 0.1.0 content re-stamped as 0.2.0 hashes
+ * differently — and the 0.1.0 hash a founder approved must NEVER be
+ * re-presented as covering the migrated 0.2.0 document. Release logic must
+ * re-derive the hash from the migrated document and require a fresh
+ * approval; approval records bind (revision, hash) pairs, not prose.
  */
 export const MIGRATIONS: readonly SchemaMigration[] = [
   {

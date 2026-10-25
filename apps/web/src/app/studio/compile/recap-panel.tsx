@@ -15,6 +15,9 @@ export function RecapPanel({ active }: { readonly active: CompiledMomentView }) 
       <h2 id="recap-title" className="compile__section-title">
         Verified recap &amp; manifest identity
       </h2>
+      <p className="compile__identity-title compile__recap-headline-label">
+        Editorial headline — number-free, not fact-verified
+      </p>
       <p className="compile__recap-headline">{active.recapHeadline}</p>
       <ul className="compile__claims" role="list">
         {active.recapLines.map((line) => (

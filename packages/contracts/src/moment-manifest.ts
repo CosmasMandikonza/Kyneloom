@@ -682,6 +682,13 @@ export interface ApprovalContentPayload {
   readonly evidence: readonly EvidenceEntry[];
   readonly lenses: readonly Lens[];
   readonly rightsPolicyRef: string;
+  /**
+   * Audience-facing cues + recap (v0.2.0): the runtime payload spreads it in
+   * (everything except status/approval), so the declared type must list it —
+   * future publish code cannot accidentally drop it from the hashed identity.
+   * Absent only on stamp-migrated v0.1.0 documents.
+   */
+  readonly presentation?: ManifestPresentation;
 }
 
 export function approvalContentPayload(manifest: MomentManifest): ApprovalContentPayload {

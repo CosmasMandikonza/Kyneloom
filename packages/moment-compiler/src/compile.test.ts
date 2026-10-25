@@ -18,6 +18,7 @@ import {
 import {
   buildCompileCorpus,
   compileMomentProposal,
+  metricCueText,
   metricFactSentence,
   rescaleCameraTrackToWindow,
   type CompilerSourceContext,
@@ -579,6 +580,203 @@ describe('compileMomentProposal — the factual-text bypass is closed (blocker A
     if (!result.ok) return;
     const calculated = result.manifest.claims.find((claim) => claim.status === 'calculated');
     expect(calculated!.text).toBe(metricFactSentence(result.metrics[0]!));
+  });
+});
+
+describe('compileMomentProposal — no metric under false provenance (final review, blocker 1)', () => {
+  it('the review reproducer: an event_marker naming a real, verified alias it does not cite is rejected', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    const entry = corpus.entries.find(
+      (candidate) => candidate.id === 'defect-mismatched-metric-ref',
+    );
+    expect(entry).toBeDefined();
+    const result = compileMomentProposal(entry!.proposal, source);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const error = result.errors.find(
+        (candidate) => candidate.fieldPath === 'overlays[1].metricRef',
+      );
+      expect(error).toBeDefined();
+      expect(error!.code).toBe('invalid_value');
+      // The rejection names the overlay's own cited evidence.
+      expect(error!.message).toContain('ev-reception');
+    }
+  });
+
+  it('a data overlay may not display a verified metric computed by evidence it does not cite', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    const golden = compileMomentProposal(corpus.golden, source);
+    expect(golden.ok).toBe(true);
+    if (!golden.ok) return;
+    const alias = golden.metrics[0]!.alias; // a REAL alias the proposal computes
+    const forged = compileMomentProposal(
+      {
+        ...corpus.golden,
+        overlays: corpus.golden.overlays.map((overlay) =>
+          overlay.id === 'ov-separation'
+            ? { ...overlay, metricRef: alias, evidenceIds: ['ev-reception'] }
+            : overlay,
+        ),
+      },
+      source,
+    );
+    expect(forged.ok).toBe(false);
+    if (!forged.ok) {
+      const error = forged.errors.find(
+        (candidate) => candidate.fieldPath === 'overlays[0].metricRef',
+      );
+      expect(error).toBeDefined();
+      expect(error!.code).toBe('invalid_value');
+      expect(error!.message).toContain(alias);
+      expect(error!.message).toContain('ev-reception');
+    }
+  });
+
+  it('captions and event markers may not silently become metric overlays (kind-to-evidence binding)', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    const golden = compileMomentProposal(corpus.golden, source);
+    expect(golden.ok).toBe(true);
+    if (!golden.ok) return;
+    const alias = golden.metrics[0]!.alias;
+
+    const captionAsMetric = compileMomentProposal(
+      {
+        ...corpus.golden,
+        overlays: corpus.golden.overlays.map((overlay) =>
+          overlay.id === 'ov-caption-reading' ? { ...overlay, metricRef: alias } : overlay,
+        ),
+      },
+      source,
+    );
+    expect(captionAsMetric.ok).toBe(false);
+    if (!captionAsMetric.ok) {
+      expect(
+        captionAsMetric.errors.some(
+          (error) => error.fieldPath === 'overlays[2].metricRef' && error.code === 'invalid_value',
+        ),
+      ).toBe(true);
+    }
+
+    const markerCitingMetric = compileMomentProposal(
+      {
+        ...corpus.golden,
+        overlays: corpus.golden.overlays.map((overlay) =>
+          overlay.id === 'ov-reception'
+            ? { ...overlay, evidenceIds: ['ev-reception', 'ev-separation'] }
+            : overlay,
+        ),
+      },
+      source,
+    );
+    expect(markerCitingMetric.ok).toBe(false);
+    if (!markerCitingMetric.ok) {
+      expect(
+        markerCitingMetric.errors.some(
+          (error) =>
+            error.fieldPath === 'overlays[1].evidenceIds' && error.code === 'invalid_value',
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('a matching overlay still compiles, and every emitted cue cites exactly its supporting evidence', () => {
+    const { source } = buildSource();
+    const result = compileGolden(source);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const presentation = result.manifest.presentation;
+    expect(presentation).toBeDefined();
+    if (presentation === undefined) return;
+
+    const metricsByEvidenceId = new Map(
+      result.metrics.map((metric) => [metric.evidenceId, metric]),
+    );
+    const evidenceById = new Map(result.manifest.evidence.map((entry) => [entry.id, entry]));
+
+    for (const cue of presentation.broadcast) {
+      if (cue.kind === 'metric') {
+        // The cue's ONE cited evidence is exactly the derived_metric entry
+        // that computes the displayed alias — never unrelated ids.
+        expect(cue.evidenceIds).toHaveLength(1);
+        const evidence = evidenceById.get(cue.evidenceIds[0]!);
+        expect(evidence?.kind).toBe('derived_metric');
+        const metric = metricsByEvidenceId.get(cue.evidenceIds[0]!);
+        expect(metric).toBeDefined();
+        expect(metric!.alias).toBe(cue.metricAlias);
+        expect(cue.text).toBe(metricCueText(metric!));
+      } else if (cue.kind === 'event_marker') {
+        // The marker cites its actual cited source event — the entry is a
+        // source_event and the text is that event's fact sentence.
+        expect(cue.evidenceIds).toHaveLength(1);
+        const evidence = evidenceById.get(cue.evidenceIds[0]!);
+        expect(evidence?.kind).toBe('source_event');
+        expect(cue.metricAlias).toBeUndefined();
+      } else {
+        // The caption carries a hypothesis claim's editorial text and cites
+        // the CLAIM's evidence, not unrelated overlay ids.
+        const claim = result.manifest.claims.find(
+          (candidate) => candidate.status === 'hypothesis' && candidate.text === cue.text,
+        );
+        expect(claim).toBeDefined();
+        expect(cue.text).toBe(claim!.text);
+        expect(cue.evidenceIds).toEqual([...claim!.evidenceIds]);
+      }
+    }
+
+    // The golden experience keeps its three cues: the separation metric, the
+    // reception event, and the editorial caption.
+    expect(presentation.broadcast.map((cue) => cue.kind).sort()).toEqual([
+      'caption',
+      'event_marker',
+      'metric',
+    ]);
+  });
+});
+
+describe('compileMomentProposal — canonical tenant asset scoping (final review, blocker 2)', () => {
+  it('rejects percent-encoded traversal, lookalike tenants and foreign hosts by canonical location', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    for (const url of [
+      'https://assets.kyneloom.local/tenants/demo-org/%2e%2e/other-org/secret.svg',
+      'https://assets.kyneloom.local/tenants/demo-org-evil/secret.svg',
+      'https://evil.kyneloom.local/tenants/demo-org/secret.svg',
+    ]) {
+      const result = compileMomentProposal({ ...corpus.golden, assetUrls: [url] }, source);
+      expect(result.ok, url).toBe(false);
+      if (!result.ok) {
+        const error = result.errors.find((candidate) => candidate.fieldPath === 'assetUrls[0]');
+        expect(error, url).toBeDefined();
+        expect(error!.code, url).toBe('cross_tenant_reference');
+      }
+    }
+  });
+
+  it('fails closed when a configured asset scope prefix is itself unusable', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    const misconfigured = {
+      ...source,
+      assetUrlPrefixes: ['http://assets.kyneloom.local/tenants/demo-org/'],
+    } as typeof source;
+    const result = compileMomentProposal(corpus.golden, misconfigured);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(
+        result.errors.some(
+          (error) => error.code === 'constraint_violation' && error.fieldPath === '(root)',
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('the golden in-tenant asset still compiles — the canonical gate admits what string prefixes admitted', () => {
+    const { source } = buildSource();
+    const result = compileGolden(source);
+    expect(result.ok).toBe(true);
   });
 });
 

@@ -7,7 +7,14 @@ export {
   type VerifiedMetric,
 } from './compile';
 export { eventCueText, eventFactSentence, metricCueText, metricFactSentence } from './facts';
-export { buildManifestPresentation } from './presentation';
+export { buildManifestPresentation, type OverlayBinding } from './presentation';
+export {
+  canonicalAssetLocation,
+  describeAssetLocation,
+  isAssetUrlWithinScopes,
+  parseAssetScope,
+  type AssetScope,
+} from './asset-scope';
 export {
   buildCompileCorpus,
   selectHeroCandidate,

@@ -143,6 +143,8 @@ stateDiagram-v2
 
 - A valid fixture produces equivalent rendering instructions every replay.
 - Unknown overlay kind or malicious asset URL is rejected.
+- An overlay may display a metric only when a derived-metric evidence entry **it cites** computes that metric; a correct number under mismatched provenance is rejected (KYN-16 review).
+- Asset URLs are authorized by their **canonical parsed location** against tenant scopes — a URL that literally starts with the tenant prefix but resolves through `../` (or percent-encoded dot segments) into another tenant's directory is rejected.
 - Claim with no evidence cannot be `observed` or `calculated`.
 - Camera values containing NaN or unsafe duration are rejected.
 - Rights mismatch cannot enter `approved`.

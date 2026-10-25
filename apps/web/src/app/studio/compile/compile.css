@@ -351,6 +351,10 @@
 
 /* ---------- Recap + identity ---------- */
 
+.compile__recap-headline-label {
+  margin: 0 0 var(--space-2);
+}
+
 .compile__recap-headline {
   margin: 0 0 var(--space-4);
   font-size: var(--step-2);
