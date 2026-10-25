@@ -14,6 +14,8 @@ import {
 } from '@/lib/playback';
 import { sceneTimeline, tracksToSamples } from '@/lib/scene-client';
 import type { SceneData } from '@/lib/scene-data';
+import type { BroadcastCue } from '@kyneloom/moment-compiler';
+import { BroadcastOverlay } from './broadcast-overlay';
 import {
   createFrameCache,
   SceneRuntimeContext,
@@ -112,6 +114,29 @@ export interface ReplayStageProps {
    * from the server-validated scene.initialFocusMs.
    */
   readonly chapterTitle?: string | null;
+  /**
+   * KYN-16: the compiled-moment overlay set. When present, the stage shows
+   * the immutable manifest identity (hash chip), the moment window marker on
+   * the scrubber, and the time-coded broadcast cues derived from the SAME
+   * manifest (absolute match clock — no second clock exists). Presentation
+   * only: transport, cameras and scene truth are untouched by compilation.
+   */
+  readonly compiled?: CompiledMomentOverlay | null;
+  /**
+   * KYN-16: explicitly user-initiated cinematic entry for a compiled moment
+   * (the "Watch the compiled moment" action) — switch camera once, seek to
+   * the moment start and play. Null keeps the default broadcast entry.
+   */
+  readonly autoRun?: { readonly camera: CameraMode; readonly fromMs: number } | null;
+}
+
+/** KYN-16: compiler-verified overlay data bound to this stage's clock. */
+export interface CompiledMomentOverlay {
+  readonly manifestId: string;
+  readonly manifestHash: string;
+  /** Absolute match ms [start, end) of the compiled moment. */
+  readonly momentWindowMs: readonly [number, number];
+  readonly cues: readonly BroadcastCue[];
 }
 
 /**
@@ -119,7 +144,13 @@ export interface ReplayStageProps {
  * stage truthfully (explicit notice, no transport) rather than playing a
  * plausible-but-false replay built from invented defaults.
  */
-export function ReplayStage({ scene, evidence, chapterTitle }: ReplayStageProps) {
+export function ReplayStage({
+  scene,
+  evidence,
+  chapterTitle,
+  compiled,
+  autoRun,
+}: ReplayStageProps) {
   let timeline: ReturnType<typeof sceneTimeline> | null = null;
   let invalidReason: string | null = null;
   try {
@@ -145,6 +176,8 @@ export function ReplayStage({ scene, evidence, chapterTitle }: ReplayStageProps)
       evidence={evidence}
       timeline={timeline}
       chapterTitle={chapterTitle ?? null}
+      compiled={compiled ?? null}
+      autoRun={autoRun ?? null}
     />
   );
 }
@@ -154,7 +187,13 @@ function ReplayStageInner({
   evidence,
   timeline,
   chapterTitle,
-}: ReplayStageProps & { timeline: ReturnType<typeof sceneTimeline> }) {
+  compiled,
+  autoRun,
+}: ReplayStageProps & {
+  timeline: ReturnType<typeof sceneTimeline>;
+  compiled: CompiledMomentOverlay | null;
+  autoRun: { readonly camera: CameraMode; readonly fromMs: number } | null;
+}) {
   const speedGroupId = useId();
 
   const momentWindow = useMemo(
@@ -238,6 +277,20 @@ function ReplayStageInner({
   const [speed, setSpeed] = useState<PlaybackSpeed>(1);
   const [camera, setCamera] = useState<CameraMode>('broadcast');
   const [enteredFromOrb, setEnteredFromOrb] = useState(false);
+
+  // KYN-16: user-initiated compiled-moment entry — seek once, switch to the
+  // compiled camera once, play. Reduced-motion still wins (the environment
+  // effect below pauses playback when the user prefers it).
+  useEffect(() => {
+    if (autoRun === null) return;
+    engine.playheadMs = Math.min(
+      momentWindow.endMs,
+      Math.max(momentWindow.startMs, autoRun.fromMs),
+    );
+    engine.revision += 1;
+    setCamera(autoRun.camera);
+    setPlaying(true);
+  }, [autoRun, engine, momentWindow.endMs, momentWindow.startMs]);
 
   // KYN-09 handoff: arriving from the landing's orb transition (?enter=orb)
   // settles through the same damped rig — one beat of the tactical overhead
@@ -662,6 +715,28 @@ function ReplayStageInner({
     };
   }, [lens, engine, selected, camera, view]);
 
+  // KYN-16 QA/debug hook (not user-facing): the compiled-moment identity and
+  // the currently active broadcast cue, for Playwright proof that the
+  // overlay, the transport and the manifest share one clock.
+  const activeCueRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (compiled === null) return;
+    const hook = window as unknown as Record<string, unknown>;
+    hook['__kyneloomCompiled'] = {
+      manifestId: compiled.manifestId,
+      manifestHash: compiled.manifestHash,
+      momentWindowMs: (): readonly [number, number] => compiled.momentWindowMs,
+      playheadMs: (): number => engine.playheadMs,
+      activeCue: (): string | null => activeCueRef.current,
+      setActiveCue: (text: string | null): void => {
+        activeCueRef.current = text;
+      },
+    };
+    return () => {
+      delete hook['__kyneloomCompiled'];
+    };
+  }, [compiled, engine]);
+
   const onSliderInput = (event: React.FormEvent<HTMLInputElement>): void => {
     const value = Number((event.target as HTMLInputElement).value);
     if (Number.isFinite(value)) setPlayhead(value);
@@ -697,6 +772,10 @@ function ReplayStageInner({
             <Fallback2D runtime={runtime} reason="user-choice" />
           )}
 
+          {/* KYN-16: the compiled moment's time-coded broadcast cues, bound
+              to this stage's own playhead (one clock, one evidence set). */}
+          {compiled !== null ? <BroadcastOverlay cues={compiled.cues} /> : null}
+
           {/* Floating match context — top left */}
           <div className="stage__context" aria-label="Match context">
             <span className="mono stage__clock" ref={clockRef}>
@@ -707,6 +786,15 @@ function ReplayStageInner({
               {scene.teams.home} vs {scene.teams.away}
             </span>
             <span className="chip chip--synthetic">Synthetic</span>
+            {compiled !== null ? (
+              <span
+                className="chip chip--compiled mono"
+                data-compiled-hash={compiled.manifestHash}
+                title={`${compiled.manifestId} · ${compiled.manifestHash} · status draft, approval null`}
+              >
+                Compiled · {compiled.manifestHash.slice(7, 23)}…
+              </span>
+            ) : null}
             {chapterTitle !== null ? (
               <span className="chip chip--evidence" data-chapter-chip={scene.initialFocusMs}>
                 Chapter · {chapterTitle}
@@ -1055,6 +1143,17 @@ function ReplayStageInner({
                   title={`${event.label} · ${event.actorId} · ${formatMatchClock(event.occurredAtMs)}`}
                 />
               ))}
+              {compiled !== null ? (
+                <span
+                  className="stage__moment-region"
+                  data-moment-region={compiled.manifestId}
+                  aria-hidden="true"
+                  style={{
+                    left: `${(playheadFraction(compiled.momentWindowMs[0], momentWindow) * 100).toFixed(2)}%`,
+                    width: `${((playheadFraction(compiled.momentWindowMs[1], momentWindow) - playheadFraction(compiled.momentWindowMs[0], momentWindow)) * 100).toFixed(2)}%`,
+                  }}
+                />
+              ) : null}
             </div>
             <span className="mono stage__scrub-edge">{formatMatchClock(momentWindow.endMs)}</span>
           </div>

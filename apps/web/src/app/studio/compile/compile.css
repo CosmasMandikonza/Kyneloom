@@ -1,0 +1,419 @@
+/*
+ * KYN-16 — Moment Compiler surface (/studio/compile).
+ * Reuses the shared design system (globals.css tokens, .panel, .chip, .btn);
+ * everything below is layout for the compiler flow plus the two stage-side
+ * additions the compiled moment makes to the existing replay stage: the
+ * broadcast overlay and the moment-window marker on the scrubber.
+ */
+
+.compile {
+  padding-top: var(--header-h);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding-bottom: var(--space-8);
+}
+
+.compile__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.compile__title {
+  margin: 0;
+  font-size: var(--step-3);
+  letter-spacing: -0.01em;
+}
+
+.compile__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip--compiled {
+  color: var(--mint-200);
+  border-color: color-mix(in srgb, var(--mint-200) 45%, transparent);
+  background: color-mix(in srgb, var(--mint-500) 8%, transparent);
+}
+
+/* ---------- Stage shell + poster ---------- */
+
+.compile__stage-wrap {
+  position: relative;
+}
+
+.compile__poster {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  text-align: center;
+  padding: var(--space-5);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(81, 215, 189, 0.06), transparent 55%),
+    color-mix(in srgb, var(--ink-950) 78%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.compile__poster-title {
+  margin: 0;
+  font-size: var(--step-2);
+  font-weight: 600;
+}
+
+.compile__poster-hash {
+  font-size: var(--step--1);
+  color: var(--text-muted);
+  word-break: break-all;
+  max-width: 46ch;
+}
+
+.compile__poster-body {
+  margin: 0;
+  max-width: 56ch;
+  color: var(--text-muted);
+}
+
+.compile__poster-hint {
+  font-size: var(--step--1);
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+}
+
+/* ---------- Broadcast overlay (inside the replay stage) ---------- */
+
+.bcoverlay {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: min(72ch, 86%);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--mint-500) 35%, transparent);
+  background: color-mix(in srgb, var(--ink-950) 72%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.bcoverlay__text {
+  font-size: var(--step-1);
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.bcoverlay__meta {
+  font-size: var(--step--1);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mint-500);
+}
+
+/* Moment window marker on the transport scrubber. */
+.stage__scrub-track .stage__moment-region {
+  position: absolute;
+  top: -3px;
+  height: calc(100% + 6px);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--mint-500) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mint-500) 45%, transparent);
+  pointer-events: none;
+}
+
+/* ---------- Compiler grid: source + workbench ---------- */
+
+.compile__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.compile__section-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--step-1);
+}
+
+.compile__section-note {
+  margin: 0 0 var(--space-4);
+  color: var(--text-muted);
+}
+
+.compile__facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.compile__facts > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+.compile__facts dt {
+  font-size: var(--step--1);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.compile__facts dd {
+  margin: 0;
+  font-size: var(--step-0);
+}
+
+.compile__hash {
+  word-break: break-all;
+  color: var(--mint-200);
+}
+
+.compile__evidence {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line-soft);
+}
+
+.compile__evidence-title,
+.compile__identity-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--step--1);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.compile__evidence-numbers {
+  font-size: var(--step-2);
+  color: var(--mint-500);
+}
+
+.compile__evidence-note,
+.compile__verdict-note,
+.compile__identity-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--step--1);
+}
+
+/* ---------- Workbench ---------- */
+
+.compile__entries {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.compile__entry {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-soft);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.compile__entry:hover {
+  border-color: var(--mint-500);
+}
+
+.compile__entry[aria-pressed='true'] {
+  border-color: var(--mint-500);
+  background: color-mix(in srgb, var(--mint-500) 8%, transparent);
+}
+
+.compile__entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.compile__entry-label {
+  font-weight: 600;
+}
+
+.compile__entry-desc {
+  color: var(--text-muted);
+  font-size: var(--step--1);
+}
+
+.compile__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.compile__actions-note {
+  font-size: var(--step--1);
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.compile__request-error {
+  color: var(--amber-400);
+}
+
+.compile__verdict {
+  margin-top: var(--space-4);
+}
+
+.compile__verdict-ok,
+.compile__verdict-bad {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.compile__errors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.compile__error {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--amber-400) 35%, transparent);
+  background: color-mix(in srgb, var(--amber-400) 6%, transparent);
+}
+
+.compile__error-path {
+  font-size: var(--step--1);
+  color: var(--amber-400);
+  word-break: break-all;
+}
+
+.compile__error-code {
+  border-color: color-mix(in srgb, var(--amber-400) 55%, transparent);
+  color: var(--amber-400);
+  background: color-mix(in srgb, var(--amber-400) 10%, transparent);
+  justify-self: end;
+}
+
+.compile__error-message {
+  grid-column: 1 / -1;
+  color: var(--text-primary);
+  font-size: var(--step--1);
+}
+
+/* ---------- Recap + identity ---------- */
+
+.compile__recap-headline {
+  margin: 0 0 var(--space-4);
+  font-size: var(--step-2);
+}
+
+.compile__claims {
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.compile__claim {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  align-items: baseline;
+}
+
+.compile__claim-text {
+  grid-column: 2;
+}
+
+.compile__claim-disclosure,
+.compile__claim-evidence {
+  grid-column: 2;
+  font-size: var(--step--1);
+}
+
+.compile__claim-disclosure {
+  color: var(--amber-400);
+}
+
+.compile__claim-evidence {
+  color: var(--text-muted);
+}
+
+.compile__identity {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line-soft);
+}
+
+.compile__unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 60rem) {
+  .compile__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 35rem) {
+  .compile {
+    padding-top: calc(var(--header-h) + var(--space-3));
+    gap: var(--space-4);
+  }
+
+  .bcoverlay {
+    bottom: 18%;
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .bcoverlay__text {
+    font-size: var(--step-0);
+  }
+
+  .compile__claim {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .compile__claim-text,
+  .compile__claim-disclosure,
+  .compile__claim-evidence {
+    grid-column: 1;
+  }
+}

@@ -1,6 +1,8 @@
 # 06 — Moment Manifest: the center of the platform
 
 > **Status:** v0.1 proposal — **implemented as a runtime-validated Zod schema in [`packages/contracts/src/moment-manifest.ts`](../packages/contracts/src/moment-manifest.ts) (KYN-02)**, version `0.1.0`, with a validated corpus in [`tests/fixtures/contracts`](../tests/fixtures/contracts) and a shared example exported as `exampleMomentManifest()`.
+>
+> **Update (KYN-16, 2026-10-24): the deterministic compiler exists.** The untrusted-input side of this contract is now real: typed `MomentProposal` documents ([`contracts/moment-proposal.ts`](../packages/contracts/src/moment-proposal.ts)) are validated and compiled into trusted, content-hashed manifest drafts by [`@kyneloom/moment-compiler`](../packages/moment-compiler), with the semantic gates below enforced and a pinned golden artifact ([`tests/fixtures/compiled`](../tests/fixtures/compiled)). See [22 — Moment compiler](22-moment-compiler.md) for the boundary, the error vocabulary and the KYN-15 handoff contract. Approvals/releases remain a future server workflow; the compiler can never mint one.
 
 ## Why this exists
 

@@ -10,10 +10,15 @@ export const metadata: Metadata = {
 };
 
 const DISABLED_TOOLS = [
-  { label: 'Camera track editor', reason: 'Requires compiled MomentManifest drafts (Issue #16).' },
+  {
+    label: 'Camera track editor',
+    reason:
+      'Editing requires draft revisions (Issue #17). Compiling proposals into manifests is live at /studio/compile (KYN-16).',
+  },
   {
     label: 'Overlay composer',
-    reason: 'Requires the manifest overlay grammar wired to evidence (Issue #16).',
+    reason:
+      'Authoring requires the Studio draft workflow (Issue #17). Compiler-validated overlays ship at /studio/compile (KYN-16).',
   },
   {
     label: 'Claim review',
@@ -42,6 +47,9 @@ export default async function StudioPage() {
           </nav>
           <p className="studio__bar-title">The Invisible Assist — draft</p>
           <div className="studio__bar-actions">
+            <Link href="/studio/compile" className="btn btn--ghost">
+              Moment compiler · KYN-16
+            </Link>
             <button
               type="button"
               className="btn btn--ghost"
