@@ -159,4 +159,27 @@ export {
 
 export { MANIFEST_SEMANTIC_CHECKS, type ManifestSemanticCheck } from './semantic-verification';
 
+export {
+  PROPOSAL_SCHEMA_VERSION,
+  PROPOSAL_TOOL_ALLOWLIST,
+  PROPOSAL_ORIGINS,
+  METRIC_QUERY_KINDS,
+  metricQueryArgs,
+  proposalClaim,
+  proposalEvidence,
+  proposalMetricQuery,
+  proposalMetricAssertion,
+  momentProposalSchema,
+  parseMomentProposal,
+  type MomentProposal,
+  type ProposalClaim,
+  type ProposalEvidence,
+  type ProposalMetricAssertion,
+  type ProposalMetricQuery,
+  type ProposalTool,
+  type ProposalOrigin,
+  type MetricQueryKind,
+  type MetricQueryArgs,
+} from './moment-proposal';
+
 export { exampleMomentManifest } from './example-manifest';

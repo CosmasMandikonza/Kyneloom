@@ -31,7 +31,16 @@ export type ContractErrorCode =
   | 'missing_reference'
   | 'duplicate_value'
   | 'unsafe_asset_reference'
-  | 'constraint_violation';
+  | 'constraint_violation'
+  // Semantic verification codes (KYN-16 moment compiler). Emitted by the
+  // compiler — and any future verifier implementing docs/06's semantic
+  // checks — never by schema parsing alone.
+  | 'stale_revision'
+  | 'unknown_command'
+  | 'cross_tenant_reference'
+  | 'unsupported_claim'
+  | 'insufficient_evidence'
+  | 'rights_violation';
 
 const PATH_ROOT = '(root)';
 
