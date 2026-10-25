@@ -139,7 +139,8 @@ async function main(): Promise<void> {
     };
     const cueMargin = 1500; // transport-read latency while playing
     const inMoment =
-      hookData.playhead >= hookData.window[0] && hookData.playhead <= hookData.window[1] + cueMargin;
+      hookData.playhead >= hookData.window[0] &&
+      hookData.playhead <= hookData.window[1] + cueMargin;
     line(
       'one clock: playhead inside the moment window while a cue is live',
       'playhead ∈ moment window (+read latency)',
