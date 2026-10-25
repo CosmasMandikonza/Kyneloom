@@ -53,6 +53,8 @@ A policy failure cannot be resolved by persuasive model prose.
 
 **`compile_manifest(draft, schemaVersion)`** → deterministic manifest or structured validation errors.
 
+> **Status update (KYN-16, implemented):** this tool contract now exists as `@kyneloom/moment-compiler` (`compileMomentProposal`) behind `POST /api/moment/compile`: typed untrusted `MomentProposal` in, trusted content-hashed `MomentManifest` draft + broadcast/recap derivations out, or `ContractValidationError[]` with exact field paths. The untrusted proposal schema and the full KYN-15 handoff contract (input hashes, evidence refs, allowed tools, error vocabulary, revision identity) are documented in [docs/22 — Moment compiler](22-moment-compiler.md). No Foundry connectivity is claimed; the committed corpus proposals are labeled `local-deterministic`.
+
 **Not allowed:** arbitrary SQL, unscoped blob access, freeform HTTP/browser navigation to unknown hosts, uncontrolled code execution, publication tools on agent credentials.
 
 ## Durable execution

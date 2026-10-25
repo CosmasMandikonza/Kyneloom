@@ -1,0 +1,189 @@
+{
+  "schemaVersion": "kyneloom-compiled-artifact-v1",
+  "note": "Pinned output of the deterministic KYN-16 compiler over the committed golden fixture. Regenerate with pnpm tsx scripts/generate-compiled-artifact.ts. Any fixture or compiler change that alters this document changes the manifest hash by construction.",
+  "source": {
+    "matchId": "synthetic-derby-01",
+    "reducerRevision": 11,
+    "sourceHash": "sha256:d61f8be055eebcd30e2ede2140771b8b215e6f2006fb9777c9156cf60908b3db",
+    "candidateId": "cand-d2320439"
+  },
+  "manifestHash": "sha256:88a9f0d1789a329da4f9e0963968e4e53844adcbcc00e7ec20f580c8296e6952",
+  "inputFingerprint": "{\"reducerRevision\":11,\"sourceEventIds\":[\"evt-0007\",\"evt-0009\",\"evt-0010\",\"evt-0042\"],\"sourceHash\":\"sha256:d61f8be055eebcd30e2ede2140771b8b215e6f2006fb9777c9156cf60908b3db\",\"trackingSampleRefs\":[\"frame-47217\",\"frame-47298\"]}",
+  "manifest": {
+    "schemaVersion": "0.2.0",
+    "manifestId": "mom-invisible-assist-directed-v1",
+    "tenantId": "demo-org",
+    "matchId": "synthetic-derby-01",
+    "revision": 1,
+    "status": "draft",
+    "timeRangeMs": [4721700, 4729800],
+    "input": {
+      "reducerRevision": 11,
+      "sourceEventIds": ["evt-0007", "evt-0009", "evt-0010", "evt-0042"],
+      "trackingSampleRefs": ["frame-47217", "frame-47298"],
+      "sourceHash": "sha256:d61f8be055eebcd30e2ede2140771b8b215e6f2006fb9777c9156cf60908b3db"
+    },
+    "scene": {
+      "coordinateSystem": "pitch-meters-center-origin-v1",
+      "cameraTracks": [
+        {
+          "id": "cam-compiled-sequence",
+          "mode": "directed",
+          "startMs": 0,
+          "endMs": 8100,
+          "keyframes": [
+            {
+              "tMs": 0,
+              "position": [-18, -30, 26],
+              "target": [10, -6, 0],
+              "fovDeg": 46
+            },
+            {
+              "tMs": 2268,
+              "position": [-4, -22, 17],
+              "target": [14, -8, 1],
+              "fovDeg": 42
+            },
+            {
+              "tMs": 4455,
+              "position": [8, -12, 12],
+              "target": [22, -6, 1],
+              "fovDeg": 40
+            },
+            {
+              "tMs": 6318,
+              "position": [28, -22, 12],
+              "target": [42, -8, 1],
+              "fovDeg": 38
+            },
+            {
+              "tMs": 8100,
+              "position": [38, -30, 15],
+              "target": [46, -5, 1.2],
+              "fovDeg": 44
+            }
+          ]
+        }
+      ],
+      "overlays": [
+        {
+          "id": "ov-separation",
+          "kind": "distance",
+          "startMs": 810,
+          "endMs": 6075,
+          "evidenceIds": ["ev-separation"]
+        },
+        {
+          "id": "ov-reception",
+          "kind": "event_marker",
+          "startMs": 5832,
+          "endMs": 7032,
+          "evidenceIds": ["ev-reception"]
+        },
+        {
+          "id": "ov-caption-reading",
+          "kind": "caption",
+          "startMs": 6075,
+          "endMs": 8100,
+          "evidenceIds": ["ev-separation"]
+        }
+      ]
+    },
+    "claims": [
+      {
+        "id": "claim-separation-grew",
+        "text": "The measured separation between away-03 and home-09 changed by 16.746 m (from 6.317 m to 23.063 m) between 78:41 and 78:49.",
+        "status": "calculated",
+        "evidenceIds": ["ev-separation"],
+        "language": "en"
+      },
+      {
+        "id": "claim-reception",
+        "text": "Pass completed by home-08 at 78:46 (evt-0042).",
+        "status": "observed",
+        "evidenceIds": ["ev-reception"],
+        "language": "en"
+      },
+      {
+        "id": "claim-run-created-space",
+        "text": "The winger's decoy run likely contributed to the space the finish exploited.",
+        "status": "hypothesis",
+        "evidenceIds": ["ev-separation"],
+        "language": "en",
+        "inferenceDisclosure": "Tactical interpretation from spatial co-occurrence; tracking alone does not establish intent or causation."
+      }
+    ],
+    "evidence": [
+      {
+        "id": "ev-separation",
+        "kind": "derived_metric",
+        "ref": "metric-separation-delta-away-03-home-09-w4721700-4729800",
+        "algorithmVersion": "kyneloom-separation-v1",
+        "inputRefs": ["frame-47217", "frame-47298"]
+      },
+      {
+        "id": "ev-reception",
+        "kind": "source_event",
+        "ref": "evt-0042",
+        "inputRefs": ["evt-0042"]
+      }
+    ],
+    "lenses": ["fan", "analyst", "accessible"],
+    "rightsPolicyRef": "synthetic-0bsd-demo-v1",
+    "presentation": {
+      "presentationVersion": "kyneloom-presentation-v1",
+      "broadcast": [
+        {
+          "id": "ov-separation",
+          "kind": "metric",
+          "startMs": 810,
+          "endMs": 6075,
+          "text": "SEPARATION 6.317 m → 23.063 m · Δ 16.746 m — measured",
+          "evidenceIds": ["ev-separation"],
+          "metricAlias": "metric-separation-delta-away-03-home-09-w4721700-4729800"
+        },
+        {
+          "id": "ov-reception",
+          "kind": "event_marker",
+          "startMs": 5832,
+          "endMs": 7032,
+          "text": "PASS COMPLETED — home-08",
+          "evidenceIds": ["ev-reception"]
+        },
+        {
+          "id": "ov-caption-reading",
+          "kind": "caption",
+          "startMs": 6075,
+          "endMs": 8100,
+          "text": "The winger's decoy run likely contributed to the space the finish exploited.",
+          "evidenceIds": ["ev-separation"]
+        }
+      ],
+      "recap": {
+        "headline": "The run nobody passed to opened the goal",
+        "lines": [
+          {
+            "claimId": "claim-separation-grew",
+            "text": "The measured separation between away-03 and home-09 changed by 16.746 m (from 6.317 m to 23.063 m) between 78:41 and 78:49.",
+            "status": "calculated",
+            "evidenceIds": ["ev-separation"]
+          },
+          {
+            "claimId": "claim-reception",
+            "text": "Pass completed by home-08 at 78:46 (evt-0042).",
+            "status": "observed",
+            "evidenceIds": ["ev-reception"]
+          },
+          {
+            "claimId": "claim-run-created-space",
+            "text": "The winger's decoy run likely contributed to the space the finish exploited.",
+            "status": "hypothesis",
+            "evidenceIds": ["ev-separation"],
+            "inferenceDisclosure": "Tactical interpretation from spatial co-occurrence; tracking alone does not establish intent or causation."
+          }
+        ]
+      }
+    },
+    "approval": null
+  }
+}

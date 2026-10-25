@@ -15,7 +15,7 @@ import type { MomentManifest } from './moment-manifest';
  */
 export function exampleMomentManifest(): MomentManifest {
   return {
-    schemaVersion: '0.1.0',
+    schemaVersion: '0.2.0',
     manifestId: 'mom-synthetic-78m',
     tenantId: 'demo-org',
     matchId: 'synthetic-derby-01',
@@ -57,7 +57,10 @@ export function exampleMomentManifest(): MomentManifest {
     claims: [
       {
         id: 'claim-01',
-        text: 'The defender separation increased during the run.',
+        // v0.2.0 text law: verified-claim text is compiler-authored from the
+        // deterministic fact; this example shows the shape such a sentence
+        // takes for the separation measurement.
+        text: 'The measured defender–striker separation changed by 14.038 m (from 6.306 m to 20.344 m) between 78:40 and 78:44.',
         status: 'calculated',
         evidenceIds: ['evidence-01'],
         language: 'en',
@@ -83,6 +86,39 @@ export function exampleMomentManifest(): MomentManifest {
     ],
     lenses: ['fan', 'analyst', 'accessible'],
     rightsPolicyRef: 'demo-synthetic-policy-v1',
+    presentation: {
+      presentationVersion: 'kyneloom-presentation-v1',
+      broadcast: [
+        {
+          id: 'cue-01',
+          kind: 'metric',
+          startMs: 6000,
+          endMs: 11000,
+          text: 'SEPARATION 6.306 m → 20.344 m · Δ 14.038 m — measured',
+          evidenceIds: ['evidence-01'],
+          metricAlias: 'metric-defender-separation-01',
+        },
+      ],
+      recap: {
+        headline: 'The run nobody passed to opened the goal',
+        lines: [
+          {
+            claimId: 'claim-01',
+            text: 'The measured defender–striker separation changed by 14.038 m (from 6.306 m to 20.344 m) between 78:40 and 78:44.',
+            status: 'calculated',
+            evidenceIds: ['evidence-01'],
+          },
+          {
+            claimId: 'claim-02',
+            text: "The winger's movement likely contributed to opening a passing lane.",
+            status: 'hypothesis',
+            evidenceIds: ['evidence-01'],
+            inferenceDisclosure:
+              'Tactical interpretation from spatial proximity; not a causal measurement.',
+          },
+        ],
+      },
+    },
     approval: null,
   };
 }

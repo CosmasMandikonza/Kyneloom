@@ -4,12 +4,14 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * KYN-01 acceptance: the workspace dependency direction is a tested rule,
- * not a convention. Allowed edges (KYN-02 added match-core -> contracts):
+ * not a convention. Allowed edges (KYN-02 added match-core -> contracts;
+ * KYN-16 added moment-compiler -> contracts, match-core):
  *
- *   contracts      -> (no workspace dependencies)
- *   match-core     -> contracts
- *   scene-renderer -> contracts, match-core
- *   apps/*         -> any workspace package
+ *   contracts       -> (no workspace dependencies)
+ *   match-core      -> contracts
+ *   scene-renderer  -> contracts, match-core
+ *   moment-compiler -> contracts, match-core
+ *   apps/*          -> any workspace package
  *
  * Any other edge — including cycles, undeclared imports, or a package under
  * packages/ importing an app — fails this test.
@@ -23,6 +25,7 @@ const ALLOWED_PACKAGE_EDGES: Record<string, readonly string[]> = {
   '@kyneloom/contracts': [],
   '@kyneloom/match-core': ['@kyneloom/contracts'],
   '@kyneloom/scene-renderer': ['@kyneloom/contracts', '@kyneloom/match-core'],
+  '@kyneloom/moment-compiler': ['@kyneloom/contracts', '@kyneloom/match-core'],
 };
 
 function walk(dir: string, filter: (file: string) => boolean): string[] {
@@ -70,6 +73,7 @@ describe('workspace package boundaries', () => {
     expect(packageDirs.map((dir) => path.basename(dir)).sort()).toEqual([
       'contracts',
       'match-core',
+      'moment-compiler',
       'scene-renderer',
     ]);
   });
