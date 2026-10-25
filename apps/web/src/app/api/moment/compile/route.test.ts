@@ -38,7 +38,7 @@ describe('POST /api/moment/compile', () => {
     };
     expect(payload.ok).toBe(true);
     expect(payload.manifestHash).toBe(
-      'sha256:ad55d6fcfa824816bd0f7e1ee0ed5c0c34863bdcc4dd9f0c7909584120f580bb',
+      'sha256:88a9f0d1789a329da4f9e0963968e4e53844adcbcc00e7ec20f580c8296e6952',
     );
     expect(payload.manifest.status).toBe('draft');
     expect(payload.manifest.approval).toBeNull();

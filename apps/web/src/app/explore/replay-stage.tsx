@@ -14,7 +14,7 @@ import {
 } from '@/lib/playback';
 import { sceneTimeline, tracksToSamples } from '@/lib/scene-client';
 import type { SceneData } from '@/lib/scene-data';
-import type { BroadcastCue } from '@kyneloom/moment-compiler';
+import type { AbsoluteCue } from '@/lib/compiled-moment';
 import { BroadcastOverlay } from './broadcast-overlay';
 import {
   createFrameCache,
@@ -136,7 +136,7 @@ export interface CompiledMomentOverlay {
   readonly manifestHash: string;
   /** Absolute match ms [start, end) of the compiled moment. */
   readonly momentWindowMs: readonly [number, number];
-  readonly cues: readonly BroadcastCue[];
+  readonly cues: readonly AbsoluteCue[];
 }
 
 /**

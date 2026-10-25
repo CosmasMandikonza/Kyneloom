@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "0.1.0",
+  "schemaVersion": "0.2.0",
   "manifestId": "mom-synthetic-78m",
   "tenantId": "demo-org",
   "matchId": "synthetic-derby-01",
@@ -21,8 +21,18 @@
         "startMs": 0,
         "endMs": 14000,
         "keyframes": [
-          { "tMs": 0, "position": [0, 46, 48], "target": [0, 0, 0], "fovDeg": 48 },
-          { "tMs": 14000, "position": [12, 35, 25], "target": [21, 0, 2], "fovDeg": 43 }
+          {
+            "tMs": 0,
+            "position": [0, 46, 48],
+            "target": [0, 0, 0],
+            "fovDeg": 48
+          },
+          {
+            "tMs": 14000,
+            "position": [12, 35, 25],
+            "target": [21, 0, 2],
+            "fovDeg": 43
+          }
         ]
       }
     ],
@@ -40,7 +50,7 @@
   "claims": [
     {
       "id": "claim-01",
-      "text": "The defender separation increased during the run.",
+      "text": "The measured defender–striker separation changed by 14.038 m (from 6.306 m to 20.344 m) between 78:40 and 78:44.",
       "status": "calculated",
       "evidenceIds": ["evidence-01"],
       "language": "en"
@@ -65,5 +75,37 @@
   ],
   "lenses": ["fan", "analyst", "accessible"],
   "rightsPolicyRef": "demo-synthetic-policy-v1",
+  "presentation": {
+    "presentationVersion": "kyneloom-presentation-v1",
+    "broadcast": [
+      {
+        "id": "cue-01",
+        "kind": "metric",
+        "startMs": 6000,
+        "endMs": 11000,
+        "text": "SEPARATION 6.306 m → 20.344 m · Δ 14.038 m — measured",
+        "evidenceIds": ["evidence-01"],
+        "metricAlias": "metric-defender-separation-01"
+      }
+    ],
+    "recap": {
+      "headline": "The run nobody passed to opened the goal",
+      "lines": [
+        {
+          "claimId": "claim-01",
+          "text": "The measured defender–striker separation changed by 14.038 m (from 6.306 m to 20.344 m) between 78:40 and 78:44.",
+          "status": "calculated",
+          "evidenceIds": ["evidence-01"]
+        },
+        {
+          "claimId": "claim-02",
+          "text": "The winger's movement likely contributed to opening a passing lane.",
+          "status": "hypothesis",
+          "evidenceIds": ["evidence-01"],
+          "inferenceDisclosure": "Tactical interpretation from spatial proximity; not a causal measurement."
+        }
+      ]
+    }
+  },
   "approval": null
 }

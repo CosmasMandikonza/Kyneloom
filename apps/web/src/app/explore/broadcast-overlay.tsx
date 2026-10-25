@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import type { BroadcastCue } from '@kyneloom/moment-compiler';
+import type { AbsoluteCue } from '@/lib/compiled-moment';
 import { useSceneRuntime } from './scene/scene-context';
 
 /**
@@ -18,7 +18,7 @@ import { useSceneRuntime } from './scene/scene-context';
  * per-frame React renders. The static recap panel (same texts, same evidence
  * ids) is the accessible non-transient alternative.
  */
-export function BroadcastOverlay({ cues }: { readonly cues: readonly BroadcastCue[] }) {
+export function BroadcastOverlay({ cues }: { readonly cues: readonly AbsoluteCue[] }) {
   const { engine } = useSceneRuntime();
   const boxRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);

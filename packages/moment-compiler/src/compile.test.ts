@@ -18,6 +18,7 @@ import {
 import {
   buildCompileCorpus,
   compileMomentProposal,
+  metricFactSentence,
   rescaleCameraTrackToWindow,
   type CompilerSourceContext,
   type CompileResult,
@@ -141,7 +142,7 @@ describe('compileMomentProposal — golden path', () => {
     expect(reparsed.ok).toBe(true);
     expect(result.manifest.status).toBe('draft');
     expect(result.manifest.approval).toBeNull();
-    expect(result.manifest.schemaVersion).toBe('0.1.0');
+    expect(result.manifest.schemaVersion).toBe('0.2.0');
     expect(result.metrics).toHaveLength(1);
     expect(result.metrics[0]!.kind).toBe('separation-delta');
   });
@@ -179,20 +180,47 @@ describe('compileMomentProposal — golden path', () => {
     const result = compileGolden(source);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const [startMs, endMs] = result.manifest.timeRangeMs;
+    const presentation = result.manifest.presentation;
+    expect(presentation).toBeDefined();
+    if (presentation === undefined) return;
+    const [, endMs] = result.manifest.timeRangeMs;
+    const windowMs = endMs - result.manifest.timeRangeMs[0];
     const evidenceIds = new Set(result.manifest.evidence.map((entry) => entry.id));
-    for (const cue of result.presentation.broadcast) {
-      expect(cue.startMs).toBeGreaterThanOrEqual(startMs);
-      expect(cue.endMs).toBeLessThanOrEqual(endMs);
+    for (const cue of presentation.broadcast) {
+      // Manifest clock law: cue times are offsets from the moment start.
+      expect(cue.startMs).toBeGreaterThanOrEqual(0);
+      expect(cue.endMs).toBeLessThanOrEqual(windowMs);
       for (const id of cue.evidenceIds) expect(evidenceIds.has(id)).toBe(true);
     }
-    // The caption cue is the verified claim's own text; the metric cue quotes
-    // the recomputed numbers; the recap lists exactly the manifest claims.
-    expect(result.presentation.broadcast.some((cue) => cue.text.includes('SEPARATION'))).toBe(true);
-    expect(result.presentation.recap.lines.map((line) => line.claimId)).toEqual(
+    // The metric cue quotes the recomputed numbers; the caption cue carries
+    // the hypothesis editorial text; the recap mirrors the manifest claims.
+    expect(presentation.broadcast.some((cue) => cue.text.includes('SEPARATION'))).toBe(true);
+    expect(presentation.recap.lines.map((line) => line.claimId)).toEqual(
       result.manifest.claims.map((claim) => claim.id),
     );
-    const hypothesis = result.presentation.recap.lines.find((line) => line.status === 'hypothesis');
+    const hypothesis = presentation.recap.lines.find((line) => line.status === 'hypothesis');
+    expect(hypothesis?.inferenceDisclosure).toBeDefined();
+  });
+
+  it('TEXT LAW: verified claim sentences are compiler-generated from the deterministic facts', () => {
+    const { source } = buildSource();
+    const result = compileGolden(source);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const calculated = result.manifest.claims.find((claim) => claim.status === 'calculated');
+    expect(calculated).toBeDefined();
+    // The recomputed truth (6.317 → 23.063, Δ 16.746) in the generated sentence.
+    expect(calculated!.text).toContain('16.746');
+    expect(calculated!.text).toContain('6.317');
+    expect(calculated!.text).toContain('23.063');
+    expect(calculated!.text).toContain('between 78:41 and 78:49');
+    // Observed text names the actual cited event.
+    const observed = result.manifest.claims.find((claim) => claim.status === 'observed');
+    expect(observed).toBeDefined();
+    expect(observed!.text).toContain('evt-0042');
+    expect(observed!.text.toLowerCase()).toContain('pass completed');
+    // Hypothesis editorial prose passes through, labeled.
+    const hypothesis = result.manifest.claims.find((claim) => claim.status === 'hypothesis');
     expect(hypothesis?.inferenceDisclosure).toBeDefined();
   });
 
@@ -399,6 +427,158 @@ describe('compileMomentProposal — fail-closed identity, rights and commands', 
         ),
       ).toBe(true);
     }
+  });
+});
+
+describe('compileMomentProposal — one identity covers all audience output (blocker B)', () => {
+  it('changing only the recap headline changes the content identity', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    const a = compileMomentProposal(corpus.golden, source);
+    const b = compileMomentProposal(
+      { ...corpus.golden, recapHeadline: 'A different true story' },
+      source,
+    );
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.manifestHash).not.toBe(b.manifestHash);
+    expect(b.manifest.presentation?.recap.headline).toBe('A different true story');
+  });
+
+  it('changing a visible caption timing changes the content identity', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    const a = compileMomentProposal(corpus.golden, source);
+    const caption = corpus.golden.overlays.find((overlay) => overlay.kind === 'caption');
+    expect(caption).toBeDefined();
+    const b = compileMomentProposal(
+      {
+        ...corpus.golden,
+        overlays: corpus.golden.overlays.map((overlay) =>
+          overlay.id === caption!.id ? { ...overlay, startMs: overlay.startMs + 500 } : overlay,
+        ),
+      },
+      source,
+    );
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.manifestHash).not.toBe(b.manifestHash);
+  });
+
+  it('changing one camera keyframe changes the content identity', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    const a = compileMomentProposal(corpus.golden, source);
+    const b = compileMomentProposal(
+      {
+        ...corpus.golden,
+        cameraTracks: corpus.golden.cameraTracks.map((track) => ({
+          ...track,
+          keyframes: track.keyframes.map((keyframe, index) =>
+            index === 1 ? { ...keyframe, fovDeg: 41 } : keyframe,
+          ),
+        })),
+      },
+      source,
+    );
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.manifestHash).not.toBe(b.manifestHash);
+  });
+
+  it('the stored artifact reconstructs all outputs after JSON serialization, without the proposal', () => {
+    const { source } = buildSource();
+    const result = compileGolden(source);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // The persisted artifact is the manifest alone; serialize → reparse →
+    // the same hashed content, cues and recap come back.
+    const persisted = JSON.parse(JSON.stringify(result.manifest)) as unknown;
+    const reparsed = parseMomentManifest(persisted);
+    expect(reparsed.ok).toBe(true);
+    if (!reparsed.ok) return;
+    expect(canonicalJsonStringify(reparsed.data)).toBe(canonicalJsonStringify(result.manifest));
+    expect(reparsed.data.presentation?.broadcast).toBeDefined();
+    expect(reparsed.data.presentation?.recap.headline).toBe(
+      'The run nobody passed to opened the goal',
+    );
+    expect(sha256(approvalContentPayload(reparsed.data))).toBe(result.manifestHash);
+  });
+
+  it('approvals remain null — the compiler cannot authorize publication', () => {
+    const { source } = buildSource();
+    const result = compileGolden(source);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.manifest.approval).toBeNull();
+    expect(result.manifest.status).toBe('draft');
+  });
+});
+
+describe('compileMomentProposal — the factual-text bypass is closed (blocker A)', () => {
+  it('a calculated claim with false prose and no assertion never compiles (the review bypass)', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    const bypass = {
+      ...corpus.golden,
+      claims: corpus.golden.claims.map((claim) =>
+        claim.status === 'calculated'
+          ? {
+              ...claim,
+              text: 'The defender was exactly 14 metres away.',
+              metricAssertion: undefined,
+            }
+          : claim,
+      ),
+    };
+    const result = compileMomentProposal(bypass, source);
+    expect(result.ok).toBe(false);
+  });
+
+  it('a correct assertion cannot smuggle contradictory prose beside it', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    const smuggler = {
+      ...corpus.golden,
+      claims: corpus.golden.claims.map((claim) =>
+        claim.status === 'calculated'
+          ? { ...claim, text: '…and the defender was exactly 14 metres away.' }
+          : claim,
+      ),
+    };
+    const result = compileMomentProposal(smuggler, source);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((error) => error.fieldPath === 'claims[0].text')).toBe(true);
+    }
+  });
+
+  it('an observed claim citing a derived metric is rejected — observations are source events', () => {
+    const { source } = buildSource();
+    const corpus = buildCompileCorpus(source);
+    const mislabeled = {
+      ...corpus.golden,
+      claims: corpus.golden.claims.map((claim) =>
+        claim.status === 'observed' ? { ...claim, evidenceIds: ['ev-separation'] } : claim,
+      ),
+    };
+    const result = compileMomentProposal(mislabeled, source);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((error) => error.code === 'missing_reference')).toBe(true);
+    }
+  });
+
+  it('every verified-claim sentence equals the deterministic formatter output — nothing else can appear', () => {
+    const { source } = buildSource();
+    const result = compileGolden(source);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const calculated = result.manifest.claims.find((claim) => claim.status === 'calculated');
+    expect(calculated!.text).toBe(metricFactSentence(result.metrics[0]!));
   });
 });
 

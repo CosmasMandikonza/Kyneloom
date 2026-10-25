@@ -1,46 +1,55 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import type { SceneData } from '@/lib/scene-data';
 import type { EvidenceProjection } from '@/lib/evidence-data';
-import { ReplayStage, type CompiledMomentOverlay } from '@/app/explore/replay-stage';
+import type { SceneData } from '@/lib/scene-data';
+import type { CompiledMomentView } from '@/lib/compiled-moment';
+import { ReplayStage } from '@/app/explore/replay-stage';
 
 /**
- * KYN-16 — the compiled-moment stage shell. The stage itself is the EXISTING
+ * KYN-16 — the compiled-moment stage. The stage itself is the EXISTING
  * Living Replay (same R3F scene, transport, cameras, 2D fallback, X-Ray);
- * compilation adds the manifest identity chip, the moment-window marker on
- * the scrubber and the synchronized broadcast overlay. Playback starts only
- * on the explicit "Watch" action — the poster tells the truth about what is
- * about to play (draft status, hash, window) before a single frame moves.
+ * the active compiled artifact supplies the directed camera track, the
+ * identity chip, the moment-window marker and the synchronized broadcast
+ * overlay. Playback starts only on the explicit "Watch" action — the poster
+ * tells the truth about what is about to play (draft status, hash, window)
+ * before a single frame moves; after that, every recompile rebinds in place.
  */
 export function CompiledStage({
   scene,
   evidence,
-  compiled,
-  momentStartMs,
+  active,
+  started,
+  onWatch,
+  autoRun,
   momentDurationMs,
 }: {
   readonly scene: SceneData;
   readonly evidence: EvidenceProjection;
-  readonly compiled: CompiledMomentOverlay;
-  readonly momentStartMs: number;
+  readonly active: CompiledMomentView;
+  readonly started: boolean;
+  readonly onWatch: () => void;
+  readonly autoRun: { readonly camera: 'directed'; readonly fromMs: number } | null;
   readonly momentDurationMs: number;
 }) {
-  const [started, setStarted] = useState(false);
-  const autoRun = useMemo(
-    () => (started ? { camera: 'directed' as const, fromMs: momentStartMs } : null),
-    [started, momentStartMs],
-  );
-
   return (
     <section className="compile__stage-wrap" aria-label="Compiled moment stage">
-      <ReplayStage scene={scene} evidence={evidence} compiled={compiled} autoRun={autoRun} />
+      <ReplayStage
+        scene={scene}
+        evidence={evidence}
+        compiled={{
+          manifestId: active.manifestId,
+          manifestHash: active.manifestHash,
+          momentWindowMs: active.momentWindowMs,
+          cues: active.cues,
+        }}
+        autoRun={autoRun}
+      />
       {!started ? (
         <div className="compile__poster" data-compile-poster="">
           <p className="chip chip--evidence">Compiled manifest · draft</p>
-          <p className="compile__poster-title">{compiled.manifestId}</p>
-          <p className="compile__poster-hash mono" title={compiled.manifestHash}>
-            {compiled.manifestHash}
+          <p className="compile__poster-title">{active.manifestId}</p>
+          <p className="compile__poster-hash mono" title={active.manifestHash}>
+            {active.manifestHash}
           </p>
           <p className="compile__poster-body">
             A validated camera sequence, a measured separation overlay and a source-linked recap —
@@ -50,7 +59,7 @@ export function CompiledStage({
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => setStarted(true)}
+            onClick={onWatch}
             data-testid="watch-compiled-moment"
           >
             Watch the compiled moment

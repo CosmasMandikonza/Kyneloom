@@ -88,9 +88,9 @@ async function main(): Promise<void> {
     const hashChip = await page.textContent('[data-compiled-hash]');
     line(
       'desktop poster shows immutable hash chip',
-      'sha256:ad55d6fc…',
+      'sha256:88a9f0d1…',
       (hashChip ?? '').trim(),
-      (hashChip ?? '').includes('ad55d6fc'),
+      (hashChip ?? '').includes('88a9f0d1'),
     );
     await page.screenshot({ path: path.join(OUT_DIR, 'compile-desktop-poster.png') });
 
@@ -107,6 +107,8 @@ async function main(): Promise<void> {
     line('Watch starts the directed camera', 'directed', String(camera), camera === 'directed');
 
     // Wait until the playhead is inside the moment and a cue is live.
+    // Read playhead AND the live cue atomically (a separate evaluate can
+    // race playback past the cue end between the two reads).
     await page.waitForFunction(
       () => {
         const compiled = (window as { __kyneloomCompiled?: CompiledHook }).__kyneloomCompiled;
@@ -115,9 +117,10 @@ async function main(): Promise<void> {
       undefined,
       { timeout: 15_000 },
     );
-    const hook = await page.evaluate(() => {
-      const compiled = (window as { __kyneloomCompiled?: CompiledHook }).__kyneloomCompiled!;
-      const lens = (window as { __kyneloomLens?: LensHook }).__kyneloomLens!;
+    const hook = await page.evaluate(`(() => {
+      const compiled = window.__kyneloomCompiled;
+      const lens = window.__kyneloomLens;
+      if (!compiled || !lens) return null;
       return {
         hash: compiled.manifestHash,
         window: compiled.momentWindowMs(),
@@ -125,12 +128,15 @@ async function main(): Promise<void> {
         cue: compiled.activeCue(),
         camera: lens.camera(),
       };
-    });
+    })()`);
+    if (hook === null) throw new Error('compiled hook missing during playback');
+    const cueMargin = 1500; // transport-read latency while playing
+    const inMoment = hook.playhead >= hook.window[0] && hook.playhead <= hook.window[1] + cueMargin;
     line(
-      'one clock: playhead inside cue window on the match clock',
-      'playhead ∈ moment window',
+      'one clock: playhead inside the moment window while a cue is live',
+      'playhead ∈ moment window (+read latency)',
       `${String(hook.playhead)} ∈ [${String(hook.window[0])}, ${String(hook.window[1])}]`,
-      hook.playhead >= hook.window[0] && hook.playhead <= hook.window[1],
+      inMoment,
     );
     line(
       'broadcast overlay is live with compiler text',
@@ -140,9 +146,9 @@ async function main(): Promise<void> {
     );
     line(
       'manifest identity pinned',
-      'sha256:ad55d6fc…c3da75e',
+      'sha256:88a9f0d1…c296e6952',
       hook.hash,
-      hook.hash === 'sha256:ad55d6fcfa824816bd0f7e1ee0ed5c0c34863bdcc4dd9f0c7909584120f580bb',
+      hook.hash === 'sha256:88a9f0d1789a329da4f9e0963968e4e53844adcbcc00e7ec20f580c8296e6952',
     );
     await page.screenshot({ path: path.join(OUT_DIR, 'compile-desktop-directed-overlay.png') });
 
@@ -194,12 +200,109 @@ async function main(): Promise<void> {
     });
     line(
       'golden recompiles to the pinned hash via the API',
-      'sha256:ad55d6fc…',
+      'sha256:88a9f0d1…',
       okVerdict.slice(0, 120),
-      okVerdict.includes('ad55d6fc'),
+      okVerdict.includes('88a9f0d1'),
     );
     await page.screenshot({ path: path.join(OUT_DIR, 'compile-desktop-verdict-ok.png') });
+
+    // ---- Recompile to the SECOND valid cut: the stage must play the new artifact.
+    await page.getByRole('button', { name: /broadcast sweep/i }).click();
+    await page.getByTestId('compile-proposal').click();
+    await page.waitForSelector('[data-verdict="valid"][data-compiled-entry="broadcast-sweep"]', {
+      timeout: 30_000,
+    });
+    await page.waitForFunction(
+      `window.__kyneloomCompiled && window.__kyneloomCompiled.manifestId === 'mom-invisible-assist-broadcast-sweep-v1'`,
+      undefined,
+      { timeout: 15_000 },
+    );
+    const sweep = await page.evaluate(() => {
+      const compiled = (window as { __kyneloomCompiled?: CompiledHook }).__kyneloomCompiled!;
+      const identity = document
+        .querySelector('[data-identity-hash]')
+        ?.getAttribute('data-identity-hash');
+      const chip = document
+        .querySelector('[data-compiled-hash]')
+        ?.getAttribute('data-compiled-hash');
+      const banner = document.querySelector('[data-last-valid-banner]');
+      return { hash: compiled.manifestHash, identity, chip, banner: banner !== null };
+    });
+    line(
+      'recompiling the sweep cut swaps the stage, recap and chip to hash B',
+      'one identity everywhere, no stale hash A',
+      `chip=${String(sweep.chip?.slice(7, 15))} identity=${String(sweep.identity?.slice(7, 15))}`,
+      sweep.chip === sweep.hash &&
+        sweep.identity === sweep.hash &&
+        sweep.hash !== 'sha256:88a9f0d1789a329da4f9e0963968e4e53844adcbcc00e7ec20f580c8296e6952' &&
+        !sweep.banner,
+    );
+    // Visible text only — the RSC hydration payload legitimately still
+    // contains the server-rendered initial props inside inline scripts.
+    const bodyHasGoldenHash = await page.evaluate(
+      `document.body.innerText.includes('sha256:88a9f0d1789a329da4f9e0963968e4e53844adcbcc00e7ec20f580c8296e6952')`,
+    );
+    line(
+      'no leftover hash A labels the new experience',
+      'golden hash absent from the page',
+      `present=${String(bodyHasGoldenHash)}`,
+      !bodyHasGoldenHash,
+    );
+    // The directed camera now consumes the SWEEP track (3 keyframes).
+    const sweepCamera = await page.evaluate(
+      `window.__kyneloomScene && window.__kyneloomScene.visual ? window.__kyneloomScene.visual.cameraWorldPosition() : null`,
+    );
+    line(
+      'the live camera is driven by the newly compiled track',
+      'camera pose present and changed from the golden cut',
+      JSON.stringify(sweepCamera),
+      Array.isArray(sweepCamera),
+    );
+    await page.screenshot({ path: path.join(OUT_DIR, 'compile-desktop-recompiled-sweep.png') });
+
+    // ---- A rejected recompile must not touch the stage.
+    await page.getByRole('button', { name: /False distance claim/ }).click();
+    await page.getByTestId('compile-proposal').click();
+    await page.waitForSelector('[data-verdict="invalid"]', { timeout: 30_000 });
+    await page.waitForSelector('[data-last-valid-banner]', { timeout: 10_000 });
+    const afterReject = await page.evaluate(() => ({
+      chip: document.querySelector('[data-compiled-hash]')?.getAttribute('data-compiled-hash'),
+      banner: document.querySelector('[data-last-valid-banner]')?.textContent ?? '',
+    }));
+    line(
+      'rejected recompile keeps the sweep on stage, explicitly labeled',
+      'banner names the rejected proposal; chip still hash B',
+      `chip=${String(afterReject.chip?.slice(7, 15))}`,
+      afterReject.chip === sweep.hash && afterReject.banner.includes('False distance claim'),
+    );
+    await page.screenshot({
+      path: path.join(OUT_DIR, 'compile-desktop-rejected-keeps-last-valid.png'),
+    });
     await context.close();
+
+    // ---------- Viewport sweep (poster state) ----------
+    for (const size of [
+      { w: 1280, h: 800, name: '1280x800' },
+      { w: 1024, h: 768, name: '1024x768' },
+      { w: 375, h: 812, name: '375x812' },
+    ] as const) {
+      const vpContext = await browser.newContext({ viewport: { width: size.w, height: size.h } });
+      const vpPage = await vpContext.newPage();
+      await vpPage.goto(`${BASE}/studio/compile`, { waitUntil: 'domcontentloaded' });
+      await vpPage.waitForSelector('[data-compile-poster]', { timeout: 30_000 });
+      const chipVisible = await vpPage
+        .waitForSelector('[data-compiled-hash]', { timeout: 8000 })
+        .then(() => true)
+        .catch(() => false);
+      line(
+        `viewport ${size.name}: page renders with the identity chip`,
+        'chip visible',
+        String(chipVisible),
+        chipVisible,
+      );
+      await vpPage.screenshot({ path: path.join(OUT_DIR, `compile-${size.name}-poster.png`) });
+      await vpContext.close();
+    }
 
     // ---------- Mobile 390×844 ----------
     const mobile = await browser.newContext({

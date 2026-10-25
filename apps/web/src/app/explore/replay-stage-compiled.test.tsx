@@ -6,6 +6,7 @@ import { buildEvidenceProjection } from '@/lib/evidence-data';
 import { buildSceneData } from '@/lib/scene-data';
 import { buildCompilerSource } from '@/lib/moment-compiler-service';
 import { buildCompileCorpus, compileMomentProposal } from '@kyneloom/moment-compiler';
+import { compiledViewFrom } from '@/lib/compiled-moment';
 import { ReplayStage, type CompiledMomentOverlay } from './replay-stage';
 
 /**
@@ -55,6 +56,7 @@ async function fixture(): Promise<{
   const corpus = buildCompileCorpus(source.snapshot.context);
   const result = compileMomentProposal(corpus.golden, source.snapshot.context);
   if (!result.ok) throw new Error('golden proposal failed to compile');
+  const view = compiledViewFrom(result);
   const momentStart = result.manifest.timeRangeMs[0];
   const scene = buildSceneData(golden, { initialFocusMs: momentStart });
   if (scene === null) throw new Error('scene unavailable');
@@ -62,12 +64,12 @@ async function fixture(): Promise<{
     scene,
     evidence: buildEvidenceProjection(golden),
     compiled: {
-      manifestId: result.manifest.manifestId,
-      manifestHash: result.manifestHash,
-      momentWindowMs: [result.manifest.timeRangeMs[0], result.manifest.timeRangeMs[1]],
-      cues: result.presentation.broadcast,
+      manifestId: view.manifestId,
+      manifestHash: view.manifestHash,
+      momentWindowMs: view.momentWindowMs,
+      cues: view.cues,
     },
-    hash: result.manifestHash,
+    hash: view.manifestHash,
   };
 }
 

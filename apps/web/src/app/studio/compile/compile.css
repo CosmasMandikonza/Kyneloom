@@ -41,6 +41,24 @@
 
 /* ---------- Stage shell + poster ---------- */
 
+.compile__stage-zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.compile__last-valid {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--amber-400) 40%, transparent);
+  background: color-mix(in srgb, var(--amber-400) 7%, transparent);
+  color: var(--amber-400);
+  font-size: var(--step--1);
+  letter-spacing: 0.06em;
+  word-break: break-word;
+}
+
 .compile__stage-wrap {
   position: relative;
 }

@@ -6,12 +6,8 @@ export {
   type CompileSuccess,
   type VerifiedMetric,
 } from './compile';
-export {
-  derivePresentation,
-  type BroadcastCue,
-  type CompiledPresentation,
-  type RecapLine,
-} from './presentation';
+export { eventCueText, eventFactSentence, metricCueText, metricFactSentence } from './facts';
+export { buildManifestPresentation } from './presentation';
 export {
   buildCompileCorpus,
   selectHeroCandidate,

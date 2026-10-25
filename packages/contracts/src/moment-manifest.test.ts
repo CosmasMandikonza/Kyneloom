@@ -200,7 +200,7 @@ describe('parseMomentManifest — time window and versions', () => {
 
   it('rejects unsupported manifest versions and placeholder hashes', () => {
     const versioned = structuredClone(validManifest);
-    versioned.schemaVersion = '0.2.0';
+    versioned.schemaVersion = '0.3.0';
     const result = parseMomentManifest(versioned);
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -439,7 +439,7 @@ describe('approvalContentPayload (review fix 6)', () => {
     const payload = approvalContentPayload(parseManifestOf(validManifest));
     expect(payload).not.toHaveProperty('status');
     expect(payload).not.toHaveProperty('approval');
-    expect(payload).toHaveProperty('schemaVersion', '0.1.0');
+    expect(payload).toHaveProperty('schemaVersion', '0.2.0');
     expect(payload).toHaveProperty('manifestId', 'mom-synthetic-78m');
     expect(payload).toHaveProperty('rightsPolicyRef');
   });

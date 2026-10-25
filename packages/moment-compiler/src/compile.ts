@@ -25,16 +25,18 @@ import {
   type MetricToolResult,
   type MetricVerified,
 } from '@kyneloom/match-core';
+import { eventFactSentence, metricFactSentence } from './facts';
 import { metricToolContextFrom, type CompilerSourceContext } from './source-context';
-import { derivePresentation, type CompiledPresentation } from './presentation';
+import { buildManifestPresentation } from './presentation';
 
 /**
  * The deterministic Playable Moment compiler (KYN-16, docs/06 gates 1–6).
  *
  * UNTRUSTED IN — MomentProposal (schema-validated first; see
- * contracts/moment-proposal.ts). TRUSTED OUT — a MomentManifest v0.1.0 draft
- * whose numbers, source references, temporal bounds and hash were established
- * by this module, never by the proposal author. The compiler:
+ * contracts/moment-proposal.ts). TRUSTED OUT — a MomentManifest v0.2.0 draft
+ * whose numbers, source references, temporal bounds, AUDIENCE-FACING TEXT
+ * and hash were established by this module, never by the proposal author.
+ * The compiler:
  *
  * 1. verifies revision currency (`basedOn` vs the source context);
  * 2. resolves the candidate moment and window against the deterministic
@@ -42,11 +44,17 @@ import { derivePresentation, type CompiledPresentation } from './presentation';
  * 3. verifies rights + tenant scoping for policy refs and asset URLs;
  * 4. recomputes every derived metric through `kyneloom-get-metric-v1`
  *    (the model can read numbers; it can never supply one);
- * 5. validates claims — numerical assertions must match the recomputation
- *    exactly, and hypotheses stay qualitative with disclosure;
+ * 5. validates claims under the TEXT LAW — calculated/observed claim text is
+ *    GENERATED from the verified value/event, hypotheses stay qualitative
+ *    and number-free, and nothing untrusted can wear a verified label;
  * 6. emits field-path errors (`ContractValidationError`) for every violation
  *    it can name, and NOTHING on any violation — fail closed;
  * 7. self-checks its own output through `parseMomentManifest` before hashing.
+ *
+ * ONE IDENTITY (review blocker B): the audience-facing broadcast cues and
+ * recap live INSIDE the manifest (`presentation`, schema v0.2.0), so the
+ * single `manifestHash` — sha256 over canonical `approvalContentPayload`,
+ * which spreads every content field — covers everything a viewer can see.
  *
  * Determinism: no clocks, no iteration-order dependence (all derived
  * collections are sorted before hashing), sha256 over canonical JSON.
@@ -70,6 +78,7 @@ export interface VerifiedMetric {
   readonly value: Readonly<Record<string, unknown>>;
   readonly units: string;
   readonly inputFingerprint: string;
+  readonly requested: { readonly atMs?: number; readonly windowMs?: readonly [number, number] };
   readonly dependsOn: {
     readonly sourceFrameIds: readonly string[];
     readonly eventIds: readonly string[];
@@ -87,8 +96,6 @@ export interface CompileSuccess {
   readonly proposalOrigin: ProposalOrigin;
   /** Every metric the compiled manifest depends on, recomputed and verified. */
   readonly metrics: readonly VerifiedMetric[];
-  /** Synchronized broadcast-overlay cues + recap derived from the manifest. */
-  readonly presentation: CompiledPresentation;
   /** Which of docs/06's named semantic checks this compilation performed. */
   readonly checks: readonly { readonly id: string; readonly status: 'passed' }[];
 }
@@ -124,8 +131,9 @@ function metricAlias(kind: string, entityIds: readonly string[], scopeTag: strin
 }
 
 function scopeTagFor(requested: { atMs?: number; windowMs?: readonly [number, number] }): string {
-  if (requested.windowMs !== undefined)
+  if (requested.windowMs !== undefined) {
     return `w${String(requested.windowMs[0])}-${String(requested.windowMs[1])}`;
+  }
   if (requested.atMs !== undefined) return `t${String(requested.atMs)}`;
   return 't0';
 }
@@ -381,6 +389,7 @@ export function compileMomentProposal(
       }
       resolved.push({
         entry: { id: entry.id, kind: entry.kind, ref: entry.ref, inputRefs: computedInputs },
+        event,
       });
       continue;
     }
@@ -395,10 +404,7 @@ export function compileMomentProposal(
           );
         }
       }
-      if (
-        errors.errors.length > 0 &&
-        errors.errors.some((e) => e.fieldPath.startsWith(`${path}.`))
-      ) {
+      if (errors.errors.some((e) => e.fieldPath.startsWith(`${path}.`))) {
         continue;
       }
       resolved.push({
@@ -480,7 +486,7 @@ export function compileMomentProposal(
       );
       continue;
     }
-    const value =
+    const verifiedValue =
       executed.result.value !== null && typeof executed.result.value === 'object'
         ? (executed.result.value as Readonly<Record<string, unknown>>)
         : {};
@@ -490,9 +496,10 @@ export function compileMomentProposal(
       metricId: provenance.metricId,
       kind: query.kind,
       algorithmVersion: provenance.algorithmVersion,
-      value,
+      value: verifiedValue,
       units: provenance.units,
       inputFingerprint: provenance.inputFingerprint,
+      requested: provenance.requested,
       dependsOn: {
         sourceFrameIds: sortedUnique(provenance.dependsOn.sourceFrameIds),
         eventIds: sortedUnique(provenance.dependsOn.eventIds),
@@ -523,60 +530,146 @@ export function compileMomentProposal(
     }
   }
 
-  // ---- Gate 7: claim validation -------------------------------------------
-  // Numerical assertions must match the deterministic recomputation, and the
-  // asserted metric must be exactly what the claim's cited evidence computed.
+  // ---- Gate 7: claim validation under the TEXT LAW ------------------------
+  // calculated/observed claim text is GENERATED from the verified source;
+  // hypotheses pass their (schema-guarded, number-free) editorial text.
+  const metricsByEvidenceId = new Map(metrics.map((metric) => [metric.evidenceId, metric]));
+  const eventsByEvidenceId = new Map(
+    resolved.flatMap((item) =>
+      item.event === undefined ? [] : [[item.entry.id, item.event] as const],
+    ),
+  );
+  const compiledClaims: Claim[] = [];
+
   for (const [index, c] of proposal.claims.entries()) {
     const path = `claims[${String(index)}]`;
-    const assertion = c.metricAssertion;
-    if (assertion === undefined) continue;
 
-    const citedEvidence = proposal.evidence.filter((entry) => c.evidenceIds.includes(entry.id));
-    const boundQuery = citedEvidence.find(
-      (entry) =>
-        entry.metricQuery !== undefined &&
-        entry.metricQuery.kind === assertion.kind &&
-        canonicalJsonStringify(rawQueryFor(entry.metricQuery)) ===
-          canonicalJsonStringify(rawQueryFor(assertion)),
-    );
-    if (boundQuery === undefined) {
+    if (c.status === 'observed') {
+      // An observed fact is the cited source event itself — exactly one.
+      if (c.evidenceIds.length !== 1) {
+        errors.add(
+          `${path}.evidenceIds`,
+          'constraint_violation',
+          `observed claims cite exactly one source event (got ${String(c.evidenceIds.length)} references)`,
+        );
+        continue;
+      }
+      const cited = resolved.find((item) => item.entry.id === c.evidenceIds[0]);
+      if (cited === undefined || cited.event === undefined) {
+        errors.add(
+          `${path}.evidenceIds`,
+          'missing_reference',
+          `observed claims must cite source_event evidence (the cited evidence is not a verified source event)`,
+        );
+        continue;
+      }
+      compiledClaims.push({
+        id: c.id,
+        text: eventFactSentence(cited.event),
+        status: 'observed',
+        evidenceIds: [...c.evidenceIds],
+        language: c.language,
+      });
+      continue;
+    }
+
+    if (c.status === 'calculated') {
+      const assertion = c.metricAssertion;
+      // The schema requires it; kept fail-closed for direct callers.
+      if (assertion === undefined) {
+        errors.add(
+          `${path}.metricAssertion`,
+          'constraint_violation',
+          'calculated claims must carry a metricAssertion; the compiler generates the factual text from the verified value',
+        );
+        continue;
+      }
+      const citedEvidence = proposal.evidence.filter((entry) => c.evidenceIds.includes(entry.id));
+      const boundQuery = citedEvidence.find(
+        (entry) =>
+          entry.metricQuery !== undefined &&
+          entry.metricQuery.kind === assertion.kind &&
+          canonicalJsonStringify(rawQueryFor(entry.metricQuery)) ===
+            canonicalJsonStringify(rawQueryFor(assertion)),
+      );
+      if (boundQuery === undefined) {
+        errors.add(
+          `${path}.metricAssertion`,
+          'missing_reference',
+          'the asserted metric is not computed by any evidence this claim cites — every number must trace to declared, verified evidence',
+        );
+        continue;
+      }
+      const executed = executeQuery(source, assertion, `${path}.metricAssertion`, errors);
+      if (executed === null) continue;
+      if (
+        !requireVerified(
+          executed.result,
+          `${path}.metricAssertion`,
+          `the metric claim "${c.id}" asserts`,
+          errors,
+        )
+      ) {
+        continue;
+      }
+      const recomputed = (executed.result.value as Readonly<Record<string, unknown>>)[
+        assertion.valueField
+      ];
+      if (typeof recomputed !== 'number' || !Number.isFinite(recomputed)) {
+        errors.add(
+          `${path}.metricAssertion.valueField`,
+          'invalid_value',
+          `metric ${executed.result.provenance.metricId} has no numeric field "${assertion.valueField}"`,
+        );
+        continue;
+      }
+      if (recomputed !== assertion.assertedValue) {
+        errors.add(
+          `${path}.metricAssertion.assertedValue`,
+          'unsupported_claim',
+          `asserted ${String(assertion.assertedValue)} but the deterministic recomputation of ${executed.result.provenance.metricId}.${assertion.valueField} is ${String(recomputed)} — the recomputation is authoritative; revise the claim`,
+        );
+        continue;
+      }
+      const boundMetric = metricsByEvidenceId.get(boundQuery.id);
+      if (boundMetric === undefined) {
+        // Unreachable when the cited evidence itself verified; fail closed.
+        errors.add(
+          `${path}.evidenceIds`,
+          'missing_reference',
+          `the cited derived-metric evidence "${boundQuery.id}" did not verify`,
+        );
+        continue;
+      }
+      compiledClaims.push({
+        id: c.id,
+        text: metricFactSentence(boundMetric),
+        status: 'calculated',
+        evidenceIds: [...c.evidenceIds],
+        language: c.language,
+      });
+      continue;
+    }
+
+    // hypothesis: editorial channel — text and disclosure already passed the
+    // number-free policy at schema level.
+    if (c.text === undefined || c.inferenceDisclosure === undefined) {
+      // The schema guarantees both; kept fail-closed for direct callers.
       errors.add(
-        `${path}.metricAssertion`,
-        'missing_reference',
-        'the asserted metric is not computed by any evidence this claim cites — every number must trace to declared, verified evidence',
+        `${path}.text`,
+        'constraint_violation',
+        'hypothesis claims require editorial text and an inference disclosure',
       );
       continue;
     }
-    const executed = executeQuery(source, assertion, `${path}.metricAssertion`, errors);
-    if (executed === null) continue;
-    if (
-      !requireVerified(
-        executed.result,
-        `${path}.metricAssertion`,
-        `the metric claim "${c.id}" asserts`,
-        errors,
-      )
-    ) {
-      continue;
-    }
-    const recomputed = (executed.result.value as Readonly<Record<string, unknown>>)[
-      assertion.valueField
-    ];
-    if (typeof recomputed !== 'number' || !Number.isFinite(recomputed)) {
-      errors.add(
-        `${path}.metricAssertion.valueField`,
-        'invalid_value',
-        `metric ${executed.result.provenance.metricId} has no numeric field "${assertion.valueField}"`,
-      );
-      continue;
-    }
-    if (recomputed !== assertion.assertedValue) {
-      errors.add(
-        `${path}.metricAssertion.assertedValue`,
-        'unsupported_claim',
-        `asserted ${String(assertion.assertedValue)} but the deterministic recomputation of ${executed.result.provenance.metricId}.${assertion.valueField} is ${String(recomputed)} — the recomputation is authoritative; revise the claim`,
-      );
-    }
+    compiledClaims.push({
+      id: c.id,
+      text: c.text,
+      status: 'hypothesis',
+      evidenceIds: [...c.evidenceIds],
+      language: c.language,
+      inferenceDisclosure: c.inferenceDisclosure,
+    });
   }
 
   if (errors.errors.length > 0) {
@@ -587,16 +680,8 @@ export function compileMomentProposal(
   const trackingSampleRefs = sortedUnique(
     metrics.flatMap((metric) => metric.dependsOn.sourceFrameIds),
   ).slice(0, MAX_TRACKING_REFS);
-  const claims: Claim[] = proposal.claims.map((c) => ({
-    id: c.id,
-    text: c.text,
-    status: c.status,
-    evidenceIds: [...c.evidenceIds],
-    language: c.language,
-    ...(c.inferenceDisclosure === undefined ? {} : { inferenceDisclosure: c.inferenceDisclosure }),
-  }));
   const manifest: MomentManifest = {
-    schemaVersion: '0.1.0',
+    schemaVersion: '0.2.0',
     manifestId: `mom-${proposal.proposalId}`,
     tenantId: proposal.tenantId,
     matchId: proposal.matchId,
@@ -620,10 +705,18 @@ export function compileMomentProposal(
         evidenceIds: [...overlay.evidenceIds],
       })),
     },
-    claims,
+    claims: compiledClaims,
     evidence: resolved.map((item) => item.entry),
     lenses: [...proposal.lenses],
     rightsPolicyRef: proposal.rightsPolicyRef,
+    presentation: buildManifestPresentation({
+      claims: compiledClaims,
+      overlays: proposal.overlays,
+      metrics,
+      metricsByEvidenceId,
+      eventsByEvidenceId,
+      headline: proposal.recapHeadline,
+    }),
     approval: null,
   };
 
@@ -654,7 +747,6 @@ export function compileMomentProposal(
     inputFingerprint: manifestInputFingerprint(manifest),
     proposalOrigin: proposal.origin,
     metrics,
-    presentation: derivePresentation(manifest, metrics, proposal.recapHeadline, source.events),
     checks: [
       { id: 'reference-existence', status: 'passed' },
       { id: 'numerical-consistency', status: 'passed' },

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   approvalContentPayload,
   canonicalJsonStringify,
+  parseMomentManifest,
   type MatchEvent,
   type TrackingSample,
 } from '@kyneloom/contracts';
@@ -121,11 +122,8 @@ describe('KYN-16 pinned compiled-manifest artifact', () => {
     expect(sha256(approvalContentPayload(artifact.manifest as never))).toBe(artifact.manifestHash);
   });
 
-  it('pinned broadcast cues sit inside the moment window on the match clock', () => {
-    const artifact = JSON.parse(readFileSync(ARTIFACT_PATH, 'utf-8')) as PinnedArtifact & {
-      // cues are re-derived (not pinned) — derive from the manifest the same
-      // way the compiler does, through a fresh compile.
-    };
+  it('pinned broadcast cues sit inside the moment window on the manifest clock', () => {
+    const artifact = JSON.parse(readFileSync(ARTIFACT_PATH, 'utf-8')) as PinnedArtifact;
     const source = buildSource();
     const corpus = buildCompileCorpus(source);
     const result = compileMomentProposal(corpus.golden, source);
@@ -134,9 +132,31 @@ describe('KYN-16 pinned compiled-manifest artifact', () => {
     const [startMs, endMs] = artifact.manifest['timeRangeMs'] as [number, number];
     expect(startMs).toBe(4_721_700);
     expect(endMs).toBe(4_729_800);
-    for (const cue of result.presentation.broadcast) {
-      expect(cue.startMs).toBeGreaterThanOrEqual(startMs);
-      expect(cue.endMs).toBeLessThanOrEqual(endMs);
+    const cues = result.manifest.presentation?.broadcast ?? [];
+    expect(cues.length).toBeGreaterThan(0);
+    for (const cue of cues) {
+      // Manifest clock law: offsets from the moment start.
+      expect(cue.startMs).toBeGreaterThanOrEqual(0);
+      expect(cue.endMs).toBeLessThanOrEqual(endMs - startMs);
     }
+    // The stored artifact pins the SAME cues (identity covers the output).
+    const pinnedCues = (
+      (artifact.manifest as { presentation?: { broadcast?: { id: string }[] } }).presentation ?? {}
+    ).broadcast;
+    expect(pinnedCues?.map((cue) => cue.id)).toEqual(cues.map((cue) => cue.id));
+  });
+
+  it('the pinned artifact round-trips: reparse reproduces the hashed content without the proposal', () => {
+    const artifact = JSON.parse(readFileSync(ARTIFACT_PATH, 'utf-8')) as PinnedArtifact;
+    const reparsed = parseMomentManifest(JSON.parse(JSON.stringify(artifact.manifest)));
+    expect(reparsed.ok).toBe(true);
+    if (!reparsed.ok) return;
+    expect(canonicalJsonStringify(reparsed.data)).toBe(
+      canonicalJsonStringify(artifact.manifest as never),
+    );
+    expect(sha256(approvalContentPayload(reparsed.data))).toBe(artifact.manifestHash);
+    expect(reparsed.data.presentation?.recap.headline).toBe(
+      'The run nobody passed to opened the goal',
+    );
   });
 });

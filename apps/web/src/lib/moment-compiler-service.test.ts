@@ -25,7 +25,7 @@ describe('moment-compiler service seam', () => {
     expect(workbench.ok).toBe(true);
     if (!workbench.ok) return;
     const { payload } = workbench;
-    expect(payload.entries.length).toBeGreaterThanOrEqual(10);
+    expect(payload.entries.length).toBeGreaterThanOrEqual(16);
     expect(
       payload.entries.filter((entry) => entry.expect === 'invalid').length,
     ).toBeGreaterThanOrEqual(9);

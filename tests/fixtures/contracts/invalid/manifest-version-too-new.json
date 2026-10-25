@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "0.2.0",
+  "schemaVersion": "0.3.0",
   "manifestId": "mom-synthetic-78m",
   "tenantId": "demo-org",
   "matchId": "synthetic-derby-01",
