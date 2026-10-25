@@ -130,25 +130,34 @@ async function main(): Promise<void> {
       };
     })()`);
     if (hook === null) throw new Error('compiled hook missing during playback');
+    const hookData = hook as {
+      hash: string;
+      window: readonly [number, number];
+      playhead: number;
+      cue: string | null;
+      camera: string;
+    };
     const cueMargin = 1500; // transport-read latency while playing
-    const inMoment = hook.playhead >= hook.window[0] && hook.playhead <= hook.window[1] + cueMargin;
+    const inMoment =
+      hookData.playhead >= hookData.window[0] && hookData.playhead <= hookData.window[1] + cueMargin;
     line(
       'one clock: playhead inside the moment window while a cue is live',
       'playhead ∈ moment window (+read latency)',
-      `${String(hook.playhead)} ∈ [${String(hook.window[0])}, ${String(hook.window[1])}]`,
+      `${String(hookData.playhead)} ∈ [${String(hookData.window[0])}, ${String(hookData.window[1])}]`,
       inMoment,
     );
     line(
       'broadcast overlay is live with compiler text',
       'cue text from the verified manifest',
-      String(hook.cue),
-      typeof hook.cue === 'string' && (hook.cue.includes('SEPARATION') || hook.cue.length > 8),
+      String(hookData.cue),
+      typeof hookData.cue === 'string' &&
+        (hookData.cue.includes('SEPARATION') || hookData.cue.length > 8),
     );
     line(
       'manifest identity pinned',
       'sha256:88a9f0d1…c296e6952',
-      hook.hash,
-      hook.hash === 'sha256:88a9f0d1789a329da4f9e0963968e4e53844adcbcc00e7ec20f580c8296e6952',
+      hookData.hash,
+      hookData.hash === 'sha256:88a9f0d1789a329da4f9e0963968e4e53844adcbcc00e7ec20f580c8296e6952',
     );
     await page.screenshot({ path: path.join(OUT_DIR, 'compile-desktop-directed-overlay.png') });
 
