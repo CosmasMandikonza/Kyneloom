@@ -128,6 +128,14 @@ export interface ReplayStageProps {
    * the moment start and play. Null keeps the default broadcast entry.
    */
   readonly autoRun?: { readonly camera: CameraMode; readonly fromMs: number } | null;
+  /**
+   * KYN-17 (Studio): optional external handle to this stage's engine object.
+   * The parent (the Studio timeline) reads `engine.playheadMs` for its
+   * synchronized playhead and seeks by writing `playheadMs` + bumping
+   * `revision` — the same transport law the stage's own controls use. The
+   * stage remains the engine's owner; this ref only PUBLISHES it.
+   */
+  readonly engineRef?: { current: ReplayEngine | null } | null;
 }
 
 /** KYN-16: compiler-verified overlay data bound to this stage's clock. */
@@ -150,6 +158,7 @@ export function ReplayStage({
   chapterTitle,
   compiled,
   autoRun,
+  engineRef,
 }: ReplayStageProps) {
   let timeline: ReturnType<typeof sceneTimeline> | null = null;
   let invalidReason: string | null = null;
@@ -178,6 +187,7 @@ export function ReplayStage({
       chapterTitle={chapterTitle ?? null}
       compiled={compiled ?? null}
       autoRun={autoRun ?? null}
+      engineRef={engineRef ?? null}
     />
   );
 }
@@ -189,10 +199,12 @@ function ReplayStageInner({
   chapterTitle,
   compiled,
   autoRun,
+  engineRef: externalEngineHandle,
 }: ReplayStageProps & {
   timeline: ReturnType<typeof sceneTimeline>;
   compiled: CompiledMomentOverlay | null;
   autoRun: { readonly camera: CameraMode; readonly fromMs: number } | null;
+  engineRef: { current: ReplayEngine | null } | null;
 }) {
   const speedGroupId = useId();
 
@@ -256,6 +268,16 @@ function ReplayStageInner({
     revision: 0,
   });
   const engine = engineRef.current;
+
+  // KYN-17: publish the engine to the optional external handle while this
+  // stage is mounted (cleared on unmount so a stale engine is never read).
+  useEffect(() => {
+    if (externalEngineHandle === null) return;
+    externalEngineHandle.current = engine;
+    return () => {
+      externalEngineHandle.current = null;
+    };
+  }, [externalEngineHandle, engine]);
 
   // Live mode: the engine window follows what has genuinely arrived, and a
   // FOLLOWING viewer jumps to the latest streamed match time (the user can

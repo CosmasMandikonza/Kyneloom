@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-23T06:19:59.863Z",
+  "generatedAt": "2026-10-26T13:56:17.937Z",
   "viewports": [
     "1440x900",
     "1280x800",
@@ -14,8 +14,10 @@
     "/studio",
     "/m/mom-synthetic-78m"
   ],
-  "captures": 38,
-  "failures": [],
+  "captures": 15,
+  "failures": [
+    "CRASHED: page.reload: net::ERR_NETWORK_IO_SUSPENDED\nCall log:\n\u001b[2m  - waiting for navigation until \"domcontentloaded\"\u001b[22m\n"
+  ],
   "results": [
     {
       "route": "landing",
@@ -31,7 +33,7 @@
         "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129",
         "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":31562}",
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":48684}",
         "landingRepeatNav": "ok (Δgeo +0, Δtex +0)"
       }
     },
@@ -73,7 +75,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 24,
-        "scene3dReadyMs": 3032,
+        "scene3dReadyMs": 3256,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "lensFanDefault": true,
@@ -103,7 +105,7 @@
         "playerYawDeterministic": "identical",
         "cameraOverheadConverged": "yes 0.0/92.0/0.0",
         "cameraFollowConverged": "yes 5.0/4.4/8.9",
-        "cameraKeeperConverged": "yes 41.4/2.8/5.6",
+        "cameraKeeperConverged": "yes 41.5/2.8/5.6",
         "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
         "directedSeekDeterministic": "identical",
         "escapeExitsDirected": "true",
@@ -122,7 +124,7 @@
         "xrayKeyboard": "yes",
         "xrayResourcesBounded": "ok (Δgeo +0, Δtex +0 after 4 on/off rounds × 3 phases)",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":1001.9,\"p95Ms\":1073.2,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":1069.8,\"p95Ms\":1166.3,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -135,9 +137,16 @@
       "consoleErrors": [],
       "checks": {
         "title": "Studio — production workspace · Kyneloom",
-        "focusables": 7,
+        "focusables": 77,
         "disabledPublish": 1,
-        "eventMarkers": 4
+        "disabledApprove": 1,
+        "cameraClips": 1,
+        "overlayClips": 2,
+        "captionClips": 1,
+        "eventClips": 4,
+        "productionBar": 1,
+        "timeline": 1,
+        "audioUnavailable": 1
       }
     },
     {
@@ -204,7 +213,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 24,
-        "scene3dReadyMs": 3027,
+        "scene3dReadyMs": 3239,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "lensFanDefault": true,
@@ -242,7 +251,7 @@
         "fixtureSamplesShown": "5,129",
         "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
         "landingSkip": "yes",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"ready\"],\"startCount\":1,\"ms\":14648}"
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"ready\"],\"startCount\":1,\"ms\":18259}"
       }
     },
     {
@@ -283,7 +292,7 @@
       "checks": {
         "title": "Explore — The Invisible Assist · Kyneloom",
         "focusables": 24,
-        "scene3dReadyMs": 2839,
+        "scene3dReadyMs": 3035,
         "scenePlayers": 22,
         "sceneMissing": 0,
         "lensFanDefault": true,
@@ -331,7 +340,7 @@
         "inspectorSeek": "yes",
         "xrayKeyboard": "yes",
         "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":957.9,\"p95Ms\":1004.8,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
+        "perf": "{\"fps\":1,\"p50Ms\":1006,\"p95Ms\":1057.8,\"drawCalls\":151,\"triangles\":608152,\"geometries\":43,\"textures\":49,\"samples\":240}",
         "contextLoss": "lost → context-lost"
       }
     },
@@ -344,9 +353,16 @@
       "consoleErrors": [],
       "checks": {
         "title": "Studio — production workspace · Kyneloom",
-        "focusables": 7,
+        "focusables": 77,
         "disabledPublish": 1,
-        "eventMarkers": 4
+        "disabledApprove": 1,
+        "cameraClips": 1,
+        "overlayClips": 2,
+        "captionClips": 1,
+        "eventClips": 4,
+        "productionBar": 1,
+        "timeline": 1,
+        "audioUnavailable": 1
       }
     },
     {
@@ -376,7 +392,7 @@
         "ctaClickable": "yes",
         "fixtureSamplesShown": "5,129",
         "landingOrb": "{\"state\":\"idle\",\"fragments\":900,\"markers\":23}",
-        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":22010}"
+        "landingHandoff": "{\"playhead\":4722100,\"players\":22,\"landingGone\":true,\"canvases\":1,\"phases\":[\"idle\",\"intro\",\"fragments\",\"pitch_reveal\",\"ready\"],\"startCount\":1,\"ms\":20879}"
       }
     },
     {
@@ -405,549 +421,6 @@
         "momentsHoverReveal": "visible",
         "momentsTiltLoopsAfterLeave": 0,
         "momentsMotionOffscreenPaused": true
-      }
-    },
-    {
-      "route": "explore",
-      "viewport": "1024x768",
-      "reducedMotion": false,
-      "screenshot": "screenshots/explore-1024x768.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 24,
-        "scene3dReadyMs": 2682,
-        "scenePlayers": 22,
-        "sceneMissing": 0,
-        "lensFanDefault": true,
-        "lensTruthInvariant": "identical",
-        "lensAnalystChrome": "rail+metric",
-        "lensProjectedSelection": "home-11 via home-11",
-        "lensRailFactsIntegrity": "{\"dts\":2,\"dds\":2,\"detail\":\"home-11: 16.6, -10.6 m · 2.9 m/s · synthetic_ground_truth\"}",
-        "lensAccessibleChrome": "panel+transcript",
-        "lensDescriptionSynced": "live",
-        "lensA11yLiveArchitecture": "{\"descAriaLive\":\"none\",\"liveRole\":\"status\",\"count\":0}",
-        "lensA11yBoundedAnnouncements": "{\"playheadMoved\":true,\"announcements\":0,\"text\":\"\"}",
-        "lensRemembered": "analyst",
-        "lensCorruptReverts": "fan",
-        "lensChapterIndependence": "{\"playhead\":4723400,\"lens\":\"analyst\"}",
-        "cameraRadios": 6,
-        "cameraDisabled": 0,
-        "playheadMoves": true,
-        "spaceTogglesPlay": true,
-        "controlsOverlapStagePx": 0,
-        "twoDFallback": 1,
-        "resetPlayheadMs": 4722100,
-        "ballTruthAtCheckpoint": true,
-        "cameraIndependent": "identical",
-        "seekDeterministic": "identical",
-        "ballMeshAtSource": "exact",
-        "ballSpinDeterministic": "identical",
-        "playerYawDeterministic": "identical",
-        "cameraOverheadConverged": "yes 0.0/92.0/0.0",
-        "cameraFollowConverged": "yes 5.0/4.4/8.9",
-        "cameraKeeperConverged": "yes 41.4/2.8/5.6",
-        "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
-        "directedSeekDeterministic": "identical",
-        "escapeExitsDirected": "true",
-        "rapidChangesConverge": "yes",
-        "orbitBoundsAfterGestures": "ok pos -79.2/74.9/82.0 target -79.2/0.0/82.0",
-        "orbitExitConverged": "yes",
-        "xrayOverlaysRendered": "yes (3 lines + label)",
-        "xrayWorldInvariant": "identical",
-        "xrayPhaseSwitch": "yes (2)",
-        "xraySceneClick": "yes (click @ 600,255, candidate 5/10)",
-        "inspectorSentence": "exact values",
-        "inspectorDelta": "exact",
-        "inspectorInterpretation": "labeled hypothesis",
-        "inspectorFrames": "exact frame ids",
-        "inspectorSeek": "yes",
-        "xrayKeyboard": "yes",
-        "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":902.7,\"p95Ms\":963.5,\"drawCalls\":150,\"triangles\":608104,\"geometries\":43,\"textures\":49,\"samples\":240}",
-        "contextLoss": "lost → context-lost"
-      }
-    },
-    {
-      "route": "studio",
-      "viewport": "1024x768",
-      "reducedMotion": false,
-      "screenshot": "screenshots/studio-1024x768.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Studio — production workspace · Kyneloom",
-        "focusables": 7,
-        "disabledPublish": 1,
-        "eventMarkers": 4
-      }
-    },
-    {
-      "route": "moment",
-      "viewport": "1024x768",
-      "reducedMotion": false,
-      "screenshot": "screenshots/moment-1024x768.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Published Moment · Kyneloom",
-        "focusables": 7,
-        "unpublishedChip": 1
-      }
-    },
-    {
-      "route": "landing",
-      "viewport": "390x844",
-      "reducedMotion": false,
-      "screenshot": "screenshots/landing-390x844.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Kyneloom — Every moment has a world inside",
-        "focusables": 8,
-        "ctaText": "Enter the moment\n→",
-        "ctaClickable": "yes",
-        "fixtureSamplesShown": "5,129",
-        "landingOrb": "{\"state\":\"idle\",\"fragments\":320,\"markers\":23}"
-      }
-    },
-    {
-      "route": "moments",
-      "viewport": "390x844",
-      "reducedMotion": false,
-      "screenshot": "screenshots/moments-390x844.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Moments — Playable Moment gallery · Kyneloom",
-        "focusables": 32,
-        "momentsCount": 12,
-        "momentsDistinctIds": 12,
-        "momentsDistinctFocus": 12,
-        "momentsReducedMotion": false,
-        "momentsCards": 12,
-        "momentsHrefs": "exact",
-        "momentsFeaturedCta": true,
-        "momentsPreviewsLoaded": "12/12",
-        "momentsPreviewsDistinct": 12,
-        "momentsCanvases": 0,
-        "momentsSpineNodes": 12,
-        "momentsFeaturedMedia": "present",
-        "momentsMotionOffscreenPaused": true,
-        "momentsTouchNavigation": true
-      }
-    },
-    {
-      "route": "explore",
-      "viewport": "390x844",
-      "reducedMotion": false,
-      "screenshot": "screenshots/explore-390x844.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 24,
-        "scene3dReadyMs": 1409,
-        "scenePlayers": 22,
-        "sceneMissing": 0,
-        "lensFanDefault": true,
-        "lensTruthInvariant": "identical",
-        "lensAnalystChrome": "rail+metric",
-        "lensProjectedSelection": "home-07 via home-07",
-        "lensRailFactsIntegrity": "{\"dts\":2,\"dds\":2,\"detail\":\"home-07: -3.4, -0.6 m · 0.8 m/s · synthetic_ground_truth\"}",
-        "lensAccessibleChrome": "panel+transcript",
-        "lensDescriptionSynced": "live",
-        "lensA11yLiveArchitecture": "{\"descAriaLive\":\"none\",\"liveRole\":\"status\",\"count\":0}",
-        "lensA11yBoundedAnnouncements": "{\"playheadMoved\":true,\"announcements\":0,\"text\":\"\"}",
-        "lensRemembered": "analyst",
-        "lensCorruptReverts": "fan",
-        "lensChapterIndependence": "{\"playhead\":4723400,\"lens\":\"analyst\"}",
-        "cameraRadios": 6,
-        "cameraDisabled": 0,
-        "playheadMoves": true,
-        "spaceTogglesPlay": true,
-        "controlsOverlapStagePx": 0,
-        "twoDFallback": 1,
-        "resetPlayheadMs": 4722100,
-        "ballTruthAtCheckpoint": true,
-        "cameraIndependent": "identical",
-        "seekDeterministic": "identical",
-        "ballMeshAtSource": "exact",
-        "ballSpinDeterministic": "identical",
-        "playerYawDeterministic": "identical",
-        "cameraOverheadConverged": "yes 0.1/91.9/0.1",
-        "cameraFollowConverged": "yes 5.0/4.6/8.9",
-        "cameraKeeperConverged": "yes 41.2/2.8/5.7",
-        "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
-        "directedSeekDeterministic": "identical",
-        "escapeExitsDirected": "true",
-        "rapidChangesConverge": "yes",
-        "orbitBoundsAfterGestures": "ok pos 0.0/92.0/0.0 target 0.0/0.0/0.0",
-        "orbitExitConverged": "yes",
-        "xrayOverlaysRendered": "yes (3 lines + label)",
-        "xrayWorldInvariant": "identical",
-        "xrayPhaseSwitch": "yes (2)",
-        "xraySceneClick": "yes (tap @ 382,275, candidate 9/10)",
-        "inspectorSentence": "exact values",
-        "inspectorDelta": "exact",
-        "inspectorInterpretation": "labeled hypothesis",
-        "inspectorFrames": "exact frame ids",
-        "inspectorSeek": "yes",
-        "xrayKeyboard": "yes",
-        "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":2,\"p50Ms\":486.3,\"p95Ms\":520.5,\"drawCalls\":88,\"triangles\":304242,\"geometries\":45,\"textures\":48,\"samples\":240}",
-        "contextLoss": "lost → context-lost"
-      }
-    },
-    {
-      "route": "studio",
-      "viewport": "390x844",
-      "reducedMotion": false,
-      "screenshot": "screenshots/studio-390x844.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Studio — production workspace · Kyneloom",
-        "focusables": 7,
-        "disabledPublish": 1,
-        "eventMarkers": 4
-      }
-    },
-    {
-      "route": "moment",
-      "viewport": "390x844",
-      "reducedMotion": false,
-      "screenshot": "screenshots/moment-390x844.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Published Moment · Kyneloom",
-        "focusables": 7,
-        "unpublishedChip": 1
-      }
-    },
-    {
-      "route": "landing",
-      "viewport": "390x844",
-      "reducedMotion": true,
-      "screenshot": "screenshots/landing-390x844-rm.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Kyneloom — Every moment has a world inside",
-        "focusables": 8,
-        "ctaText": "Enter the moment\n→",
-        "ctaClickable": "yes",
-        "fixtureSamplesShown": "5,129",
-        "landingReducedMotion": "direct handoff in 10663ms; phases [\"idle\",\"ready\"]"
-      }
-    },
-    {
-      "route": "moments",
-      "viewport": "390x844",
-      "reducedMotion": true,
-      "screenshot": "screenshots/moments-390x844-rm.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Moments — Playable Moment gallery · Kyneloom",
-        "focusables": 32,
-        "momentsCount": 12,
-        "momentsDistinctIds": 12,
-        "momentsDistinctFocus": 12,
-        "momentsReducedMotion": true,
-        "momentsCards": 12,
-        "momentsHrefs": "exact",
-        "momentsFeaturedCta": true,
-        "momentsPreviewsLoaded": "12/12",
-        "momentsPreviewsDistinct": 12,
-        "momentsCanvases": 0,
-        "momentsSpineNodes": 12,
-        "momentsFeaturedMedia": "present",
-        "momentsReducedTiltStatic": 0,
-        "momentsReducedCardsStillLinks": true,
-        "momentsTouchNavigation": true
-      }
-    },
-    {
-      "route": "explore",
-      "viewport": "390x844",
-      "reducedMotion": true,
-      "screenshot": "screenshots/explore-390x844-rm.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 24,
-        "scene3dReadyMs": 1418,
-        "scenePlayers": 22,
-        "sceneMissing": 0,
-        "lensFanDefault": true,
-        "lensTruthInvariant": "identical",
-        "lensAnalystChrome": "rail+metric",
-        "lensProjectedSelection": "home-07 via home-07",
-        "lensRailFactsIntegrity": "{\"dts\":2,\"dds\":2,\"detail\":\"home-07: -3.4, -0.6 m · 0.8 m/s · synthetic_ground_truth\"}",
-        "lensAccessibleChrome": "panel+transcript",
-        "lensDescriptionSynced": "live",
-        "lensA11yLiveArchitecture": "{\"descAriaLive\":\"none\",\"liveRole\":\"status\",\"count\":0}",
-        "lensA11yBoundedAnnouncements": "{\"playheadMoved\":true,\"announcements\":0,\"text\":\"\"}",
-        "lensRemembered": "analyst",
-        "lensCorruptReverts": "fan",
-        "lensChapterIndependence": "{\"playhead\":4723400,\"lens\":\"analyst\"}",
-        "cameraRadios": 6,
-        "cameraDisabled": 0,
-        "playheadMoves": true,
-        "spaceTogglesPlay": true,
-        "controlsOverlapStagePx": 0,
-        "twoDFallback": 1
-      }
-    },
-    {
-      "route": "landing",
-      "viewport": "375x812",
-      "reducedMotion": false,
-      "screenshot": "screenshots/landing-375x812.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Kyneloom — Every moment has a world inside",
-        "focusables": 8,
-        "ctaText": "Enter the moment\n→",
-        "ctaClickable": "yes",
-        "fixtureSamplesShown": "5,129",
-        "landingOrb": "{\"state\":\"idle\",\"fragments\":320,\"markers\":23}"
-      }
-    },
-    {
-      "route": "moments",
-      "viewport": "375x812",
-      "reducedMotion": false,
-      "screenshot": "screenshots/moments-375x812.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Moments — Playable Moment gallery · Kyneloom",
-        "focusables": 32,
-        "momentsCount": 12,
-        "momentsDistinctIds": 12,
-        "momentsDistinctFocus": 12,
-        "momentsReducedMotion": false,
-        "momentsCards": 12,
-        "momentsHrefs": "exact",
-        "momentsFeaturedCta": true,
-        "momentsPreviewsLoaded": "12/12",
-        "momentsPreviewsDistinct": 12,
-        "momentsCanvases": 0,
-        "momentsSpineNodes": 12,
-        "momentsFeaturedMedia": "present",
-        "momentsMotionOffscreenPaused": true
-      }
-    },
-    {
-      "route": "explore",
-      "viewport": "375x812",
-      "reducedMotion": false,
-      "screenshot": "screenshots/explore-375x812.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Explore — The Invisible Assist · Kyneloom",
-        "focusables": 24,
-        "scene3dReadyMs": 2118,
-        "scenePlayers": 22,
-        "sceneMissing": 0,
-        "lensFanDefault": true,
-        "lensTruthInvariant": "identical",
-        "lensAnalystChrome": "rail+metric",
-        "lensProjectedSelection": "home-07 via home-07",
-        "lensRailFactsIntegrity": "{\"dts\":2,\"dds\":2,\"detail\":\"home-07: -3.4, -0.6 m · 0.8 m/s · synthetic_ground_truth\"}",
-        "lensAccessibleChrome": "panel+transcript",
-        "lensDescriptionSynced": "live",
-        "lensA11yLiveArchitecture": "{\"descAriaLive\":\"none\",\"liveRole\":\"status\",\"count\":0}",
-        "lensA11yBoundedAnnouncements": "{\"playheadMoved\":true,\"announcements\":0,\"text\":\"\"}",
-        "lensRemembered": "analyst",
-        "lensCorruptReverts": "fan",
-        "lensChapterIndependence": "{\"playhead\":4723400,\"lens\":\"analyst\"}",
-        "cameraRadios": 6,
-        "cameraDisabled": 0,
-        "playheadMoves": true,
-        "spaceTogglesPlay": true,
-        "controlsOverlapStagePx": 0,
-        "twoDFallback": 1,
-        "resetPlayheadMs": 4722100,
-        "ballTruthAtCheckpoint": true,
-        "cameraIndependent": "identical",
-        "seekDeterministic": "identical",
-        "ballMeshAtSource": "exact",
-        "ballSpinDeterministic": "identical",
-        "playerYawDeterministic": "identical",
-        "cameraOverheadConverged": "yes 0.1/91.9/0.1",
-        "cameraFollowConverged": "yes 5.0/4.5/8.9",
-        "cameraKeeperConverged": "yes 41.3/2.8/5.6",
-        "cameraDirectedGoalPose": "yes 59.0/3.2/7.0",
-        "directedSeekDeterministic": "identical",
-        "escapeExitsDirected": "true",
-        "rapidChangesConverge": "yes",
-        "orbitBoundsAfterGestures": "ok pos 0.0/92.0/0.0 target 0.0/0.0/0.0",
-        "orbitExitConverged": "yes",
-        "xrayOverlaysRendered": "yes (3 lines + label)",
-        "xrayWorldInvariant": "identical",
-        "xrayPhaseSwitch": "yes (2)",
-        "xraySceneClick": "yes (click @ 367,264, candidate 9/10)",
-        "inspectorSentence": "exact values",
-        "inspectorDelta": "exact",
-        "inspectorInterpretation": "labeled hypothesis",
-        "inspectorFrames": "exact frame ids",
-        "inspectorSeek": "yes",
-        "xrayKeyboard": "yes",
-        "cameraFovRange": "40–50°",
-        "perf": "{\"fps\":1,\"p50Ms\":708.3,\"p95Ms\":775.7,\"drawCalls\":140,\"triangles\":607842,\"geometries\":47,\"textures\":50,\"samples\":240}",
-        "contextLoss": "lost → context-lost"
-      }
-    },
-    {
-      "route": "studio",
-      "viewport": "375x812",
-      "reducedMotion": false,
-      "screenshot": "screenshots/studio-375x812.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Studio — production workspace · Kyneloom",
-        "focusables": 7,
-        "disabledPublish": 1,
-        "eventMarkers": 4
-      }
-    },
-    {
-      "route": "moment",
-      "viewport": "375x812",
-      "reducedMotion": false,
-      "screenshot": "screenshots/moment-375x812.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "title": "Published Moment · Kyneloom",
-        "focusables": 7,
-        "unpublishedChip": 1
-      }
-    },
-    {
-      "route": "navigation",
-      "viewport": "1280x800",
-      "reducedMotion": false,
-      "screenshot": "screenshots/nav-flow-explore.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "landingToExplore": true,
-        "exploreToStudio": true
-      }
-    },
-    {
-      "route": "moments-seam",
-      "viewport": "1440x900",
-      "reducedMotion": false,
-      "screenshot": "screenshots/moments-1440x900.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "seamTwoCardsDistinct": "ok",
-        "seamChapterChip": "CHAPTER · THE EQUALIZER",
-        "seamDirectNav": "ok",
-        "seamEvidenceNoteSuppressedInside": "hidden (correct)",
-        "seamEvidenceNote": "shown",
-        "seamEvidenceJump": "{\"playhead\":4720500,\"noteHidden\":true}",
-        "seamRejects(does-not-exist)": "{\"notice\":true,\"playhead\":4722100}",
-        "seamRejects(%3Cscript%3Eal)": "{\"notice\":true,\"playhead\":4722100}",
-        "seamDefaultExplore": "checkpoint",
-        "seamKeyboardTab": true,
-        "seamKeyboardFocusVisible": true,
-        "seamKeyboardEnter": true,
-        "seamRepeatNav": "{\"canvases\":0,\"cards\":12,\"images\":12,\"tiltLoops\":0,\"settledToZero\":true}"
-      }
-    },
-    {
-      "route": "agent-metric-api",
-      "viewport": "1440x900",
-      "reducedMotion": false,
-      "screenshot": "screenshots/moments-1440x900.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "separationStatus": 200,
-        "separationDelta": "14.038",
-        "movementStatus": 200,
-        "movementDisplacement": "11.314",
-        "reject:unknown match": "404/match-not-authorized",
-        "reject:arbitrary SQL kind": "400/unsupported-metric",
-        "reject:freeform tool name": "400/unsupported-metric",
-        "reject:path traversal entity": "400/invalid-entity",
-        "reject:stale revision": "409/stale-revision",
-        "reject:oversized window": "400/window-too-large",
-        "reject:unknown entity": "400/unknown-entity",
-        "reject:malformed body": "400/malformed-body",
-        "getMethod": 405,
-        "freshness": "{\"beforeFp\":\"bedfe2a5\",\"afterFp\":\"71b954d9\",\"beforeDelta\":14.038,\"afterDelta\":12.042,\"sameRevision\":true}"
-      }
-    },
-    {
-      "route": "live-stream",
-      "viewport": "1440x900",
-      "reducedMotion": false,
-      "screenshot": "screenshots/explore-live-connected-1440x900.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "recordedStatus": "recorded",
-        "connectedStatus": "connected",
-        "applied": "{\"meta\":\"vab384a·5\",\"players\":22,\"playhead\":4500}",
-        "anonControlStatus": 403,
-        "offlineStatus": "disconnected",
-        "recoveredStatus": "connected",
-        "recoveredPlayers": 22,
-        "serviceStatus": "{\"running\":true,\"quarantined\":0,\"archived\":232,\"dropped\":0}"
-      }
-    },
-    {
-      "route": "live-stream",
-      "viewport": "390x844",
-      "reducedMotion": false,
-      "screenshot": "screenshots/explore-live-panel-390x844.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "recordedStatus": "recorded",
-        "overflowPx": 0
-      }
-    },
-    {
-      "route": "landing-fallback",
-      "viewport": "375x812",
-      "reducedMotion": false,
-      "screenshot": "screenshots/landing-fallback-375x812.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "ctaHref": "/explore",
-        "poster": 1
-      }
-    },
-    {
-      "route": "moments-degraded",
-      "viewport": "1280x800",
-      "reducedMotion": false,
-      "screenshot": "screenshots/moments-degraded-1280x800.png",
-      "horizontalOverflowPx": 0,
-      "consoleErrors": [],
-      "checks": {
-        "momentsStatus": 200,
-        "catalogUnavailable": true,
-        "exploreStatus": 200,
-        "defaultReplay": "{\"playhead\":4722100,\"players\":22}",
-        "selectionStatus": 200,
-        "selectionNotice": true
       }
     }
   ]

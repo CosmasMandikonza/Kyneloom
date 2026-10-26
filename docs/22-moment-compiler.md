@@ -86,4 +86,6 @@ See the artifact/identity contract above: one hash covers everything. `manifestI
 
 `/studio/compile` (linked from Studio): the selected source moment and canonical evidence, the proposal corpus (a second VALID cut plus labeled defects), real compilation through the API, exact field-path errors, and the compiled moment playing in the existing Living Replay. Recompiling a valid proposal swaps the entire experience in place — directed camera, overlay, recap and every identity display rebind to the new hash (one client-side owner, `compile-experience.tsx`); a rejected compilation never touches the stage and the previous artifact is explicitly labeled as the last valid one.
 
+**Studio consumes the same boundary (KYN-17):** `/studio` is the production editor — every edit operates on a typed draft (a `MomentProposal v0.2.0` exactly like this document describes), previews live through the existing stage + overlay surfaces, persists locally with compare-and-save revisions, and recompiles through the SAME `POST /api/moment/compile`. A future Foundry agent's proposal (KYN-15) is loadable as an editor baseline with zero special cases.
+
 **Related:** [06 — Moment Manifest](06-moment-manifest.md) · [07 — Agent orchestration](07-agent-orchestration.md) · [21 — Football intelligence](21-football-intelligence.md) · [10 — Security & rights](10-security-and-rights.md)
