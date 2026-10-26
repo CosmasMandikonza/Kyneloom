@@ -185,6 +185,12 @@
   border-color: color-mix(in srgb, var(--amber-400) 38%, transparent);
 }
 
+/* The explicit discard confirmation — amber, the destructive decision. */
+.studio-restore--confirm {
+  background: color-mix(in srgb, var(--amber-400) 12%, transparent);
+  border-color: color-mix(in srgb, var(--amber-400) 52%, transparent);
+}
+
 .studio-restore__text {
   margin: 0;
   font-size: var(--step--1);

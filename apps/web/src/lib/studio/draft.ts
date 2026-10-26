@@ -128,7 +128,41 @@ export function setShotInterval(
   startMs: number,
   endMs: number,
 ): EditResult {
-  return withTrack(draft, trackId, (track) => ({ ...track, startMs, endMs }));
+  const index = draft.proposal.cameraTracks.findIndex((track) => track.id === trackId);
+  if (index === -1) {
+    return {
+      ok: false,
+      errors: [
+        {
+          fieldPath: 'cameraTracks',
+          code: 'missing_reference',
+          message: `no camera shot with id "${trackId}" exists in this draft`,
+        },
+      ],
+    };
+  }
+  const mutated: CameraTrack = { ...draft.proposal.cameraTracks[index]!, startMs, endMs };
+  let errors = validateTrack(mutated, `cameraTracks[${index}]`);
+  if (errors.length === 0) {
+    // Mirror of the compiler's window bound: the track schema only knows the
+    // track's own interval, so an enlarged endMs whose keyframes still fit
+    // would otherwise pass here and only fail at compile time. Reject it at
+    // the edit boundary with the exact field path (same law as overlays).
+    const windowMs = windowEndMs(draft);
+    if (mutated.endMs > windowMs) {
+      errors = [
+        {
+          fieldPath: `cameraTracks[${index}].endMs`,
+          code: 'outside_time_window',
+          message: `camera shot ends at offset ${String(mutated.endMs)} ms, outside the ${String(windowMs)} ms moment window`,
+        },
+      ];
+    }
+  }
+  if (errors.length > 0) return { ok: false, errors };
+  const cameraTracks = [...draft.proposal.cameraTracks];
+  cameraTracks[index] = mutated;
+  return next(draft, { ...draft.proposal, cameraTracks });
 }
 
 /** Set one keyframe's time (offset ms from the moment start). */

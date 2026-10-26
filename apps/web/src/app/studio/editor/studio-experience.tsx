@@ -90,6 +90,8 @@ export function StudioExperience({
   const [savedProposal, setSavedProposal] = useState<MomentProposal | null>(null);
   const [saveBusy, setSaveBusy] = useState(false);
   const [conflict, setConflict] = useState<{ readonly theirRevision: number } | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState<{ readonly revision: number } | null>(null);
   const [restoreOffer, setRestoreOffer] = useState<
     | { readonly kind: 'checking' }
     | { readonly kind: 'none' }
@@ -136,7 +138,10 @@ export function StudioExperience({
         return;
       }
       setEditErrors([]);
-      setConflict(null);
+      // A conflict is NOT cleared by editing: the tab's saved revision is
+      // still stale, and the banner stays until the user reloads the latest
+      // draft or a save succeeds. Hiding it would invite a guaranteed-fail
+      // save (review blocker: the banner vanished with no recovery path).
       setHistory((current) =>
         applyCommand(current, {
           proposal: result.draft.proposal,
@@ -152,7 +157,9 @@ export function StudioExperience({
     setHistory((current) => ({ ...current, present: { ...current.present, selection: next } }));
   }, []);
 
-  // Local persistence: offer (never auto-apply) a saved draft on entry.
+  // Local persistence: offer (never auto-apply) a saved draft on entry. A
+  // storage FAILURE keeps the read-only compiled baseline fully usable and
+  // surfaces honestly — never an unhandled rejection.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -171,8 +178,12 @@ export function StudioExperience({
             savedAt: loaded.savedAt,
           });
         }
-      } catch {
-        if (!cancelled) setRestoreOffer({ kind: 'none' });
+      } catch (error) {
+        if (cancelled) return;
+        setRestoreOffer({ kind: 'none' });
+        setStorageError(
+          `the saved local draft could not be read (${error instanceof Error ? error.message : 'storage failure'}) — the compiled baseline stays fully usable`,
+        );
       }
     })();
     return () => {
@@ -185,8 +196,98 @@ export function StudioExperience({
     setSavedRevision(offer.revision);
     setSavedProposal(offer.proposal);
     setEditErrors([]);
+    setConflict(null);
     setRestoreOffer({ kind: 'none' });
+    setConfirmDiscard(null);
   }, []);
+
+  /** Re-read the store and refresh the restore offer (used when a reset raced). */
+  const refreshRestoreOffer = useCallback(async (): Promise<void> => {
+    try {
+      const loaded = await repository().load(draftId);
+      if (loaded === null) {
+        setRestoreOffer({ kind: 'none' });
+      } else if (!loaded.ok) {
+        setRestoreOffer({ kind: 'invalid', message: loaded.message });
+      } else {
+        setRestoreOffer({
+          kind: 'offer',
+          proposal: loaded.draft.proposal,
+          revision: loaded.draft.revision,
+          savedAt: loaded.savedAt,
+        });
+      }
+    } catch (error) {
+      setStorageError(
+        `the saved local draft could not be read (${error instanceof Error ? error.message : 'storage failure'})`,
+      );
+    }
+  }, [draftId]);
+
+  /**
+   * Discard the saved local draft — the explicit "Start from baseline"
+   * confirmation. Atomic compare-and-discard under the same CAS law: if
+   * another tab saved a newer revision in between, the reset REFUSES and the
+   * offer refreshes so the user re-decides against the real stored state.
+   */
+  const discardSavedDraft = useCallback(
+    async (expectedRevision: number): Promise<void> => {
+      try {
+        const outcome = await repository().reset(draftId, expectedRevision);
+        if (outcome.ok) {
+          setSavedRevision(0);
+          setSavedProposal(null);
+          setConflict(null);
+          setConfirmDiscard(null);
+          setRestoreOffer({ kind: 'none' });
+          return;
+        }
+        if (outcome.kind === 'conflict') {
+          // The saved draft moved on — re-offer the newer revision; the user
+          // re-decides with current facts. Nothing was discarded.
+          setConfirmDiscard(null);
+          await refreshRestoreOffer();
+          return;
+        }
+        setStorageError(outcome.message);
+      } catch (error) {
+        setStorageError(
+          error instanceof Error ? error.message : 'the local draft could not be discarded',
+        );
+      }
+    },
+    [draftId, refreshRestoreOffer],
+  );
+
+  /**
+   * Conflict recovery: adopt the latest stored draft (explicit user action on
+   * the conflict banner). This tab's divergent edits are REPLACED by the
+   * stored proposal — the revision lineage continues, no update is lost.
+   */
+  const reloadSavedDraft = useCallback(async (): Promise<void> => {
+    try {
+      const loaded = await repository().load(draftId);
+      if (loaded === null) {
+        // The stored draft vanished (another tab discarded it). Adopt the
+        // fresh lineage honestly: this tab saves from revision 0 next.
+        setSavedRevision(0);
+        setSavedProposal(null);
+        setConflict(null);
+        setStorageError(null);
+        return;
+      }
+      if (!loaded.ok) {
+        setStorageError(loaded.message);
+        return;
+      }
+      restoreSavedDraft(loaded.draft);
+      setStorageError(null);
+    } catch (error) {
+      setStorageError(
+        error instanceof Error ? error.message : 'the saved local draft could not be reloaded',
+      );
+    }
+  }, [draftId, restoreSavedDraft]);
 
   const save = useCallback(async (): Promise<void> => {
     if (saveBusy) return;
@@ -197,9 +298,14 @@ export function StudioExperience({
         setSavedRevision(outcome.revision);
         setSavedProposal(proposal);
         setConflict(null);
+        setStorageError(null);
       } else if (outcome.kind === 'conflict') {
         setConflict({ theirRevision: outcome.currentRevision });
       }
+    } catch (error) {
+      setStorageError(
+        error instanceof Error ? error.message : 'the local draft could not be saved',
+      );
     } finally {
       setSaveBusy(false);
     }
@@ -378,11 +484,14 @@ export function StudioExperience({
       seek: (ms: number): void => seekTo(ms),
       selectedShotId: (): string | null => (selection?.kind === 'shot' ? selection.id : null),
       shotIds: (): readonly string[] => proposal.cameraTracks.map((track) => track.id),
+      /** Committed commands in the undo stack — lets QA verify an edit
+       * actually entered history (not just that the DOM changed). */
+      undoDepth: (): number => history.past.length,
     };
     return () => {
       delete hook['__kyneloomStudio'];
     };
-  }, [draftId, draftDirty, unsaved, selection, proposal.cameraTracks, seekTo]);
+  }, [draftId, draftDirty, unsaved, selection, proposal.cameraTracks, seekTo, history.past.length]);
 
   return (
     <div className="studio-app" data-preview-mode={previewMode ? 'true' : undefined}>
@@ -428,10 +537,43 @@ export function StudioExperience({
             <button
               type="button"
               className="btn btn--ghost"
-              data-dismiss-restore=""
-              onClick={() => setRestoreOffer({ kind: 'none' })}
+              data-start-fresh=""
+              onClick={() => setConfirmDiscard({ revision: restoreOffer.revision })}
             >
               Start from baseline
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {confirmDiscard !== null && restoreOffer.kind === 'offer' ? (
+        <div
+          className="studio-restore studio-restore--confirm"
+          role="alertdialog"
+          aria-label="Discard saved local draft"
+          data-discard-confirm=""
+        >
+          <p className="studio-restore__text">
+            <span className="chip chip--amber mono">DISCARD SAVED DRAFT?</span> Starting from the
+            baseline permanently discards the saved local draft (revision{' '}
+            {String(restoreOffer.revision)}) from THIS browser. This is atomic and refuses if
+            another session saved a newer revision meanwhile.
+          </p>
+          <div className="studio-restore__actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              data-discard-draft=""
+              onClick={() => void discardSavedDraft(restoreOffer.revision)}
+            >
+              Discard and start fresh
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              data-keep-draft=""
+              onClick={() => setConfirmDiscard(null)}
+            >
+              Keep saved draft
             </button>
           </div>
         </div>
@@ -567,6 +709,8 @@ export function StudioExperience({
             compileErrors={compilePhase.kind === 'rejected' ? compilePhase.errors : []}
             staleMessage={compilePhase.kind === 'stale' ? compilePhase.message : null}
             conflict={conflict}
+            storageError={storageError}
+            onReloadSavedDraft={() => void reloadSavedDraft()}
           />
           {sourcePanel}
         </aside>

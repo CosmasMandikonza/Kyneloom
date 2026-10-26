@@ -1,21 +1,21 @@
 {
-  "generatedAt": "2026-10-26T15:42:07.235Z",
+  "generatedAt": "2026-10-26T23:03:52.370Z",
   "desktop": {
     "scene": {
       "perf": {
         "fps": 1,
-        "p50Ms": 645.5,
-        "p95Ms": 2700.3,
-        "drawCalls": 121,
-        "triangles": 607324,
-        "geometries": 31,
+        "p50Ms": 961.6,
+        "p95Ms": 3639.7,
+        "drawCalls": 125,
+        "triangles": 607412,
+        "geometries": 30,
         "textures": 49,
-        "samples": 9
+        "samples": 10
       },
       "players": 22,
       "ball": true,
       "canvasW": 836,
-      "canvasH": 457
+      "canvasH": 453
     },
     "steps": [
       {
@@ -78,11 +78,45 @@
         "step": "mobile-scrub",
         "ok": true,
         "activation": "real",
-        "detail": "playhead 4725033.3"
+        "detail": "playhead 4725035.03"
       }
     ],
     "consoleErrors": [],
     "overflowPx": 0
+  },
+  "recovery": {
+    "steps": [
+      {
+        "step": "A-save-rev1",
+        "ok": true,
+        "detail": "draft rev 1 · saved"
+      },
+      {
+        "step": "B-save-conflicts",
+        "ok": true,
+        "detail": "EDITING CONFLICTAnother editor session saved revision 1 of this draft first. You"
+      },
+      {
+        "step": "B-reload-latest",
+        "ok": true,
+        "detail": "adopted A's draft, conflict cleared"
+      },
+      {
+        "step": "B-save-rev2",
+        "ok": true,
+        "detail": "draft rev 2 · saved"
+      },
+      {
+        "step": "C-discard-saved-draft",
+        "ok": true
+      },
+      {
+        "step": "C-save-fresh",
+        "ok": true,
+        "detail": "draft rev 1 · saved"
+      }
+    ],
+    "consoleErrors": []
   },
   "failures": []
 }

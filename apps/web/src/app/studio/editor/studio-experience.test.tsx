@@ -438,38 +438,30 @@ describe('StudioExperience — the end-to-end editing journey (red-team matrix)'
     expect(document.querySelector('[data-layer-id="cam-winger-follow"]')).not.toBeNull();
   });
 
-  it('#10 two tabs editing one draft produce a revision conflict, never a silent overwrite', async () => {
+  it('#9b Start from baseline discards the saved draft atomically; the next save starts a fresh lineage', async () => {
     stubBrowserApis();
     const world = await realWorld();
-    // Tab A opens and saves (revision 1).
     mount(world);
+    clickClip('camera');
+    fireEvent.click(button(/Winger follow/i));
+    await waitFor(
+      () => {
+        expect(document.querySelector('[data-draft-preview-chip]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
     fireEvent.click(button(/Save draft/i));
     await waitFor(
       () => {
-        expect(screen.getByText(/rev 1/u)).toBeDefined();
+        expect(document.querySelector('[data-unsaved-dot="false"]')).not.toBeNull();
       },
       { timeout: 6000 },
     );
+    expect(document.querySelector('[data-draft-revision]')?.textContent).toContain('rev 1');
     cleanup();
-    // Tab B — still believing revision 0 — saves and must conflict.
-    mount(world);
-    await waitFor(
-      () => {
-        expect(document.querySelector('[data-restore-banner]')).not.toBeNull();
-      },
-      { timeout: 6000 },
-    );
-    fireEvent.click(button(/Start from baseline/i));
-    fireEvent.click(button(/Save draft/i));
-    await waitFor(
-      () => {
-        expect(document.querySelector('[data-conflict-banner]')).not.toBeNull();
-      },
-      { timeout: 6000 },
-    );
-    expect(document.querySelector('[data-conflict-banner]')?.textContent).toContain('revision 1');
-    // Nothing was overwritten: reloading still offers revision 1.
-    cleanup();
+
+    // Reload: the saved draft is offered. Starting from the baseline is an
+    // EXPLICIT destructive confirmation, not a silent dismiss.
     mount(world);
     await waitFor(
       () => {
@@ -479,6 +471,161 @@ describe('StudioExperience — the end-to-end editing journey (red-team matrix)'
       },
       { timeout: 6000 },
     );
+    fireEvent.click(button(/Start from baseline/i));
+    await waitFor(
+      () => {
+        expect(document.querySelector('[data-discard-confirm]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    fireEvent.click(button(/Discard and start fresh/i));
+    await waitFor(
+      () => {
+        expect(document.querySelector('[data-restore-banner]')).toBeNull();
+        expect(document.querySelector('[data-discard-confirm]')).toBeNull();
+      },
+      { timeout: 6000 },
+    );
+
+    // The old blocker: this save used to conflict forever. Now it succeeds
+    // — a fresh revision lineage from the compiled baseline.
+    clickClip('camera');
+    fireEvent.click(button(/Overhead tactical/i));
+    await waitFor(
+      () => {
+        expect(document.querySelector('[data-draft-preview-chip]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    fireEvent.click(button(/Save draft/i));
+    await waitFor(
+      () => {
+        expect(document.querySelector('[data-unsaved-dot="false"]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    expect(document.querySelector('[data-draft-revision]')?.textContent).toContain('rev 1');
+    expect(document.querySelector('[data-conflict-banner]')).toBeNull();
+  });
+
+  it('#10 two tabs editing one draft produce a conflict; Reload saved draft recovers to revision 2', async () => {
+    stubBrowserApis();
+    const world = await realWorld();
+    const worldProps = {
+      baseScene: world.scene,
+      evidence: world.evidence,
+      initialProposal: world.proposal,
+      initialResult: world.initial,
+      sourcePanel: <div>source</div>,
+    };
+    // Two LIVE tabs over the shared session storage (jsdom has no IndexedDB,
+    // so both sit on the memory-fallback singleton — same shape as two tabs
+    // over one database). Both loaded while nothing was stored.
+    const tabA = render(<StudioExperience {...worldProps} />);
+    const tabB = render(<StudioExperience {...worldProps} />);
+    await waitFor(
+      () => {
+        expect(tabA.container.querySelector('[data-timeline]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    await waitFor(
+      () => {
+        expect(tabB.container.querySelector('[data-timeline]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    const saveButton = (container: HTMLElement): HTMLElement => {
+      const el = container.querySelector('[data-save-draft]');
+      if (el === null) throw new Error('save button missing');
+      return el as HTMLElement;
+    };
+    const namedButton = (container: HTMLElement, name: string): HTMLButtonElement => {
+      const found = Array.from(container.querySelectorAll('button')).find(
+        (candidate) => candidate.textContent === name,
+      );
+      if (found === undefined) throw new Error(`button "${name}" missing`);
+      return found;
+    };
+    const clipSelect = (container: HTMLElement, kind: string): HTMLElement => {
+      const el = container.querySelector(`[data-clip="${kind}"] .studio-tl__clip-select`);
+      if (el === null) throw new Error(`${kind} clip missing`);
+      return el as HTMLElement;
+    };
+
+    // Tab A edits (winger preset) and saves → revision 1.
+    fireEvent.click(clipSelect(tabA.container, 'camera'));
+    fireEvent.click(namedButton(tabA.container, 'Winger follow'));
+    await waitFor(
+      () => {
+        expect(tabA.container.querySelector('[data-draft-preview-chip]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    fireEvent.click(saveButton(tabA.container));
+    await waitFor(
+      () => {
+        expect(tabA.container.querySelector('[data-unsaved-dot="false"]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+
+    // Tab B — still believing revision 0 — saves and must CONFLICT; the
+    // banner offers a real recovery action (nothing was overwritten).
+    fireEvent.click(saveButton(tabB.container));
+    await waitFor(
+      () => {
+        expect(tabB.container.querySelector('[data-conflict-banner]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    expect(tabB.container.querySelector('[data-conflict-banner]')?.textContent).toContain(
+      'revision 1',
+    );
+
+    // Recovery: B adopts the latest stored draft — A's winger shot appears
+    // in B, the conflict clears, and B's lineage continues at revision 1.
+    fireEvent.click(tabB.container.querySelector('[data-reload-saved-draft]') as HTMLElement);
+    await waitFor(
+      () => {
+        expect(tabB.container.querySelector('[data-layer-id="cam-winger-follow"]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    await waitFor(
+      () => {
+        expect(tabB.container.querySelector('[data-conflict-banner]')).toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    expect(tabB.container.querySelector('[data-draft-revision]')?.textContent).toContain('rev 1');
+
+    // B edits on the adopted lineage and saves → revision 2 (no lost update).
+    fireEvent.click(clipSelect(tabB.container, 'caption'));
+    await waitFor(
+      () => {
+        expect(tabB.container.querySelector('[data-inspector="caption"]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    commitInput(
+      tabB.container.querySelector('[data-inspector="caption"] textarea') as HTMLTextAreaElement,
+      'The decoy run bent the back line and the finish followed',
+    );
+    await waitFor(
+      () => {
+        expect(tabB.container.querySelector('[data-draft-preview-chip]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    fireEvent.click(saveButton(tabB.container));
+    await waitFor(
+      () => {
+        expect(tabB.container.querySelector('[data-unsaved-dot="false"]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    expect(tabB.container.querySelector('[data-draft-revision]')?.textContent).toContain('rev 2');
   });
 
   it('#11 a stale draft surfaces the stale state; the compiled preview never swaps', async () => {
@@ -573,6 +720,46 @@ describe('StudioExperience — the end-to-end editing journey (red-team matrix)'
     expect(document.querySelector('[data-compiled-hash]')?.getAttribute('data-compiled-hash')).toBe(
       world.initial.manifestHash,
     );
+  });
+
+  it('#16 storage failures surface as an honest banner — never unhandled rejections (review nonblocking)', async () => {
+    stubBrowserApis();
+    const world = await realWorld();
+    // A BROKEN IndexedDB: the local backend picks it up and every repository
+    // operation rejects. The editor must stay fully usable on the compiled
+    // baseline and surface the failure visibly.
+    vi.stubGlobal('indexedDB', {
+      open: (): IDBDatabase => {
+        throw new Error('quota exceeded');
+      },
+    });
+    mount(world);
+    await waitFor(
+      () => {
+        expect(document.querySelector('[data-timeline]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    await waitFor(
+      () => {
+        expect(document.querySelector('[data-storage-error]')).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
+    // Saving through the broken store surfaces the SAME banner, updated —
+    // not an unhandled promise rejection (vitest fails those loudly).
+    fireEvent.click(button(/Save draft/i));
+    await waitFor(
+      () => {
+        expect(document.querySelector('[data-storage-error]')?.textContent).toContain(
+          'quota exceeded',
+        );
+      },
+      { timeout: 6000 },
+    );
+    // The compiled baseline identity and the editing surface stay usable.
+    expect(document.querySelector('[data-compiled-hash]')).not.toBeNull();
+    expect(document.querySelector('[data-conflict-banner]')).toBeNull();
   });
 
   it('the QA hook exposes the shared clock — timeline seek moves the stage playhead', async () => {

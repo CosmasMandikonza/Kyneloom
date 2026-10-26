@@ -127,6 +127,25 @@ describe('studio draft — camera shot edits validate through the contract', () 
     expect(setShotInterval(draft, trackId, 0, 100).ok).toBe(false);
     expect(setShotInterval(draft, trackId, 0, windowMs).ok).toBe(true);
   });
+
+  it('a shot interval beyond the MOMENT duration is rejected with the exact field path (review reproducer)', async () => {
+    const { draft } = await realWorld();
+    const track = draft.proposal.cameraTracks[0]!;
+    const windowMs = draft.proposal.timeRangeMs[1] - draft.proposal.timeRangeMs[0];
+    // The reproducer: enlarge the track so every existing keyframe still sits
+    // inside [startMs, endMs] — the track schema alone cannot catch this;
+    // only the moment-window mirror does (the compiler rejects it later).
+    const beyond = setShotInterval(draft, track.id, 0, windowMs + 1000);
+    expect(beyond.ok).toBe(false);
+    if (beyond.ok) return;
+    expect(beyond.errors[0]!.fieldPath).toBe('cameraTracks[0].endMs');
+    expect(beyond.errors[0]!.code).toBe('outside_time_window');
+    expect(beyond.errors[0]!.message).toContain(String(windowMs));
+
+    // Exactly at the moment end is inside — the boundary is inclusive.
+    const atEnd = setShotInterval(draft, track.id, 0, windowMs);
+    expect(atEnd.ok).toBe(true);
+  });
 });
 
 describe('studio draft — overlays, captions and the editorial law', () => {
@@ -355,5 +374,36 @@ describe('studio draft repository — atomic compare-and-save (red-team #9/#10)'
     expect(invalid !== null && !invalid.ok).toBe(true);
     expect(recordToDraft('not-a-record') !== null).toBe(true);
     expect(recordToDraft(null) !== null).toBe(true);
+  });
+
+  it('reset discards under the same CAS law: stale expectations refuse, fresh lineages restart at revision 0', async () => {
+    const backend = createMemoryDraftBackend();
+    const repository = createMemoryDraftRepository(backend);
+    const { draft } = await realWorld();
+
+    // Nothing stored: reset is an idempotent success.
+    expect((await repository.reset(draft.draftId, 0)).ok).toBe(true);
+
+    const saved = await repository.save(draft, 0);
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+
+    // A concurrent tab moved the revision: the confirmed discard REFUSES and
+    // names the winner — that tab's update survives.
+    const raced = await repository.reset(draft.draftId, 0);
+    expect(raced.ok).toBe(false);
+    if (raced.ok) return;
+    expect(raced.kind).toBe('conflict');
+    if (raced.kind !== 'conflict') return;
+    expect(raced.currentRevision).toBe(1);
+
+    // Discarding the revision the user actually confirmed succeeds, and the
+    // next save starts a FRESH lineage from revision 0.
+    expect((await repository.reset(draft.draftId, 1)).ok).toBe(true);
+    expect(await repository.load(draft.draftId)).toBeNull();
+    const fresh = await repository.save(draft, 0);
+    expect(fresh.ok).toBe(true);
+    if (!fresh.ok) return;
+    expect(fresh.revision).toBe(1);
   });
 });

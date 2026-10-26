@@ -1,8 +1,10 @@
 import {
   buildRecord,
   recordToDraft,
+  resolveReset,
   resolveSave,
   type LoadOutcome,
+  type ResetOutcome,
   type SaveOutcome,
   type StudioDraftRepository,
   type StoredDraftRecord,
@@ -30,6 +32,7 @@ const STORE = 'drafts';
 export interface MemoryDraftBackend {
   get(draftId: string): StoredDraftRecord | null;
   put(record: StoredDraftRecord): void;
+  delete(draftId: string): void;
   clear(): void;
 }
 
@@ -39,6 +42,9 @@ export function createMemoryDraftBackend(): MemoryDraftBackend {
     get: (draftId) => records.get(draftId) ?? null,
     put: (record) => {
       records.set(record.draftId, record);
+    },
+    delete: (draftId) => {
+      records.delete(draftId);
     },
     clear: () => {
       records.clear();
@@ -63,6 +69,14 @@ export function createMemoryDraftRepository(
       }
       backend.put(buildRecord(draft, expectedRevision + 1));
       return { ok: true, revision: expectedRevision + 1 };
+    },
+    async reset(draftId, expectedRevision) {
+      const outcome = resolveReset(backend.get(draftId), expectedRevision);
+      if (!outcome.proceed) {
+        return { ok: false, kind: 'conflict', currentRevision: outcome.currentRevision };
+      }
+      backend.delete(draftId);
+      return { ok: true };
     },
   };
 }
@@ -134,6 +148,38 @@ export function createIndexedDbDraftRepository(): StudioDraftRepository {
       });
       return { ok: true, revision: expectedRevision + 1 };
     },
+    async reset(draftId, expectedRevision) {
+      const database = await db();
+      // ONE readwrite transaction: get + revision check + delete commit (or
+      // abort) together — serialized against every other tab's transaction,
+      // exactly like save. The delete only commits when the stored revision
+      // still equals the one the user confirmed discarding.
+      const transaction = database.transaction(STORE, 'readwrite');
+      const store = transaction.objectStore(STORE);
+      const stored = (await requestToPromise(store.get(draftId) as IDBRequest<unknown>)) as
+        { revision: unknown } | null | undefined;
+      const outcome = resolveReset(
+        stored === undefined || stored === null
+          ? null
+          : typeof stored.revision === 'number'
+            ? { revision: stored.revision }
+            : null,
+        expectedRevision,
+      );
+      if (!outcome.proceed) {
+        transaction.abort();
+        return { ok: false, kind: 'conflict', currentRevision: outcome.currentRevision };
+      }
+      await new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onabort = () =>
+          reject(transaction.error ?? new Error('indexeddb reset aborted'));
+        transaction.onerror = () =>
+          reject(transaction.error ?? new Error('indexeddb reset failed'));
+        store.delete(draftId);
+      });
+      return { ok: true };
+    },
   };
 }
 
@@ -166,4 +212,4 @@ export function createLocalDraftRepository(): StudioDraftRepository & {
   });
 }
 
-export type { LoadOutcome, SaveOutcome, StudioDraftRepository };
+export type { LoadOutcome, ResetOutcome, SaveOutcome, StudioDraftRepository };

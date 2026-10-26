@@ -36,11 +36,25 @@ export type SaveOutcome =
   | { readonly ok: true; readonly revision: number }
   | { readonly ok: false; readonly kind: 'conflict'; readonly currentRevision: number };
 
+/**
+ * Reset (discard the saved local draft) under the SAME compare-and-save law:
+ * the delete only proceeds when the stored revision still equals what the
+ * user confirmed discarding — a concurrent tab that saved in between moves
+ * the revision, and the reset refuses (conflict) instead of silently
+ * discarding that tab's update. Never a bare unconditional delete.
+ */
+export type ResetOutcome =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly kind: 'conflict'; readonly currentRevision: number }
+  | { readonly ok: false; readonly kind: 'unavailable'; readonly message: string };
+
 export interface StudioDraftRepository {
   /** The stored draft for this id, or null when none exists. A corrupt record REJECTS (never coerced). */
   load(draftId: string): Promise<LoadOutcome | null>;
   /** Atomic compare-and-save. */
   save(draft: StudioDraft, expectedRevision: number): Promise<SaveOutcome>;
+  /** Atomic compare-and-discard of the stored record (explicit user action). */
+  reset(draftId: string, expectedRevision: number): Promise<ResetOutcome>;
 }
 
 /**
@@ -54,6 +68,20 @@ export function resolveSave(
   if (stored === null) {
     return expectedRevision === 0 ? { proceed: true } : { proceed: false, currentRevision: 0 };
   }
+  return stored.revision === expectedRevision
+    ? { proceed: true }
+    : { proceed: false, currentRevision: stored.revision };
+}
+
+/** Pure reset resolution: same CAS law as resolveSave, except an absent
+ * record is an idempotent success (discarding nothing cannot lose anyone's
+ * update — if another tab reset first, this tab just confirms the same end
+ * state). */
+export function resolveReset(
+  stored: { readonly revision: number } | null,
+  expectedRevision: number,
+): { readonly proceed: true } | { readonly proceed: false; readonly currentRevision: number } {
+  if (stored === null) return { proceed: true };
   return stored.revision === expectedRevision
     ? { proceed: true }
     : { proceed: false, currentRevision: stored.revision };

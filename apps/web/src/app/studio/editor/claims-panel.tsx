@@ -17,6 +17,10 @@ export interface ClaimsPanelProps {
   readonly compileErrors: readonly ContractValidationError[];
   readonly staleMessage: string | null;
   readonly conflict: { readonly theirRevision: number } | null;
+  /** Storage failures surface here — never as unhandled promise rejections. */
+  readonly storageError: string | null;
+  /** Conflict recovery: adopt the latest stored draft (replaces this tab's edits). */
+  readonly onReloadSavedDraft: () => void;
 }
 
 const SEPARATION_VALUE_LABELS: Record<string, string> = {
@@ -31,19 +35,39 @@ export function ClaimsPanel({
   compileErrors,
   staleMessage,
   conflict,
+  storageError,
+  onReloadSavedDraft,
 }: ClaimsPanelProps) {
   return (
     <section className="studio-claims" aria-label="Claims and evidence" data-claims-panel="">
       <h2 className="studio-claims__title">Claims &amp; evidence</h2>
+
+      {storageError !== null ? (
+        <div className="studio-claims__conflict" role="alert" data-storage-error="">
+          <p className="studio-claims__conflict-title mono">LOCAL STORAGE ERROR</p>
+          <p>{storageError}</p>
+        </div>
+      ) : null}
 
       {conflict !== null ? (
         <div className="studio-claims__conflict" role="alert" data-conflict-banner="">
           <p className="studio-claims__conflict-title mono">EDITING CONFLICT</p>
           <p>
             Another editor session saved revision {String(conflict.theirRevision)} of this draft
-            first. Your save was refused — nothing was overwritten. Reload the saved draft from the
-            restore banner (or keep editing yours and re-save after adopting the newer revision).
+            first. Your save was refused — nothing was overwritten. Reload the saved draft to adopt
+            revision {String(conflict.theirRevision)} (your unsaved edits in this tab are replaced),
+            then save again; a successful save or reload clears this banner.
           </p>
+          <div className="studio-restore__actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              data-reload-saved-draft=""
+              onClick={onReloadSavedDraft}
+            >
+              Reload saved draft
+            </button>
+          </div>
         </div>
       ) : null}
 
