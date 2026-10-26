@@ -64,16 +64,6 @@ async function startServer(): Promise<() => Promise<void>> {
   };
 }
 
-interface StudioHook {
-  draftId: string;
-  draftDirty(): boolean;
-  unsaved(): boolean;
-  playheadMs(): number | null;
-  seek(ms: number): void;
-  selectedShotId(): string | null;
-  shotIds(): readonly string[];
-}
-
 async function main(): Promise<void> {
   mkdirSync(OUT_DIR, { recursive: true });
   const stop = await startServer();
@@ -176,9 +166,7 @@ async function main(): Promise<void> {
       undefined,
       { timeout: 90_000, polling: 250 },
     );
-    const newHash = await page
-      .locator('[data-compiled-hash]')
-      .getAttribute('data-compiled-hash');
+    const newHash = await page.locator('[data-compiled-hash]').getAttribute('data-compiled-hash');
     line(
       'E: recompile produced a NEW hash',
       `${String(baselineHash)?.slice(7, 19)}… → different`,

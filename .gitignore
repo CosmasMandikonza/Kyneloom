@@ -43,3 +43,6 @@ pnpm-debug.log*
 qa/video-frames/
 qa/video-test/
 .live-archive/
+
+# Vitest run cache (local only)
+.vitest/

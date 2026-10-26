@@ -1,0 +1,88 @@
+{
+  "generatedAt": "2026-10-26T15:42:07.235Z",
+  "desktop": {
+    "scene": {
+      "perf": {
+        "fps": 1,
+        "p50Ms": 645.5,
+        "p95Ms": 2700.3,
+        "drawCalls": 121,
+        "triangles": 607324,
+        "geometries": 31,
+        "textures": 49,
+        "samples": 9
+      },
+      "players": 22,
+      "ball": true,
+      "canvasW": 836,
+      "canvasH": 457
+    },
+    "steps": [
+      {
+        "step": "select-camera-clip",
+        "ok": true,
+        "activation": "real",
+        "detail": "shot inspector open"
+      },
+      {
+        "step": "apply-winger-preset",
+        "ok": true,
+        "activation": "real",
+        "detail": "10 baked keyframes"
+      },
+      {
+        "step": "select-caption-clip",
+        "ok": true,
+        "activation": "real"
+      },
+      {
+        "step": "undo",
+        "ok": true,
+        "activation": "real",
+        "detail": "field reverted (The winger's decoy run likel...)"
+      },
+      {
+        "step": "redo",
+        "ok": true,
+        "activation": "real",
+        "detail": "caption field restored"
+      },
+      {
+        "step": "save-draft",
+        "ok": true,
+        "activation": "real",
+        "detail": "draft rev 1 · saved"
+      },
+      {
+        "step": "recompile",
+        "ok": true,
+        "activation": "real",
+        "detail": "sha256:88a9f0d1789a329da4f9e0963968e4e53844adcbcc00e7ec20f580c8296e6952 -> sha256:9eac31d2c0ddb7c8bb3aef40e614e31d2fe282956d2630b63eec2ca50eee3d21"
+      },
+      {
+        "step": "caption-compiled-mirror",
+        "ok": true,
+        "detail": "claims panel mirrors the recompiled hypothesis text"
+      },
+      {
+        "step": "restore-draft",
+        "ok": true,
+        "activation": "synthetic-fallback"
+      }
+    ],
+    "consoleErrors": []
+  },
+  "mobile": {
+    "steps": [
+      {
+        "step": "mobile-scrub",
+        "ok": true,
+        "activation": "real",
+        "detail": "playhead 4725033.3"
+      }
+    ],
+    "consoleErrors": [],
+    "overflowPx": 0
+  },
+  "failures": []
+}
