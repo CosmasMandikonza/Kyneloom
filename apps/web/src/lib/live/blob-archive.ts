@@ -14,7 +14,9 @@ import type { AzureLiveConfig } from './azure-adapters';
  */
 export interface DurableArchive {
   appendEnvelopes(batch: readonly StreamEnvelope[]): Promise<void>;
-  /** Receipt order, preserving the old archive layout before new records. */
+  /** Recovery MUST admit each original batch separately in receipt order. */
+  readBatches(): Promise<StreamEnvelope[][]>;
+  /** Flattened inspection only; never use for authoritative recovery. */
   readAllEnvelopes(): Promise<StreamEnvelope[]>;
 }
 
@@ -71,6 +73,25 @@ export async function createBlobArchive(
     });
   }
 
+  async function readBatches(): Promise<StreamEnvelope[][]> {
+    const batches: StreamEnvelope[][] = [];
+    for (const { name } of await entries()) {
+      const buffer = await container.getBlobClient(name).downloadToBuffer();
+      if (name.startsWith(contentPrefix)) {
+        const digest = createHash('sha256').update(buffer).digest('hex');
+        if (name !== `${contentPrefix}${digest}.json`) {
+          throw new Error(`archive content hash mismatch: ${name}`);
+        }
+      }
+      const batch: unknown = JSON.parse(buffer.toString('utf-8'));
+      if (!Array.isArray(batch)) throw new Error(`archive batch is not an array: ${name}`);
+      // Preserve raw records, including invalid source data, for the existing
+      // worker's admission/quarantine checks. Do not filter history here.
+      batches.push(batch as StreamEnvelope[]);
+    }
+    return batches;
+  }
+
   const existing = await entries();
   let nextOrder = existing.reduce(
     (next, entry) => (entry.order !== null && entry.order >= next ? entry.order + 1n : next),
@@ -109,23 +130,9 @@ export async function createBlobArchive(
         }
       }
     },
+    readBatches,
     async readAllEnvelopes(): Promise<StreamEnvelope[]> {
-      const envelopes: StreamEnvelope[] = [];
-      for (const { name } of await entries()) {
-        const buffer = await container.getBlobClient(name).downloadToBuffer();
-        if (name.startsWith(contentPrefix)) {
-          const digest = createHash('sha256').update(buffer).digest('hex');
-          if (name !== `${contentPrefix}${digest}.json`) {
-            throw new Error(`archive content hash mismatch: ${name}`);
-          }
-        }
-        const batch: unknown = JSON.parse(buffer.toString('utf-8'));
-        if (!Array.isArray(batch)) throw new Error(`archive batch is not an array: ${name}`);
-        // Preserve raw records, including invalid source data, for the existing
-        // worker's admission/quarantine checks. Do not filter history here.
-        envelopes.push(...(batch as StreamEnvelope[]));
-      }
-      return envelopes;
+      return (await readBatches()).flat();
     },
   };
 }
@@ -135,14 +142,18 @@ export function createMemoryArchive(failAppend = false): DurableArchive & {
   stored: StreamEnvelope[][];
 } {
   const stored: StreamEnvelope[][] = [];
+  async function readBatches(): Promise<StreamEnvelope[][]> {
+    return stored.map((batch) => batch.map((envelope) => ({ ...envelope })));
+  }
   return {
     stored,
     async appendEnvelopes(batch): Promise<void> {
       if (failAppend) throw new Error('archive write failed (injected)');
       stored.push([...batch]);
     },
+    readBatches,
     async readAllEnvelopes(): Promise<StreamEnvelope[]> {
-      return stored.flat().map((envelope) => ({ ...envelope }));
+      return (await readBatches()).flat();
     },
   };
 }

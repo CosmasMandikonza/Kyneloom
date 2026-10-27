@@ -97,8 +97,12 @@ SEND_SPEED=4 pnpm live:fixture:send
   REPLAYS the durable envelope archive (Blob) into a fresh session before
   consuming, so the authoritative corpus is reconstructed even for source
   the Event Hubs checkpoints already consumed; envelope-id dedupe makes any
-  redelivery idempotent (no duplicate externally visible publication — the
-  KYN-14 runtime regressions prove the ordering).
+  redelivery idempotent for authoritative state. Original batch boundaries and
+  receipt order are preserved. Local failure-injection tests verify state recovery,
+  not exactly-once external publication or live Azure restart safety. Follow the
+  [recovery invariant and ownership assumptions](../../docs/09-azure-platform.md)
+  before attempting this check; stop/quiesce the old writer before replacement.
+  A distributed fencing decision is still needed for overlapping workers/revisions.
 - **Authorized deployment smoke test (post stage 3):**
   1. `curl <fqdn>/api/live/ready` → 503 before ingestion, `mode:"cloud-fed"`
      + 200 once the session begins.

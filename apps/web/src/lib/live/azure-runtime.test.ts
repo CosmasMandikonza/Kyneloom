@@ -320,16 +320,16 @@ describe('maybeStartAzureLiveWorker — cloud-session lifecycle', () => {
     const runtime = await loadRuntime();
     const service = makeService();
     const archive = createMemoryArchive();
-    let finishReplay: (batch: StreamEnvelope[]) => void = () => undefined;
-    archive.readAllEnvelopes = vi.fn(
+    let finishReplay: (batch: StreamEnvelope[][]) => void = () => undefined;
+    archive.readBatches = vi.fn(
       () =>
-        new Promise<StreamEnvelope[]>((resolve) => {
+        new Promise<StreamEnvelope[][]>((resolve) => {
           finishReplay = resolve;
         }),
     );
     const { deps } = makeDeps(service, archive);
     await runtime.maybeStartAzureLiveWorker(FULL_ENV, deps);
-    await until(() => vi.mocked(archive.readAllEnvelopes).mock.calls.length === 1);
+    await until(() => vi.mocked(archive.readBatches).mock.calls.length === 1);
     await runtime.stopAzureLiveWorker();
     finishReplay([]);
     await Promise.resolve();

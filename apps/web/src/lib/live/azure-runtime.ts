@@ -18,11 +18,11 @@ import { LiveMatchService } from './service';
  *     canonical worker + archive-before-checkpoint law as the local path)
  *   → broadcast → SSE subscribers AND the Web PubSub match group.
  *
- * STARTUP (review C ordering): the durable archive is REPLAYED before the
- * session begins, so a restarted container reconstructs the authoritative
- * corpus instead of silently skipping source its Event Hubs checkpoints
+ * STARTUP: read the durable archive before beginning a session, then admit
+ * each original batch in receipt order before consuming. This reconstructs
+ * the authoritative corpus instead of skipping source its Event Hubs checkpoints
  * already consumed. Only then does consumption start — a fresh external
- * session whose checkpoints begin where the replayed corpus ends.
+ * session. Checkpoints may trail the archive; admission deduplicates redelivery.
  *
  * FAILURE LAWS: if ingestion start fails, the external session ENDS
  * truthfully (viewers see disconnected, never a fabricated healthy live
@@ -170,11 +170,11 @@ async function runAzureLiveWorker(
   let replayedCount = 0;
   try {
     const archive = await duringStartup(() => deps.createArchive(config));
-    // 1. REPLAY the durable archive: reconstruct the authoritative corpus
-    //    BEFORE the session begins (restart recovery law).
-    const replayed = await duringStartup(() => archive.readAllEnvelopes());
+    // Validate/read the entire archive before claiming a session. Batch
+    // boundaries are reducer input: flattening can turn a previously rejected
+    // correction into an accepted one when its target arrived in a later batch.
+    const replayed = await duringStartup(() => archive.readBatches());
     signal.throwIfAborted();
-    replayedCount = replayed.length;
     if (service.status.running) throw new Error('another stream session is already running');
     // 2. BEGIN the external session (new generation; NO local producer).
     service.beginExternalSession();
@@ -185,8 +185,11 @@ async function runAzureLiveWorker(
       replayedEnvelopes: replayedCount,
       archivedBatches: 0,
     };
-    if (replayed.length > 0) {
-      service.ingest(replayed);
+    for (const batch of replayed) {
+      signal.throwIfAborted();
+      service.ingest(batch);
+      replayedCount += batch.length;
+      runtimeStatus = { ...runtimeStatus, replayedEnvelopes: replayedCount };
     }
     // 3. Fan out every authoritative frame to the Web PubSub match group.
     service.setPublishHook((frame) => {

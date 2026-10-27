@@ -1,3 +1,4 @@
+import type { SubscribeOptions } from '@azure/event-hubs';
 import type { StreamEnvelope, LiveFrame, LiveConnectionStatus } from '@kyneloom/match-core';
 import { STREAM_CONTRACT_VERSION, validateLiveFrame } from '@kyneloom/match-core';
 
@@ -156,19 +157,22 @@ export async function startEventHubsIngestion(
   const credential = await factories.createCredential(config);
   const checkpointStore = await factories.createCheckpointStore(config, credential);
   const client = (await factories.createConsumerClient(config, credential, checkpointStore)) as {
-    subscribe(handlers: {
-      processEvents: (
-        events: {
-          body: unknown;
-          offset?: number;
-          sequenceNumber?: number;
-          enqueuedTimeUtc?: Date;
-        }[],
-        context: { updateCheckpoint: (event: unknown) => Promise<void> },
-      ) => Promise<void>;
-      processError: (err: unknown) => Promise<void>;
-      processClose: (reason: string) => Promise<void>;
-    }): { close(): Promise<void> };
+    subscribe(
+      handlers: {
+        processEvents: (
+          events: {
+            body: unknown;
+            offset?: number;
+            sequenceNumber?: number;
+            enqueuedTimeUtc?: Date;
+          }[],
+          context: { updateCheckpoint: (event: unknown) => Promise<void> },
+        ) => Promise<void>;
+        processError: (err: unknown) => Promise<void>;
+        processClose: (reason: string) => Promise<void>;
+      },
+      options: SubscribeOptions,
+    ): { close(): Promise<void> };
     close(): Promise<void>;
   };
 
@@ -183,61 +187,69 @@ export async function startEventHubsIngestion(
   let subscription: { close(): Promise<void> } | undefined;
   try {
     if (signal.aborted) return;
-    subscription = client.subscribe({
-      processEvents: async (events, context) => {
-        if (signal.aborted) return;
-        if (events.length === 0) {
-          health?.onReady(); // A successful empty receive also proves consumer connectivity.
-          return;
-        }
-        const batch: StreamEnvelope[] = [];
-        for (const event of events) {
-          const body = event.body as Record<string, unknown> | undefined;
-          if (
-            body === undefined ||
-            body.contractVersion !== STREAM_CONTRACT_VERSION ||
-            typeof body.envelopeId !== 'string'
-          ) {
-            // Poison envelope: quarantine via a synthetic record; the worker's
-            // quarantine store captures the trace id when present.
-            batch.push({
-              contractVersion: STREAM_CONTRACT_VERSION,
-              envelopeId: `poison-${String(event.offset ?? event.sequenceNumber)}`,
-              matchId: config.matchId,
-              kind: 'event',
-              event: body as StreamEnvelope['event'],
-              emittedAt: event.enqueuedTimeUtc?.getTime() ?? Date.now(),
-              traceId: typeof body?.traceId === 'string' ? (body.traceId as string) : 'trc-unknown',
-            });
-            continue;
+    subscription = client.subscribe(
+      {
+        processEvents: async (events, context) => {
+          if (signal.aborted) return;
+          if (events.length === 0) {
+            health?.onReady(); // A successful empty receive also proves consumer connectivity.
+            return;
           }
-          batch.push(body as unknown as StreamEnvelope);
-        }
-        // Durable obligations FIRST (archive etc.), then checkpoint — the
-        // documented at-least-once contract.
-        await onBatch(batch);
-        signal.throwIfAborted();
-        for (const event of events) {
-          await context.updateCheckpoint(event);
-        }
-        health?.onReady();
+          const batch: StreamEnvelope[] = [];
+          for (const event of events) {
+            const body = event.body as Record<string, unknown> | undefined;
+            if (
+              body === undefined ||
+              body.contractVersion !== STREAM_CONTRACT_VERSION ||
+              typeof body.envelopeId !== 'string'
+            ) {
+              // Poison envelope: quarantine via a synthetic record; the worker's
+              // quarantine store captures the trace id when present.
+              batch.push({
+                contractVersion: STREAM_CONTRACT_VERSION,
+                envelopeId: `poison-${String(event.offset ?? event.sequenceNumber)}`,
+                matchId: config.matchId,
+                kind: 'event',
+                event: body as StreamEnvelope['event'],
+                emittedAt: event.enqueuedTimeUtc?.getTime() ?? Date.now(),
+                traceId:
+                  typeof body?.traceId === 'string' ? (body.traceId as string) : 'trc-unknown',
+              });
+              continue;
+            }
+            batch.push(body as unknown as StreamEnvelope);
+          }
+          // Durable obligations FIRST (archive etc.), then checkpoint — the
+          // documented at-least-once contract.
+          await onBatch(batch);
+          signal.throwIfAborted();
+          for (const event of events) {
+            await context.updateCheckpoint(event);
+          }
+          health?.onReady();
+        },
+        processError: async (err) => {
+          // Fail closed: let the runtime withdraw readiness and end the session.
+          // Recovery is a process restart; no second consumer is started here.
+          if (!signal.aborted) {
+            health?.onError(err); // Withdraw readiness before potentially slow SDK cleanup.
+            rejectStopped(err);
+          }
+        },
+        processClose: async (reason) => {
+          if (!signal.aborted) {
+            const error = new Error(`event hubs partition closed: ${reason}`);
+            health?.onError(error);
+            rejectStopped(error);
+          }
+        },
       },
-      processError: async (err) => {
-        // Fail closed: let the runtime withdraw readiness and end the session.
-        // Recovery is a process restart; no second consumer is started here.
-        if (!signal.aborted) {
-          health?.onError(err); // Withdraw readiness before potentially slow SDK cleanup.
-          rejectStopped(err);
-        }
+      {
+        // The SDK uses this only when no checkpoint exists; its default is
+        // latest, which can silently skip source queued before the first receive.
+        startPosition: { offset: '-1' },
       },
-      processClose: async (reason) => {
-        if (!signal.aborted) {
-          const error = new Error(`event hubs partition closed: ${reason}`);
-          health?.onError(error);
-          rejectStopped(error);
-        }
-      },
-    });
+    );
     await stopped;
   } finally {
     signal.removeEventListener('abort', onAbort);

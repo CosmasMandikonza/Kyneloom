@@ -67,3 +67,91 @@ describe('external ingestion local archive initialization', () => {
     expect(service.isExternalSession).toBe(false);
   });
 });
+
+describe('runtime recovery through the real LiveMatchService', () => {
+  it('replays separate batches through one external service without a fixture producer or cloud republication', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'kyn14-service-replay-'));
+    temporaryRoots.push(root);
+    vi.spyOn(process, 'cwd').mockReturnValue(root);
+    vi.resetModules();
+    const { LiveMatchService } = await import('./service');
+    const { LiveProjectionWorker } = await import('@kyneloom/match-core');
+    const { createMemoryArchive } = await import('./blob-archive');
+    const runtime = await import('./azure-runtime');
+    const batch = (sampleTimeMs: number): StreamEnvelope[] => [
+      {
+        contractVersion: STREAM_CONTRACT_VERSION,
+        envelopeId: `env-${sampleTimeMs}`,
+        matchId: 'synthetic-derby-01',
+        kind: 'tracking',
+        emittedAt: 1,
+        traceId: 'trace-replay',
+        tracking: {
+          schemaVersion: '1.0',
+          matchId: 'synthetic-derby-01',
+          sampleTimeMs,
+          entityId: 'home-01',
+          xM: 1,
+          yM: 2,
+          zM: 0,
+          origin: 'synthetic_ground_truth',
+          confidence: 1,
+          visibility: 'tracked',
+          sourceFrameId: `frame-${sampleTimeMs}`,
+        },
+      },
+    ];
+    const input = [batch(1000), batch(1100)];
+    const archive = createMemoryArchive();
+    archive.stored.push(...input);
+    const reference = new LiveProjectionWorker({
+      matchId: 'synthetic-derby-01',
+      sessionId: 'expected',
+    });
+    for (const batch of input) reference.admit(batch);
+    const broadcast = vi.fn(async () => undefined);
+    const consume = vi.fn(
+      (_config: unknown, _batch: unknown, signal: AbortSignal) =>
+        new Promise<void>((resolve) => {
+          signal.addEventListener('abort', () => resolve(), { once: true });
+        }),
+    );
+    try {
+      await runtime.maybeStartAzureLiveWorker(
+        {
+          KYN_EVENTHUBS_NAMESPACE: 'test',
+          KYN_EVENTHUB_NAME: 'test',
+          KYN_EVENTHUBS_CONSUMER_GROUP: 'reducer',
+          KYN_CHECKPOINT_CONTAINER_URL: 'https://test.blob.core.windows.net/checkpoints',
+          KYN_ARCHIVE_CONTAINER_URL: 'https://test.blob.core.windows.net/archive',
+          KYN_WEBPUBSUB_CONNECTION_STRING: 'unused',
+          KYN_WEBPUBSUB_HUB: 'live',
+          KYN_AZURE_CLIENT_ID: '00000000-0000-0000-0000-000000000000',
+        },
+        {
+          ...runtime.defaultAzureRuntimeDeps,
+          createArchive: async () => archive,
+          startIngestion: consume,
+          broadcast,
+        },
+      );
+      await vi.waitFor(() => expect(consume).toHaveBeenCalledTimes(1));
+      const service = LiveMatchService.get();
+      const snapshot = service.snapshotFrame();
+      const expected = reference.snapshot();
+      expect({ ...snapshot, sessionId: 'expected' }).toEqual(expected);
+      expect(service.isExternalSession).toBe(true);
+      expect(service.status.seq).toBe(2);
+      expect(runtime.azureRuntimeStatus().replayedEnvelopes).toBe(2);
+      expect(runtime.azureRuntimeStatus().active).toBe(false); // no successful live receive yet
+      expect(archive.stored).toHaveLength(2); // replay never re-appends to cloud archive
+      expect(broadcast).not.toHaveBeenCalled();
+      const directory = path.join(root, '.live-archive', service.matchId);
+      expect(
+        readFileSync(path.join(directory, 'envelopes.jsonl'), 'utf-8').trim().split('\n'),
+      ).toHaveLength(2);
+    } finally {
+      await runtime.stopAzureLiveWorker();
+    }
+  });
+});
