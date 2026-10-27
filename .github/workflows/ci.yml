@@ -77,3 +77,6 @@ jobs:
 
       - name: Production build
         run: pnpm build
+
+      - name: Production live runtime regression (simulated Azure, no credentials)
+        run: pnpm live:production:test

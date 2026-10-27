@@ -22,6 +22,7 @@
     "lens:perf": "tsx scripts/measure-lens-perf.ts",
     "lint": "eslint .",
     "live:fixture:send": "tsx scripts/send-fixture-to-event-hubs.ts",
+    "live:production:test": "tsx scripts/test-live-production.ts",
     "live:perf": "tsx scripts/measure-live-perf.ts",
     "moments:perf": "tsx scripts/measure-gallery-perf.ts",
     "moments:previews": "tsx scripts/generate-moment-previews.ts",

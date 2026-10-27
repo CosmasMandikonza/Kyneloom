@@ -1,3 +1,4 @@
+import { forgetTestProcess } from './test-support/process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { canonicalJsonStringify } from '@kyneloom/contracts';
@@ -67,6 +68,7 @@ async function boot(
   wait = true,
   exitProcess?: (code: number) => void,
 ) {
+  forgetTestProcess();
   vi.resetModules();
   const runtime = await import('./azure-runtime');
   const { startEventHubsIngestion } = await import('./azure-adapters');

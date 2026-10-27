@@ -1,3 +1,4 @@
+import { forgetTestProcess } from './test-support/process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LiveFrame, StreamEnvelope } from '@kyneloom/match-core';
 import { azureConfigFromEnv, type IngestionHealth } from './azure-adapters';
@@ -114,6 +115,7 @@ function makeDeps(service: ReturnType<typeof makeService>, archive: DurableArchi
 }
 
 beforeEach(() => {
+  forgetTestProcess();
   vi.resetModules();
 });
 

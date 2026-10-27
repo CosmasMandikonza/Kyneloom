@@ -104,6 +104,8 @@ The cloud template sets `NEXT_MANUAL_SIG_HANDLE=1`; the Docker command runs Node
 
 No new secret or Azure resource is needed. Ownership renewal adds Blob transactions. `commit-v1` is a bounded (4 MiB) private commit document; immutable `batches-v2` objects remain the source archive. Orphan uploads are ignored, not deleted. Existing legacy history requires a separately reviewed offline import; there is no automatic adoption or migration tool. See [the failure windows and checkpoint/broadcast limits](../../docs/09-azure-platform.md).
 
+The image runs one Node.js server process. A process-global registry shares the service, subscriptions and Azure lifecycle between Next instrumentation and API bundles. It does not share memory across Node processes or worker threads. Before publishing an image, run `pnpm build && pnpm live:production:test`: this starts the actual production server with controlled Azure boundaries and exercises HTTP readiness, snapshot/SSE state, lease loss and shutdown. Do not assume this topology works unchanged under a process manager, clustered server or isolated route host.
+
 ## Health, verification, rollback
 
 - Liveness: `curl <fqdn>/api/live/status`; worker readiness: `/api/live/ready`. Lease contention/failure/recovery never counts as worker readiness.
@@ -173,7 +175,7 @@ window. These are public list prices as of 2026-10 assembled for planning —
 | Runtime seam (replay → external session → durable-before-checkpoint ingestion) | ✅ implemented; unit-tested incl. failure injection (archive failure, startup failure, duplicate starts) |
 | Fixture sender command | ✅ implemented, type-checked (not executed — no hub) |
 | Browser viewer path | ✅ cloud-fed SSE (the judge path); browser Web PubSub **deferred/unverified** |
-| Container image | ⛔ not built (no registry auth on this host) — Dockerfile authored |
+| Container image | ✅ local Docker builds and local-mode production smoke tests succeeded; NOT pushed to a registry or deployed to Azure |
 | Cloud resources provisioned | ⛔ blocked: no `az`, no subscription, no owner authorization |
 | Runtime integration exercised | ⛔ blocked by the above (all local tests use fakes/real-clients-unconnected) |
 | Deployment evidence | ⛔ none — and none claimed |

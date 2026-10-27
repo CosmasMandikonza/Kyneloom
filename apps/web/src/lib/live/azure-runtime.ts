@@ -7,9 +7,10 @@ import {
   startEventHubsIngestion,
   type AzureLiveConfig,
 } from './azure-adapters';
-import type { ArchiveOwnership, DurableArchive } from './blob-archive';
+import type { DurableArchive } from './blob-archive';
 import { acquireOwnedArchive } from './owned-archive';
 import { LiveMatchService } from './service';
+import { liveProcessState } from './process-state';
 
 /**
  * KYN-14 — the Azure runtime seam. When the full adapter env contract is
@@ -49,35 +50,24 @@ export interface AzureRuntimeStatus {
   readonly ownershipGeneration?: string;
 }
 
-/** Live diagnostics surfaced by /api/live/status (readiness honesty). */
-let runtimeStatus: AzureRuntimeStatus = {
-  active: false,
-  detail: 'azure runtime not started (local mode)',
-  replayedEnvelopes: 0,
-  archivedBatches: 0,
-};
+// Capture the shared object, never a copy of its mutable fields.
+const state = liveProcessState().azure;
 
 export function azureRuntimeStatus(): AzureRuntimeStatus {
   // Also check the deadline on HTTP reads: a delayed timer/event-loop pause
   // must not let a resumed process report an expired owner as ready.
   try {
-    activeOwnership?.assertOwned();
+    state.ownership?.assertOwned();
   } catch {
-    workerController?.abort();
+    state.controller?.abort();
   }
-  return runtimeStatus;
+  return state.status;
 }
-let activeOwnership: ArchiveOwnership | undefined;
-
-/** Module-level single-start guard: one consumer per process, ever. */
-let startupAttempted = false;
-let workerController: AbortController | null = null;
-let workerTask: Promise<void> | null = null;
 
 /** Stop the background consumer and await its resource cleanup. No restart in this process. */
 export async function stopAzureLiveWorker(): Promise<void> {
-  workerController?.abort();
-  await workerTask;
+  state.controller?.abort();
+  await state.task;
 }
 
 export interface AzureRuntimeDeps {
@@ -94,17 +84,17 @@ export interface AzureRuntimeDeps {
   };
 }
 
-export const defaultAzureRuntimeDeps: AzureRuntimeDeps = {
+export const defaultAzureRuntimeDeps: AzureRuntimeDeps = (state.deps ??= {
   exitProcess: (code) => process.exit(code),
   startIngestion: startEventHubsIngestion,
   broadcast: broadcastViaWebPubSub,
   createArchive: (config, signal) => acquireOwnedArchive(config, signal ? { signal } : {}),
   getService: () => LiveMatchService.get(),
-};
+});
 
 /**
  * Start the Azure live worker if — and ONLY if — the deployed env contract
- * is complete. The module-level guard makes overlapping startup calls
+ * is complete. The process-global guard makes overlapping startup calls
  * no-ops: exactly one authoritative consumer/session per process. Scheduling
  * returns immediately; archive recovery and the consumer lifetime must NEVER
  * hold Next.js register() open. Readiness stays false until a receive succeeds.
@@ -115,22 +105,22 @@ export async function maybeStartAzureLiveWorker(
 ): Promise<AzureRuntimeResult> {
   const config = azureConfigFromEnv(env);
   if (config === null) {
-    runtimeStatus = {
-      ...runtimeStatus,
+    state.status = {
+      ...state.status,
       detail: azureModeRequested(env)
         ? 'incomplete Azure configuration — ingestion disabled'
         : 'azure live env contract absent — local mode only',
     };
-    return { started: false, detail: runtimeStatus.detail };
+    return { started: false, detail: state.status.detail };
   }
-  if (startupAttempted) {
+  if (state.startupAttempted) {
     return { started: false, detail: 'azure live worker already attempted in this process' };
   }
-  startupAttempted = true;
+  state.startupAttempted = true;
   const service = deps.getService();
   const controller = new AbortController();
-  workerController = controller;
-  runtimeStatus = { ...runtimeStatus, active: false, detail: 'cloud ingestion starting' };
+  state.controller = controller;
+  state.status = { ...state.status, active: false, detail: 'cloud ingestion starting' };
 
   const shutdown = (): void => {
     // Next's automatic signal cleanup calls process.exit independently of this
@@ -147,7 +137,7 @@ export async function maybeStartAzureLiveWorker(
   };
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);
-  workerTask = runAzureLiveWorker(config, deps, service, controller).finally(() => {
+  state.task = runAzureLiveWorker(config, deps, service, controller).finally(() => {
     process.removeListener('SIGTERM', shutdown);
     process.removeListener('SIGINT', shutdown);
   });
@@ -183,8 +173,8 @@ async function runAzureLiveWorker(
     ownsSession = false;
   };
   const onAbort = (): void => {
-    runtimeStatus = {
-      ...runtimeStatus,
+    state.status = {
+      ...state.status,
       active: false,
       detail:
         failure === undefined
@@ -204,11 +194,11 @@ async function runAzureLiveWorker(
   };
   signal.addEventListener('abort', onAbort, { once: true });
   try {
-    runtimeStatus = { ...runtimeStatus, detail: 'acquiring match ownership' };
+    state.status = { ...state.status, detail: 'acquiring match ownership' };
     // Do not abandon an acquisition/recovery promise on shutdown. A late
     // acquisition must be cleaned up, not become a leaked renewable owner.
     archive = await deps.createArchive(config, signal);
-    activeOwnership = archive.ownership;
+    state.ownership = archive.ownership;
     archive.ownership?.signal.addEventListener('abort', onOwnershipLost, { once: true });
     assertAuthority();
     const replayed = await archive.readBatches();
@@ -219,7 +209,7 @@ async function runAzureLiveWorker(
       generation === undefined ? undefined : `cloud-${generation}-${randomUUID()}`,
     );
     ownsSession = true;
-    runtimeStatus = {
+    state.status = {
       active: false,
       detail: 'cloud session starting — awaiting successful event hubs receive',
       replayedEnvelopes: 0,
@@ -230,7 +220,7 @@ async function runAzureLiveWorker(
       assertAuthority();
       service.ingest(batch);
       replayedCount += batch.length;
-      runtimeStatus = { ...runtimeStatus, replayedEnvelopes: replayedCount };
+      state.status = { ...state.status, replayedEnvelopes: replayedCount };
     }
     service.setPublishHook((frame) => {
       if (signal.aborted || !ownsSession) return;
@@ -256,7 +246,7 @@ async function runAzureLiveWorker(
           assertAuthority();
           if (!ownsSession) throw new Error('cloud session ended');
           batchIndex += 1;
-          runtimeStatus = { ...runtimeStatus, archivedBatches: batchIndex };
+          state.status = { ...state.status, archivedBatches: batchIndex };
           service.ingest(batch);
         });
         batchTail = task.catch(fail);
@@ -269,7 +259,7 @@ async function runAzureLiveWorker(
         onReady: () => {
           assertAuthority();
           if (ownsSession)
-            runtimeStatus = { ...runtimeStatus, active: true, detail: 'cloud ingestion active' };
+            state.status = { ...state.status, active: true, detail: 'cloud ingestion active' };
         },
         onError: fail,
       },
@@ -290,10 +280,10 @@ async function runAzureLiveWorker(
     } catch (error) {
       failure ??= error;
     }
-    activeOwnership = undefined;
+    state.ownership = undefined;
     signal.removeEventListener('abort', onAbort);
-    runtimeStatus = {
-      ...runtimeStatus,
+    state.status = {
+      ...state.status,
       active: false,
       detail:
         failure === undefined

@@ -1,6 +1,7 @@
 import { mkdirSync, appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { azureModeRequested } from './azure-adapters';
+import { liveProcessState } from './process-state';
 import {
   LiveProjectionWorker,
   LocalFixtureProducer,
@@ -10,7 +11,7 @@ import {
   type StreamEnvelope,
   type ProducerChaos,
 } from '@kyneloom/match-core';
-import { loadGoldenMatch } from '@/lib/match-fixture';
+import { loadGoldenMatch } from '../match-fixture';
 import type { MatchEvent, TrackingSample } from '@kyneloom/contracts';
 
 /**
@@ -61,12 +62,11 @@ interface Subscriber {
 
 export type LiveSpeed = 1 | 2 | 4;
 
-export class LiveMatchService {
-  private static instance: LiveMatchService | null = null;
+const processState = liveProcessState();
 
+export class LiveMatchService {
   static get(): LiveMatchService {
-    LiveMatchService.instance ??= new LiveMatchService();
-    return LiveMatchService.instance;
+    return (processState.service ??= new LiveMatchService());
   }
 
   readonly matchId = 'synthetic-derby-01';

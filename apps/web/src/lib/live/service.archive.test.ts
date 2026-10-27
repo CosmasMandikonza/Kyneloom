@@ -1,3 +1,4 @@
+import { forgetTestProcess } from './test-support/process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -15,6 +16,7 @@ describe('external ingestion local archive initialization', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'kyn14-external-'));
     temporaryRoots.push(root);
     vi.spyOn(process, 'cwd').mockReturnValue(root);
+    forgetTestProcess();
     vi.resetModules(); // ARCHIVE_ROOT and the singleton must belong to this fresh container.
     const { LiveMatchService } = await import('./service');
     const service = LiveMatchService.get();
@@ -59,6 +61,7 @@ describe('external ingestion local archive initialization', () => {
     const { writeFileSync } = await import('node:fs');
     writeFileSync(path.join(root, '.live-archive'), 'not a directory');
     vi.spyOn(process, 'cwd').mockReturnValue(root);
+    forgetTestProcess();
     vi.resetModules();
     const { LiveMatchService } = await import('./service');
     const service = LiveMatchService.get();
@@ -73,6 +76,7 @@ describe('runtime recovery through the real LiveMatchService', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'kyn14-service-replay-'));
     temporaryRoots.push(root);
     vi.spyOn(process, 'cwd').mockReturnValue(root);
+    forgetTestProcess();
     vi.resetModules();
     const { LiveMatchService } = await import('./service');
     const { LiveProjectionWorker } = await import('@kyneloom/match-core');

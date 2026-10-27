@@ -1,3 +1,4 @@
+import { forgetTestProcess } from './test-support/process';
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -432,6 +433,7 @@ describe('crash recovery against the authoritative worker', () => {
       waitForStart?: boolean;
     } = {},
   ) {
+    forgetTestProcess();
     vi.resetModules(); // Simulated fresh process: new singleton guard and worker.
     const runtime = await import('./azure-runtime');
     const { startEventHubsIngestion } = await import('./azure-adapters');
