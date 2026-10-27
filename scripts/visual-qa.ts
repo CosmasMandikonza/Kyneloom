@@ -12,6 +12,7 @@
 import { execSync, spawn } from 'node:child_process';
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { errors as playwrightErrors } from 'playwright';
 import { chromium } from 'playwright';
 
 const PORT = 3173;
@@ -245,6 +246,56 @@ async function evidenceShot(
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
+}
+
+/**
+ * Synthetic activation for WebGL-adjacent controls on the software renderer.
+ * This host's SwiftShader pipeline can wedge the INPUT DISPATCH specifically
+ * (actionability passes, the dispatched mouse event never resolves) while the
+ * page's JS loop keeps running — waitForFunction/polling still work, so a
+ * synthetic DOM click (or programmatic value set + input event) is the
+ * deterministic activation path. React's delegated listeners receive these
+ * exactly like trusted events for toggle buttons and form controls. Only used
+ * for app-behavior assertions (never for the browser-level keyboard
+ * accessibility checks, which must drive real input).
+ */
+async function domClick(locator: import('playwright').Locator): Promise<void> {
+  await locator.evaluate((el) => {
+    (el as HTMLElement).click();
+  });
+}
+
+/** Same convention as domClick for React-controlled inputs/textareas. */
+async function domFill(locator: import('playwright').Locator, value: string): Promise<void> {
+  // Phase 1: FOCUS (the inspector commits on blur, and blur only fires
+  // focusout when the element actually holds focus), then the programmatic
+  // value set + input event, with React's value tracker reset so the change
+  // is not deduped.
+  await locator.evaluate((el, text) => {
+    const proto =
+      el instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : el instanceof HTMLInputElement
+          ? HTMLInputElement.prototype
+          : null;
+    if (proto === null) throw new Error('domFill target is not an input element');
+    const tracker = (el as unknown as { _valueTracker?: { setValue(v: string): void } })
+      ._valueTracker;
+    if (tracker !== undefined) tracker.setValue('');
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter === undefined) throw new Error('native value setter unavailable');
+    setter.call(el, text);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, value);
+  // A real user's keystrokes land a React render BEFORE the blur; a synthetic
+  // same-task blur would read the pre-input local state and no-op the commit
+  // (the inspector's fields commit on blur). Yield so the input state
+  // flushes, then blur as its own task.
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  await locator.evaluate((el) => {
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    (el as HTMLElement).blur();
+  });
 }
 
 /**
@@ -496,12 +547,26 @@ async function runLandingDesktopTransition(
   }
 }
 
+/** Module-level so the report can be written even when main crashes midway. */
+const results: CheckResult[] = [];
+const failures: string[] = [];
+
+function writeReport(): void {
+  const report = {
+    generatedAt: new Date().toISOString(),
+    viewports: VIEWPORTS.map((v) => v.name),
+    routes: ROUTES.map((r) => r.path),
+    captures: results.length,
+    failures,
+    results,
+  };
+  writeFileSync(path.join(OUT_DIR, 'report.json'), JSON.stringify(report, null, 2) + '\n');
+}
+
 async function main(): Promise<void> {
   mkdirSync(path.join(OUT_DIR, 'screenshots'), { recursive: true });
   const stopServer = await startServer();
   const browser = await chromium.launch({ headless: true });
-  const results: CheckResult[] = [];
-  const failures: string[] = [];
 
   try {
     for (const viewport of VIEWPORTS) {
@@ -2101,7 +2166,41 @@ async function main(): Promise<void> {
             checks.disabledPublish = await page
               .locator('button:has-text("Publish")[disabled]')
               .count();
-            checks.eventMarkers = await page.locator('.studio__event').count();
+            checks.disabledApprove = await page
+              .locator('button:has-text("Approve")[disabled]')
+              .count();
+            checks.cameraClips = await page.locator('[data-clip="camera"]').count();
+            checks.overlayClips = await page.locator('[data-clip="overlay"]').count();
+            checks.captionClips = await page.locator('[data-clip="caption"]').count();
+            checks.eventClips = await page.locator('[data-clip="event"]').count();
+            checks.productionBar = await page.locator('[data-production-bar]').count();
+            checks.timeline = await page.locator('[data-timeline]').count();
+            checks.audioUnavailable = await page.locator('.studio-tl__unavailable').count();
+            if (checks.cameraClips < 1)
+              failures.push(`studio @ ${viewport.name}: no camera shot clip`);
+            if (checks.overlayClips < 1)
+              failures.push(`studio @ ${viewport.name}: no overlay clip`);
+            if (checks.captionClips < 1)
+              failures.push(`studio @ ${viewport.name}: no caption clip`);
+            if (checks.eventClips < 1)
+              failures.push(`studio @ ${viewport.name}: no source-event markers`);
+            if (checks.productionBar !== 1)
+              failures.push(`studio @ ${viewport.name}: production bar missing`);
+            if (checks.timeline !== 1) failures.push(`studio @ ${viewport.name}: timeline missing`);
+            if (checks.audioUnavailable !== 1)
+              failures.push(`studio @ ${viewport.name}: audio lane not honestly unavailable`);
+            // The compiled baseline identity is visible from first paint.
+            // .first(): the identity is rendered twice (production-bar chip
+            // and the claims panel card) — strict mode rejects the bare
+            // locator, and both carry the same hash.
+            const hash = await page
+              .locator('[data-compiled-hash]')
+              .first()
+              .getAttribute('data-compiled-hash')
+              .catch(() => null);
+            if (hash === null || !hash.startsWith('sha256:')) {
+              failures.push(`studio @ ${viewport.name}: compiled hash identity missing`);
+            }
           }
           if (route.name === 'moment') {
             checks.unpublishedChip = await page.locator('.chip--not-implemented').count();
@@ -2155,7 +2254,8 @@ async function main(): Promise<void> {
     // repeated navigation leaks nothing; keyboard activates cards.
     {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-      const page = await context.newPage();
+      // `let`: the equalizer tail can retry ONCE on a fresh page (below).
+      let page = await context.newPage();
       const consoleErrors: string[] = [];
       page.on('console', (msg) => {
         if (msg.type() === 'error') consoleErrors.push(msg.text());
@@ -2241,178 +2341,210 @@ async function main(): Promise<void> {
       if (noteInsideInterval) {
         failures.push('seam: evidence note appeared while INSIDE the measured interval');
       }
-      await page.goto(`${BASE}/explore?moment=ia-10-the-equalizer`, {
-        waitUntil: 'load',
-        timeout: 60_000,
-      });
-      await page.waitForFunction(
-        () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
-        undefined,
-        { timeout: 45_000 },
-      );
-      await page.getByRole('button', { name: 'X-Ray' }).click({ force: true });
-      await page.waitForTimeout(700);
-      checks.seamEvidenceNote = (await page.locator('[data-evidence-context]').first().isVisible())
-        ? 'shown'
-        : 'MISSING';
-      if (checks.seamEvidenceNote !== 'shown') {
-        failures.push('seam: outside-interval evidence note did not appear');
-      }
-      // Force-click, same convention as the X-Ray/Analyst controls above:
-      // Playwright's scroll-into-view can drag this top-band overlay under
-      // the fixed site header on the software renderer; the resting layout
-      // keeps the button fully clear (asserted by the live-panel probe).
-      await page.getByRole('button', { name: 'Go to measured interval' }).click({ force: true });
-      await page.waitForTimeout(600);
-      const afterSeek = await page.evaluate(() => ({
-        playhead: window.__kyneloomScene!.playheadMs(),
-        noteHidden: (document.querySelector('[data-evidence-context]') as HTMLElement | null)
-          ?.hidden,
-      }));
-      checks.seamEvidenceJump = JSON.stringify(afterSeek);
-      if (afterSeek.playhead !== 4_720_500 || afterSeek.noteHidden !== true) {
-        failures.push(`seam evidence jump: ${checks.seamEvidenceJump}`);
-      }
-      await page.getByRole('button', { name: 'X-Ray' }).click({ force: true }); // off
-
-      // Unknown and malformed catalog ids fail safely: honest notice, the
-      // default checkpoint stays authoritative, page stays healthy.
-      for (const bad of ['does-not-exist', '%3Cscript%3Ealert(1)%3C%2Fscript%3E']) {
-        await page.goto(`${BASE}/explore?moment=${bad}`, { waitUntil: 'load', timeout: 60_000 });
+      // KYN-17 host note: the equalizer chapter leg has repeatedly wedged
+      // this host's software renderer mid-click (the documented SwiftShader
+      // stall — the click promise never resolves while a WebGL readback
+      // blocks the renderer main thread). Same convention as the KYN-13
+      // landing flow: ONE bounded fresh-page retry; the retry gets a new
+      // renderer process and reruns the identical tail — never a silent
+      // pass, and the retry is RECORDED in the report.
+      const seamTail = async (): Promise<void> => {
+        await page.goto(`${BASE}/explore?moment=ia-10-the-equalizer`, {
+          waitUntil: 'load',
+          timeout: 60_000,
+        });
         await page.waitForFunction(
           () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
           undefined,
           { timeout: 45_000 },
         );
-        const state = await page.evaluate(() => ({
-          notice: document.querySelector('[data-unknown-moment]') !== null,
+        // The X-Ray affordance lives in the Analyst rail. On the original
+        // tab the Analyst lens is already the remembered session preference;
+        // on the FRESH-PAGE RETRY it is not — select it explicitly so the
+        // tail is self-sufficient on any page. All activation here is
+        // synthetic (domClick) — immune to the software-renderer
+        // input-pipeline wedge documented on the helper.
+        const syntheticClick = (
+          label: string,
+          role: 'radio' | 'button' = 'button',
+          exact = false,
+        ): Promise<void> => domClick(page.getByRole(role, { name: label, exact }));
+        await syntheticClick('Analyst', 'radio', true);
+        await page.waitForTimeout(400);
+        await syntheticClick('X-Ray');
+        await page.waitForTimeout(700);
+        checks.seamEvidenceNote = (await page
+          .locator('[data-evidence-context]')
+          .first()
+          .isVisible())
+          ? 'shown'
+          : 'MISSING';
+        if (checks.seamEvidenceNote !== 'shown') {
+          failures.push('seam: outside-interval evidence note did not appear');
+        }
+        // Same synthetic-click convention as the Analyst/X-Ray controls
+        // above: immune to the software-renderer input-pipeline wedge.
+        await syntheticClick('Go to measured interval');
+        await page.waitForTimeout(600);
+        const afterSeek = await page.evaluate(() => ({
           playhead: window.__kyneloomScene!.playheadMs(),
+          noteHidden: (document.querySelector('[data-evidence-context]') as HTMLElement | null)
+            ?.hidden,
         }));
-        checks[`seamRejects(${bad.slice(0, 14)})`] = JSON.stringify(state);
-        if (!state.notice || state.playhead !== 4_722_100) {
-          failures.push(`seam rejection ${bad}: ${JSON.stringify(state)}`);
+        checks.seamEvidenceJump = JSON.stringify(afterSeek);
+        if (afterSeek.playhead !== 4_720_500 || afterSeek.noteHidden !== true) {
+          failures.push(`seam evidence jump: ${checks.seamEvidenceJump}`);
         }
-      }
+        await syntheticClick('X-Ray'); // off
 
-      // The default route is unchanged by all of this.
-      await page.goto(`${BASE}/explore`, { waitUntil: 'load' });
-      await page.waitForFunction(
-        () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
-        undefined,
-        { timeout: 45_000 },
-      );
-      const defaultPlayhead = await page.evaluate(() => window.__kyneloomScene!.playheadMs());
-      checks.seamDefaultExplore =
-        defaultPlayhead === 4_722_100 ? 'checkpoint' : String(defaultPlayhead);
-      if (defaultPlayhead !== 4_722_100) {
-        failures.push(`default /explore playhead ${String(defaultPlayhead)} != 4722100`);
-      }
-
-      // Keyboard activation: Tab reaches the first card; Enter opens it.
-      await page.goto(`${BASE}/moments`, { waitUntil: 'load', timeout: 60_000 });
-      await page.locator('.moments__title').focus(); // deterministic Tab start
-      let cardFocused = false;
-      for (let i = 0; i < 30 && !cardFocused; i += 1) {
-        await page.keyboard.press('Tab');
-        cardFocused = await page.evaluate(
-          () => document.activeElement?.classList.contains('mcard') ?? false,
-        );
-      }
-      checks.seamKeyboardTab = cardFocused;
-      if (!cardFocused) {
-        failures.push('seam keyboard: Tab never reached a moment card');
-      } else {
-        const focusVisible = await page.evaluate(() => {
-          const el = document.activeElement as HTMLElement | null;
-          return el !== null && getComputedStyle(el).outlineStyle !== 'none';
-        });
-        checks.seamKeyboardFocusVisible = focusVisible;
-        if (!focusVisible) failures.push('seam keyboard: focus ring not visible on card');
-        await page.keyboard.press('Enter');
-        await page.waitForURL('**/explore?moment=**', { timeout: 30_000 });
-        checks.seamKeyboardEnter = page.url().includes('/explore?moment=');
-        if (!checks.seamKeyboardEnter) {
-          failures.push('seam keyboard: Enter did not open the selected moment');
-        }
-      }
-
-      // Repeated navigation leaks neither canvases nor previews nor loops.
-      for (let round = 0; round < 3; round += 1) {
-        await page.goto(`${BASE}/moments`, { waitUntil: 'load', timeout: 60_000 });
-        await page.locator('.mcard').first().click();
-        await page.waitForURL('**/explore?moment=**', { timeout: 30_000 });
-      }
-      await page.goto(`${BASE}/moments`, { waitUntil: 'load', timeout: 60_000 });
-      await page.waitForFunction(
-        () => (window as { __kyneloomMoments?: unknown }).__kyneloomMoments !== undefined,
-        undefined,
-        { timeout: 20_000 },
-      );
-      // Freshly mounted cards each wake ONE settle frame (the visibility
-      // observer confirms them, springs are already at rest, the loop
-      // retires next tick). The leak property is that everything SETTLES to
-      // zero AND STAYS there. A naive mount-instant read races the
-      // observer's initial callbacks (zero loops before the transient wake
-      // even starts), so: let the initial observer pass land first, then
-      // require a STABLE zero — three consecutive reads across half a
-      // second.
-      await page.waitForTimeout(900);
-      const settledToZero = await page
-        .waitForFunction(
-          () =>
-            (
-              window as { __kyneloomMoments?: { activeTiltLoops(): number } }
-            ).__kyneloomMoments?.activeTiltLoops() === 0,
-          undefined,
-          { timeout: 5000, polling: 120 },
-        )
-        .then(() => true)
-        .catch(() => false);
-      if (settledToZero) {
-        for (let i = 0; i < 3; i += 1) {
-          await page.waitForTimeout(170);
-          if (
-            (await page.evaluate(
-              () =>
-                (
-                  window as { __kyneloomMoments?: { activeTiltLoops(): number } }
-                ).__kyneloomMoments?.activeTiltLoops() ?? -1,
-            )) !== 0
-          ) {
-            checks.seamRepeatNav = `unstable zero (loop re-woke after settling)`;
-            failures.push(`seam repeated navigation leaked: tilt loops re-woke after settling`);
-            break;
+        // Unknown and malformed catalog ids fail safely: honest notice, the
+        // default checkpoint stays authoritative, page stays healthy.
+        for (const bad of ['does-not-exist', '%3Cscript%3Ealert(1)%3C%2Fscript%3E']) {
+          await page.goto(`${BASE}/explore?moment=${bad}`, { waitUntil: 'load', timeout: 60_000 });
+          await page.waitForFunction(
+            () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+            undefined,
+            { timeout: 45_000 },
+          );
+          const state = await page.evaluate(() => ({
+            notice: document.querySelector('[data-unknown-moment]') !== null,
+            playhead: window.__kyneloomScene!.playheadMs(),
+          }));
+          checks[`seamRejects(${bad.slice(0, 14)})`] = JSON.stringify(state);
+          if (!state.notice || state.playhead !== 4_722_100) {
+            failures.push(`seam rejection ${bad}: ${JSON.stringify(state)}`);
           }
         }
+
+        // The default route is unchanged by all of this.
+        await page.goto(`${BASE}/explore`, { waitUntil: 'load' });
+        await page.waitForFunction(
+          () => (window as { __kyneloomScene?: unknown }).__kyneloomScene !== undefined,
+          undefined,
+          { timeout: 45_000 },
+        );
+        const defaultPlayhead = await page.evaluate(() => window.__kyneloomScene!.playheadMs());
+        checks.seamDefaultExplore =
+          defaultPlayhead === 4_722_100 ? 'checkpoint' : String(defaultPlayhead);
+        if (defaultPlayhead !== 4_722_100) {
+          failures.push(`default /explore playhead ${String(defaultPlayhead)} != 4722100`);
+        }
+
+        // Keyboard activation: Tab reaches the first card; Enter opens it.
+        await page.goto(`${BASE}/moments`, { waitUntil: 'load', timeout: 60_000 });
+        await page.locator('.moments__title').focus(); // deterministic Tab start
+        let cardFocused = false;
+        for (let i = 0; i < 30 && !cardFocused; i += 1) {
+          await page.keyboard.press('Tab');
+          cardFocused = await page.evaluate(
+            () => document.activeElement?.classList.contains('mcard') ?? false,
+          );
+        }
+        checks.seamKeyboardTab = cardFocused;
+        if (!cardFocused) {
+          failures.push('seam keyboard: Tab never reached a moment card');
+        } else {
+          const focusVisible = await page.evaluate(() => {
+            const el = document.activeElement as HTMLElement | null;
+            return el !== null && getComputedStyle(el).outlineStyle !== 'none';
+          });
+          checks.seamKeyboardFocusVisible = focusVisible;
+          if (!focusVisible) failures.push('seam keyboard: focus ring not visible on card');
+          await page.keyboard.press('Enter');
+          await page.waitForURL('**/explore?moment=**', { timeout: 30_000 });
+          checks.seamKeyboardEnter = page.url().includes('/explore?moment=');
+          if (!checks.seamKeyboardEnter) {
+            failures.push('seam keyboard: Enter did not open the selected moment');
+          }
+        }
+
+        // Repeated navigation leaks neither canvases nor previews nor loops.
+        for (let round = 0; round < 3; round += 1) {
+          await page.goto(`${BASE}/moments`, { waitUntil: 'load', timeout: 60_000 });
+          await page.locator('.mcard').first().click();
+          await page.waitForURL('**/explore?moment=**', { timeout: 30_000 });
+        }
+        await page.goto(`${BASE}/moments`, { waitUntil: 'load', timeout: 60_000 });
+        await page.waitForFunction(
+          () => (window as { __kyneloomMoments?: unknown }).__kyneloomMoments !== undefined,
+          undefined,
+          { timeout: 20_000 },
+        );
+        // Freshly mounted cards each wake ONE settle frame (the visibility
+        // observer confirms them, springs are already at rest, the loop
+        // retires next tick). The leak property is that everything SETTLES to
+        // zero AND STAYS there. A naive mount-instant read races the
+        // observer's initial callbacks (zero loops before the transient wake
+        // even starts), so: let the initial observer pass land first, then
+        // require a STABLE zero — three consecutive reads across half a
+        // second.
+        await page.waitForTimeout(900);
+        const settledToZero = await page
+          .waitForFunction(
+            () =>
+              (
+                window as { __kyneloomMoments?: { activeTiltLoops(): number } }
+              ).__kyneloomMoments?.activeTiltLoops() === 0,
+            undefined,
+            { timeout: 5000, polling: 120 },
+          )
+          .then(() => true)
+          .catch(() => false);
+        if (settledToZero) {
+          for (let i = 0; i < 3; i += 1) {
+            await page.waitForTimeout(170);
+            if (
+              (await page.evaluate(
+                () =>
+                  (
+                    window as { __kyneloomMoments?: { activeTiltLoops(): number } }
+                  ).__kyneloomMoments?.activeTiltLoops() ?? -1,
+              )) !== 0
+            ) {
+              checks.seamRepeatNav = `unstable zero (loop re-woke after settling)`;
+              failures.push(`seam repeated navigation leaked: tilt loops re-woke after settling`);
+              break;
+            }
+          }
+        }
+        const leakState = await page.evaluate(() => ({
+          canvases: document.querySelectorAll('canvas').length,
+          cards: document.querySelectorAll('.mcard').length,
+          images: document.querySelectorAll('.mcard__image').length,
+          tiltLoops: window.__kyneloomMoments!.activeTiltLoops(),
+        }));
+        checks.seamRepeatNav = JSON.stringify({ ...leakState, settledToZero });
+        if (
+          !settledToZero ||
+          leakState.canvases !== 0 ||
+          leakState.cards !== 12 ||
+          leakState.images !== 12 ||
+          leakState.tiltLoops !== 0
+        ) {
+          failures.push(`seam repeated navigation leaked: ${checks.seamRepeatNav}`);
+        }
+        if (consoleErrors.length > 0) {
+          failures.push(`moments seam console errors: ${consoleErrors.length}`);
+        }
+        results.push({
+          route: 'moments-seam',
+          viewport: '1440x900',
+          reducedMotion: false,
+          screenshot: 'screenshots/moments-1440x900.png',
+          horizontalOverflowPx: 0,
+          consoleErrors,
+          checks,
+        });
+      };
+      try {
+        await seamTail();
+      } catch (error) {
+        if (!(error instanceof playwrightErrors.TimeoutError)) throw error;
+        checks.seamEqualizerRendererRetry = 'retried on a fresh page (renderer wedge)';
+        await page.close().catch(() => undefined);
+        page = await context.newPage();
+        await seamTail();
       }
-      const leakState = await page.evaluate(() => ({
-        canvases: document.querySelectorAll('canvas').length,
-        cards: document.querySelectorAll('.mcard').length,
-        images: document.querySelectorAll('.mcard__image').length,
-        tiltLoops: window.__kyneloomMoments!.activeTiltLoops(),
-      }));
-      checks.seamRepeatNav = JSON.stringify({ ...leakState, settledToZero });
-      if (
-        !settledToZero ||
-        leakState.canvases !== 0 ||
-        leakState.cards !== 12 ||
-        leakState.images !== 12 ||
-        leakState.tiltLoops !== 0
-      ) {
-        failures.push(`seam repeated navigation leaked: ${checks.seamRepeatNav}`);
-      }
-      if (consoleErrors.length > 0) {
-        failures.push(`moments seam console errors: ${consoleErrors.length}`);
-      }
-      results.push({
-        route: 'moments-seam',
-        viewport: '1440x900',
-        reducedMotion: false,
-        screenshot: 'screenshots/moments-1440x900.png',
-        horizontalOverflowPx: 0,
-        consoleErrors,
-        checks,
-      });
       await context.close();
     }
 
@@ -2685,6 +2817,206 @@ async function main(): Promise<void> {
       for (const failure of apiFailures) failures.push(`agent metric API: ${failure}`);
     }
 
+    // KYN-17 — the Studio editor journey, exercised against the production
+    // build: select a real camera shot, apply a grounded preset, edit the
+    // editorial caption, undo/redo, save the local draft (real IndexedDB in
+    // Chromium), reload and restore, recompile through the real API and watch
+    // the content hash change. Plus a mobile review-mode capture.
+    {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const page = await context.newPage();
+      const consoleErrors: string[] = [];
+      page.on('console', (message) => {
+        if (message.type() === 'error') consoleErrors.push(message.text());
+      });
+      const studioChecks: Record<string, unknown> = {};
+      const studioFailures: string[] = [];
+      try {
+        await page.goto(BASE + '/studio', { waitUntil: 'networkidle', timeout: 90_000 });
+        await page.waitForSelector('[data-timeline]', { timeout: 60_000 });
+        studioChecks.timelineMounted = true;
+
+        // Baseline identity before any edit (.first(): the chip and the
+        // claims card both carry data-compiled-hash — strict mode).
+        const baselineHash = await page
+          .locator('[data-compiled-hash]')
+          .first()
+          .getAttribute('data-compiled-hash');
+        if (baselineHash === null) studioFailures.push('no baseline hash on load');
+
+        // 1 — select the camera shot from the timeline; the inspector shows
+        // the typed keyframe table. Synthetic activation throughout the
+        // journey (domClick/domFill): the studio stage runs the WebGL replay
+        // on the software renderer, where real input dispatch can wedge.
+        await domClick(page.locator('[data-clip="camera"] .studio-tl__clip-select'));
+        await page.waitForSelector('[data-inspector="shot"]', { timeout: 20_000 });
+        studioChecks.shotInspector = true;
+
+        // 2 — apply the winger-follow preset (baked from real samples); the
+        // stage rebinds to the draft camera and the draft-preview flag shows.
+        await domClick(page.getByRole('button', { name: 'Winger follow' }));
+        await page.waitForSelector('[data-draft-preview-chip]', { timeout: 20_000 });
+        await page.waitForSelector('[data-layer-id="cam-winger-follow"]', { timeout: 20_000 });
+        studioChecks.presetApplied = true;
+        const keyframeRows = await page.locator('[data-keyframe]').count();
+        studioChecks.wingerKeyframes = keyframeRows;
+        if (keyframeRows < 5)
+          studioFailures.push(`winger follow baked only ${keyframeRows} keyframes`);
+
+        // 3 — select the caption and edit its editorial words (number-free).
+        await domClick(page.locator('[data-clip="caption"] .studio-tl__clip-select'));
+        await page.waitForSelector('[data-inspector="caption"]', { timeout: 20_000 });
+        const captionArea = page.locator('[data-inspector="caption"] textarea').first();
+        await domFill(captionArea, 'The decoy run bent the back line and the finish followed');
+        await page.waitForFunction(
+          () => document.querySelector('[data-draft-preview-chip]') !== null,
+          undefined,
+          { timeout: 20_000, polling: 250 },
+        );
+        studioChecks.captionEdited = true;
+
+        // 4 — undo restores the previous document (the caption edit), redo
+        // brings it back (the QA hook exposes the state).
+        await domClick(page.getByRole('button', { name: 'Undo', exact: true }));
+        await page.waitForFunction(
+          () => document.querySelector('[data-compiled-baseline-chip]') === null,
+          undefined,
+          { timeout: 20_000, polling: 250 },
+        );
+        await domClick(page.getByRole('button', { name: 'Redo', exact: true }));
+        await page.waitForFunction(
+          () => document.querySelector('[data-draft-preview-chip]') !== null,
+          undefined,
+          { timeout: 20_000, polling: 250 },
+        );
+        studioChecks.undoRedo = true;
+
+        // 5 — save the local draft (real IndexedDB in Chromium) and verify
+        // revision 1 + clean unsaved state.
+        await domClick(page.getByRole('button', { name: 'Save draft' }));
+        await page.waitForSelector('[data-unsaved-dot="false"]', { timeout: 20_000 });
+        studioChecks.savedRev1 = (
+          await page.locator('[data-draft-revision]').textContent()
+        )?.includes('rev 1');
+        if (studioChecks.savedRev1 !== true) studioFailures.push('save did not reach revision 1');
+
+        // 6 — recompile through the REAL API. Wait for the WORKFLOW strip to
+        // reach validated FIRST (the compile POST can take seconds on this
+        // host, and the identity elements always hold a well-formed hash —
+        // even the baseline — so a hash-length wait would pass trivially and
+        // race the response). Only then read the identity: it must have
+        // CHANGED.
+        await domClick(page.getByRole('button', { name: /Validate \/ Recompile/ }));
+        await page.waitForFunction(
+          () => {
+            const items = Array.from(document.querySelectorAll('.studio-workflow li'));
+            const validated = items.find((item) => item.textContent === 'validated');
+            return validated?.getAttribute('data-state') === 'on';
+          },
+          undefined,
+          { timeout: 60_000, polling: 250 },
+        );
+        studioChecks.validatedState = true;
+        const recompiledHash = await page
+          .locator('[data-compiled-hash]')
+          .first()
+          .getAttribute('data-compiled-hash');
+        studioChecks.recompileChangedHash =
+          recompiledHash !== null && recompiledHash !== baselineHash;
+        if (studioChecks.recompileChangedHash !== true) {
+          studioFailures.push('recompile did not produce a new content hash');
+        }
+
+        // 7 — reload: the saved local draft is OFFERED (persistent storage).
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.waitForSelector('[data-restore-banner]', { timeout: 60_000 });
+        studioChecks.restoreOffered = true;
+        await page.screenshot({
+          path: path.join(OUT_DIR, 'screenshots', 'studio-journey-restore-1440x900.png'),
+        });
+        await domClick(page.getByRole('button', { name: 'Restore saved draft' }));
+        await page.waitForSelector('[data-layer-id="cam-winger-follow"]', { timeout: 20_000 });
+        studioChecks.restoreBringsBackEdit = true;
+        await page.screenshot({
+          path: path.join(OUT_DIR, 'screenshots', 'studio-journey-restored-1440x900.png'),
+        });
+      } catch (error) {
+        studioFailures.push(
+          `journey threw: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (consoleErrors.length > 0) {
+        studioFailures.push(`console errors: ${consoleErrors.length}`);
+      }
+      results.push({
+        route: 'studio-journey',
+        viewport: '1440x900',
+        reducedMotion: false,
+        screenshot: 'screenshots/studio-journey-restored-1440x900.png',
+        horizontalOverflowPx: 0,
+        consoleErrors,
+        checks: studioChecks as Record<string, boolean | number | string>,
+      });
+      for (const failure of studioFailures) failures.push(`studio journey: ${failure}`);
+      await context.close();
+
+      // Mobile review mode: the editor stacks, playback/scrub/select remain
+      // reachable, and the layout does not overflow.
+      {
+        const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+        const page = await context.newPage();
+        const consoleErrors: string[] = [];
+        page.on('console', (message) => {
+          if (message.type() === 'error') consoleErrors.push(message.text());
+        });
+        try {
+          await page.goto(BASE + '/studio', { waitUntil: 'networkidle', timeout: 90_000 });
+          await page.waitForSelector('[data-timeline]', { timeout: 60_000 });
+          const mobileChecks: Record<string, boolean | number | string> = {};
+          mobileChecks.stagePresent = (await page.locator('[data-stage-frame]').count()) === 1;
+          mobileChecks.transportPresent = (await page.locator('input.stage__slider').count()) === 1;
+          mobileChecks.railCollapsible = (await page.locator('[data-layer-rail]').count()) === 1;
+          // Scrub via the stage slider (the shared engine law); synthetic
+          // set + input event, same wedge immunity as the journey.
+          await domFill(page.locator('input.stage__slider'), '4725000');
+          const playhead = await page.evaluate(
+            '(() => { const hook = window.__kyneloomStudio; return hook ? hook.playheadMs() : null; })()',
+          );
+          mobileChecks.scrubMovesPlayhead = typeof playhead === 'number' && playhead > 4724000;
+          if (mobileChecks.scrubMovesPlayhead !== true) {
+            failures.push('studio mobile @ 390x844: scrub did not move the shared playhead');
+          }
+          const overflowPx = (await page.evaluate(
+            '(() => Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth))()',
+          )) as number;
+          if (overflowPx > 1) {
+            failures.push(`studio mobile @ 390x844: overflow ${overflowPx}px`);
+          }
+          await page.screenshot({
+            path: path.join(OUT_DIR, 'screenshots', 'studio-review-390x844.png'),
+            fullPage: true,
+          });
+          results.push({
+            route: 'studio',
+            viewport: '390x844-review',
+            reducedMotion: false,
+            screenshot: 'screenshots/studio-review-390x844.png',
+            horizontalOverflowPx: overflowPx,
+            consoleErrors,
+            checks: mobileChecks,
+          });
+        } catch (error) {
+          failures.push(
+            `studio mobile threw: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+        if (consoleErrors.length > 0) {
+          failures.push(`studio mobile console errors: ${consoleErrors.length}`);
+        }
+        await context.close();
+      }
+    }
+
     // KYN-13 — live synthetic stream: recorded→live mode transition, honest
     // status, real streamed state, reconnect/resync, desktop + mobile.
     {
@@ -2936,6 +3268,21 @@ async function main(): Promise<void> {
         undefined,
         { timeout: 60_000 },
       );
+      // Patient chip wait — this deep into the run the software renderer can
+      // commit the panel well after the scene hook; same convention as the
+      // desktop connected-state poll above (the assertion below stays honest).
+      try {
+        await mobilePage.waitForFunction(
+          () => {
+            const chip = document.querySelector('[data-testid="live-status"]');
+            return chip !== null && chip.getAttribute('data-live-status') !== null;
+          },
+          undefined,
+          { timeout: 90_000, polling: 500 },
+        );
+      } catch {
+        /* falls through to the read below */
+      }
       const mobileRecorded = await mobilePage
         .locator('[data-testid="live-status"]')
         .getAttribute('data-live-status');
@@ -3144,26 +3491,25 @@ async function main(): Promise<void> {
     await browser.close();
     await stopServer();
   }
-
-  const report = {
-    generatedAt: new Date().toISOString(),
-    viewports: VIEWPORTS.map((v) => v.name),
-    routes: ROUTES.map((r) => r.path),
-    captures: results.length,
-    failures,
-    results,
-  };
-  writeFileSync(path.join(OUT_DIR, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
-  console.log(`visual QA: ${results.length} captures across ${VIEWPORTS.length} viewports`);
-  if (failures.length > 0) {
-    console.error(`FAILURES (${failures.length}):`);
-    for (const f of failures) console.error(`  - ${f}`);
-    process.exit(1);
-  }
-  console.log('all checks passed');
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+// The report is written from the FINALLY on every path: a crash midway
+// through a long run must still surface everything that was collected
+// (crashing WITH the report would hide the real failures — that cost three
+// debugging runs on this host).
+main()
+  .catch((error) => {
+    console.error(error);
+    failures.push(`CRASHED: ${error instanceof Error ? error.message : String(error)}`);
+  })
+  .finally(() => {
+    writeReport();
+    console.log(`visual QA: ${results.length} captures across ${VIEWPORTS.length} viewports`);
+    if (failures.length > 0) {
+      console.error(`FAILURES (${failures.length}):`);
+      for (const f of failures) console.error(`  - ${f}`);
+      process.exit(1);
+    }
+    console.log('all checks passed');
+    process.exit(0);
+  });

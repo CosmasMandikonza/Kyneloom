@@ -37,7 +37,9 @@
     "start": "pnpm --filter @kyneloom/web start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "pnpm -r typecheck && tsc -p tests/tsconfig.json --noEmit"
+    "typecheck": "pnpm -r typecheck && tsc -p tests/tsconfig.json --noEmit",
+    "qa:record:studio": "tsx scripts/record-studio-live.ts",
+    "qa:studio:bounded": "tsx scripts/verify-studio-bounded.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

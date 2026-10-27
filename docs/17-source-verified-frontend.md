@@ -93,15 +93,14 @@ Lens changes only verbosity and overlays. Never alter the underlying geometry or
 
 ### E. Studio — **A creative production application**
 
-Model after professional timeline editors, not corporate dashboards:
-- **Center:** large live interactive preview of the selected moment.
-- **Bottom:** actual scrubbable multi-track timeline (camera shots, events, overlay timing, captions/audio).
-- **Left (compact):** layers/assets/scenes drawer, collapsible.
-- **Right (contextual):** property inspector, claim verification, audience variants, revision/approval status.
-- **Top:** project breadcrumb, sync status, save/revision, Preview, Publish.
-- **Agents panel:** optional tracing/debug drawer, not the main product.
+**Implemented (KYN-17, 2026-10-25): the production editor is real at `/studio`.** Original engineering on the repo's own design system (no upstream component adapted for the editor chrome; the stage is the existing KYN-06 R3F Living Replay, remounted with two additive props). Model after professional timeline editors, not corporate dashboards — that is the implemented layout:
+- **Top:** production bar — moment identity, draft revision + unsaved indicator, undo/redo, save (local demonstration mode), Validate/Recompile, preview mode, and approval/publishing visibly disabled with their real dependencies (KYN-18/#21).
+- **Center:** the real R3F stage (large, safe-frame guides toggleable, live shot + selected-shot + draft-preview chips).
+- **Bottom:** scrubbable multitrack timeline — CAMERA / EVENTS / OVERLAYS / CAPTIONS lanes on the manifest clock, with drag-trim handles that commit one undoable command on release, zoom, keyboard focus, and an honest `AUDIO · UNAVAILABLE` lane (no audio exists in the contract).
+- **Left (compact):** layers rail — camera shots, overlays, captions, source events; selection + preview-only visibility (view state, never saved).
+- **Right (contextual):** the typed inspector (shot presets, keyframe table with per-field contract validation, overlay/caption timing, editorial caption text under the number-free policy) + claims/evidence panel (verification statuses, the measured metric, immutable identity) + source-moment card.
 
-AI tools should create/edit a **typed shot plan** that is visible as native timeline objects. User modifications persist to a versioned draft. Support undo/redo, editing conflicts, permissions and real publish review.
+The editing model is ONE authoritative document: a `MomentProposal v0.2.0` (the compiler's own input). Every edit is a contract-validated pure operation with exact field paths; undo/redo is bounded command history carrying document+selection together; drafts persist to browser-local storage with atomic compare-and-save (two tabs conflict, never overwrite); recompilation goes through the real deterministic compiler and the stage rebinds to the new hash. The draft preview re-times compiled VERIFIED cue text onto edited overlay intervals and rebinds the camera to the draft track immediately — text/evidence/aliases stay compiled content, and the amber `DRAFT PREVIEW` flag distinguishes it until recompile. Shot presets are deterministic generators: authored cinematic poses (overhead tactical, the directed ride, broadcast sweep — mirroring the KYN-16 corpus) plus a winger-follow shot baked from the run's REAL accepted samples through the shared timeline sampler.
 
 Skiper video components suit embedded real footage *within* the production workflow. They do not replace the WebGL viewer.
 
