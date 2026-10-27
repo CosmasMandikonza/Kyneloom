@@ -12,9 +12,9 @@
       "detail": "playhead sample 4726333.2 (playing forward from window start 4721700)"
     },
     {
-      "step": "goal build-up: manifest hash changed from baseline",
+      "step": "goal build-up: retains the validated golden manifest (same directed cut)",
       "ok": true,
-      "detail": "88a9f0d1789a (golden directed cut, as designed)"
+      "detail": "88a9f0d1789a (equality expected — the goal answer plays the golden directed cut; the distinct broadcast hash is asserted separately)"
     },
     {
       "step": "wide view: Enter submits; DIFFERENT validated manifest hash",

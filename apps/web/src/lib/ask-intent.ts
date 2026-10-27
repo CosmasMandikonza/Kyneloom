@@ -73,14 +73,19 @@ export async function resolveAskMoment(
   switch (classification.intentId) {
     case 'off-ball-run': {
       // The verified spatial metric over the candidate window.
-      const metric = corpus.golden.claims.find((claim) =>
-        claim.evidenceIds.includes('ev-separation'),
-      );
-      const measurement = metric?.status === 'calculated' ? metric : null;
       const windowStart = corpus.golden.timeRangeMs[0];
-      const separationClaim = corpus.golden.claims.find((claim) =>
-        claim.evidenceIds.includes('ev-separation'),
+      const separationClaim = corpus.golden.claims.find(
+        (claim) => claim.evidenceIds.includes('ev-separation') && claim.status === 'calculated',
       );
+      // The explanation may only quote the compiler-VERIFIED scalar from the
+      // claim's typed metricAssertion — calculated claims carry NO `text`
+      // (the contract forbids it), so interpolating claim text would print
+      // `undefined`.
+      const assertion = separationClaim?.metricAssertion;
+      const measuredSentence =
+        assertion !== undefined && assertion.kind === 'separation-delta'
+          ? `The verified measurement behind this answer: the tracked separation between ${assertion.args.defenderId} and ${assertion.args.strikerId} changed by ${assertion.assertedValue.toFixed(3)} m over the window (asserted ${assertion.valueField}, re-verified at compile time). `
+          : 'The verified separation metric (ev-separation), recomputed from accepted tracking over the candidate window, backs this answer. ';
       const hypothesis = corpus.golden.claims.find((claim) => claim.status === 'hypothesis');
       // Provenance TYPES matter: ev-separation is an EVIDENCE id and the
       // hypothesis is a CLAIM id — neither belongs in sourceEventIds.
@@ -93,15 +98,12 @@ export async function resolveAskMoment(
       focusPlayheadMs = windowStart;
       explanation =
         `The directed cut follows the moment from ${String(windowStart)} ms. ` +
-        (separationClaim !== undefined && separationClaim.status === 'calculated'
-          ? `The verified measurement behind this answer: ${separationClaim.text} `
-          : '') +
-        (hypothesis !== undefined
+        measuredSentence +
+        (hypothesis !== undefined && (hypothesis.text ?? '').length > 0
           ? `Tactical reading, kept as interpretation: ${hypothesis.text ?? ''}`
           : '');
       evidenceNote =
         'Grounded in the verified separation metric recomputed from accepted tracking over the candidate window. The connection between the off-ball run and the created space stays a labelled hypothesis — the evidence supports it as a likely contribution, not as an established causal fact.';
-      void measurement;
       break;
     }
     case 'goal-buildup': {
@@ -123,7 +125,7 @@ export async function resolveAskMoment(
       // (which would skip what was asked for). The event id and its real
       // timestamp stay in the explanation.
       focusPlayheadMs = corpus.golden.timeRangeMs[0];
-      explanation = `The directed cut plays the build-up to the finish: the source event of kind "goal" (${goalEvent.eventId}) by ${goalEvent.actorId} at ${String(goalEvent.occurredAtMs)} ms anchors the answer, and playback focuses there.`;
+      explanation = `The directed cut plays the build-up to the finish: playback starts at the verified window beginning (${String(corpus.golden.timeRangeMs[0])} ms) and leads up to the cited goal event — kind "goal" (${goalEvent.eventId}) by ${goalEvent.actorId} at ${String(goalEvent.occurredAtMs)} ms.`;
       evidenceNote = `Cited directly from the authoritative source events (kind "goal", id ${goalEvent.eventId}) — no fabricated timestamps.`;
       break;
     }

@@ -125,6 +125,23 @@ describe('resolveAskMoment — grounding + compilation against the real fixture'
     }
   });
 
+  it('review round: the off-ball answer NEVER prints undefined; measured text is compiler-verified, hypothesis qualified', async () => {
+    const outcome = await resolveAskMoment('Show me how the off-ball run opened space');
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const text = `${outcome.explanation} ${outcome.evidenceNote}`;
+    // The calculated claim carries no proposal `text` (the contract forbids
+    // it) — the answer must quote the TYPED verified scalar instead.
+    expect(text).not.toContain('undefined');
+    expect(outcome.explanation).toMatch(/changed by \d+\.\d{3} m/u);
+    expect(outcome.explanation).toContain('re-verified at compile time');
+    // Deterministic across calls, and the hypothesis stays qualified.
+    const again = await resolveAskMoment('Show me how the off-ball run opened space');
+    expect(again.ok && again.explanation).toBe(outcome.explanation);
+    expect(text).toMatch(/hypothesis|likely/iu);
+    expect(text).not.toMatch(/proves/iu);
+  });
+
   it('a wide view resolves to the broadcast-sweep proposal — a DIFFERENT validated manifest than the directed cut', async () => {
     const wide = await resolveAskMoment('Give me a wide broadcast view');
     const directed = await resolveAskMoment('Show the build-up to the goal');

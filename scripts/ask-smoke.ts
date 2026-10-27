@@ -97,9 +97,9 @@ async function main(): Promise<void> {
       `playhead sample ${String(goalPlayhead)} (playing forward from window start 4721700)`,
     );
     record(
-      'goal build-up: manifest hash changed from baseline',
+      'goal build-up: retains the validated golden manifest (same directed cut)',
       goalHash !== null && goalHash === baselineHash,
-      `${goalHash?.slice(7, 19)} (golden directed cut, as designed)`,
+      `${goalHash?.slice(7, 19)} (equality expected — the goal answer plays the golden directed cut; the distinct broadcast hash is asserted separately)`,
     );
 
     // 2) Wide broadcast via typed text + real Enter: different hash + answer.
