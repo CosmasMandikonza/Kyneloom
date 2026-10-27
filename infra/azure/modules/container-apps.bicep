@@ -77,7 +77,10 @@ resource liveApp 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     environmentId: caEnvironment.id
     configuration: {
-      activeRevisionsMode: 'Single' // predictable rollback semantics
+      // Manual downtime-tolerant handoff: deactivate the old revision BEFORE
+      // waiting on replacement worker readiness. Single mode deadlocks when
+      // the old revision keeps the lease until the new revision is ready.
+      activeRevisionsMode: 'Multiple'
       secrets: [
         {
           name: 'webpubsub-connection-string'
@@ -114,6 +117,9 @@ resource liveApp 'Microsoft.App/containerApps@2024-03-01' = {
           }
           env: [
             { name: 'NODE_ENV', value: 'production' }
+            // Let the worker drain/release before process exit; Next's default
+            // SIGTERM handler otherwise exits without awaiting that task.
+            { name: 'NEXT_MANUAL_SIG_HANDLE', value: '1' }
             { name: 'KYN_EVENTHUBS_NAMESPACE', value: eventHubsNamespaceName }
             { name: 'KYN_EVENTHUB_NAME', value: eventHubName }
             { name: 'KYN_EVENTHUBS_CONSUMER_GROUP', value: consumerGroupName }

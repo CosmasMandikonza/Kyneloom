@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { LiveMatchService } from '@/lib/live/service';
+import { azureModeRequested } from '@/lib/live/azure-adapters';
+import { azureRuntimeStatus } from '@/lib/live/azure-runtime';
 import type { LiveFrame } from '@kyneloom/match-core';
 
 /**
@@ -39,8 +41,7 @@ export async function GET(request: Request): Promise<Response> {
   // producer NEVER auto-starts — envelopes arrive from Event Hubs via the
   // in-process ingestion worker, and a second producer would violate the
   // one-authoritative-producer law.
-  const azureMode =
-    (await import('@/lib/live/azure-adapters')).azureConfigFromEnv(process.env) !== null;
+  const azureMode = azureModeRequested(process.env);
   if (!service.status.running && !service.isOperatorStopped && !azureMode) {
     try {
       await service.start({ speed });
@@ -93,7 +94,11 @@ export async function GET(request: Request): Promise<Response> {
           // check and the drain/send below are one synchronous block, so no
           // broadcast can interleave between them; after every await the
           // guard re-runs before anything is sent.
-          if (!service.status.running || service.status.sessionId !== generation) {
+          if (
+            (azureMode && !azureRuntimeStatus().active) ||
+            !service.status.running ||
+            service.status.sessionId !== generation
+          ) {
             send({
               type: 'status',
               matchId: service.matchId,

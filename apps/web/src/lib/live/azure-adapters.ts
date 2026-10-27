@@ -8,7 +8,7 @@ import { STREAM_CONTRACT_VERSION, validateLiveFrame } from '@kyneloom/match-core
  *
  * STATUS: NOT DEPLOYED — this host has no Azure CLI and no authenticated
  * subscription. These adapters are contract-true implementations awaiting
- * `az login` + the Bicep in `infra/live-stream.bicep`; they follow the
+ * `az login` + the Bicep in `infra/azure`; they follow the
  * documented Event Hubs + Web PubSub SDK APIs exactly:
  *
  * - Event Hubs consumer: `@azure/event-hubs` `EventHubConsumerClient` with
@@ -74,6 +74,12 @@ export function azureConfigFromEnv(env: {
     // seemingly-healthy cloud mode (KYN-14 review B).
     return null;
   }
+  if (
+    [namespace, hub, group, container, archive, wps, wpsHub, identityClientId].some(
+      (value) => value.trim() === '',
+    )
+  )
+    return null;
   return {
     eventHubsNamespace: namespace,
     eventHubName: hub,
@@ -85,6 +91,21 @@ export function azureConfigFromEnv(env: {
     matchId: env.KYN_LIVE_MATCH_ID ?? 'synthetic-derby-01',
     identityClientId,
   };
+}
+
+/** Partial cloud intent must never fall back to the local synthetic producer. */
+export function azureModeRequested(env: { readonly [key: string]: string | undefined }): boolean {
+  return [
+    'KYN_EVENTHUBS_NAMESPACE',
+    'KYN_EVENTHUB_NAME',
+    'KYN_EVENTHUBS_CONSUMER_GROUP',
+    'KYN_CHECKPOINT_CONTAINER_URL',
+    'KYN_ARCHIVE_CONTAINER_URL',
+    'KYN_WEBPUBSUB_CONNECTION_STRING',
+    'KYN_WEBPUBSUB_HUB',
+    'KYN_AZURE_CLIENT_ID',
+    'KYN_LIVE_MATCH_ID',
+  ].some((key) => env[key] !== undefined);
 }
 
 /**
@@ -142,6 +163,7 @@ export const azureClientFactories = {
 };
 
 export interface IngestionHealth {
+  assertOwned?(): void;
   onReady(): void;
   onError(error: unknown): void;
 }
@@ -185,48 +207,65 @@ export async function startEventHubsIngestion(
   const onAbort = (): void => resolveStopped();
   signal.addEventListener('abort', onAbort, { once: true });
   let subscription: { close(): Promise<void> } | undefined;
+  const inFlight = new Set<Promise<void>>();
+  const guard = (): void => {
+    signal.throwIfAborted();
+    health?.assertOwned?.();
+  };
   try {
     if (signal.aborted) return;
+    guard();
     subscription = client.subscribe(
       {
-        processEvents: async (events, context) => {
-          if (signal.aborted) return;
-          if (events.length === 0) {
-            health?.onReady(); // A successful empty receive also proves consumer connectivity.
-            return;
-          }
-          const batch: StreamEnvelope[] = [];
-          for (const event of events) {
-            const body = event.body as Record<string, unknown> | undefined;
-            if (
-              body === undefined ||
-              body.contractVersion !== STREAM_CONTRACT_VERSION ||
-              typeof body.envelopeId !== 'string'
-            ) {
-              // Poison envelope: quarantine via a synthetic record; the worker's
-              // quarantine store captures the trace id when present.
-              batch.push({
-                contractVersion: STREAM_CONTRACT_VERSION,
-                envelopeId: `poison-${String(event.offset ?? event.sequenceNumber)}`,
-                matchId: config.matchId,
-                kind: 'event',
-                event: body as StreamEnvelope['event'],
-                emittedAt: event.enqueuedTimeUtc?.getTime() ?? Date.now(),
-                traceId:
-                  typeof body?.traceId === 'string' ? (body.traceId as string) : 'trc-unknown',
-              });
-              continue;
+        processEvents: (events, context) => {
+          const task = (async () => {
+            if (signal.aborted) return;
+            guard();
+            if (events.length === 0) {
+              health?.onReady(); // A successful empty receive also proves consumer connectivity.
+              return;
             }
-            batch.push(body as unknown as StreamEnvelope);
-          }
-          // Durable obligations FIRST (archive etc.), then checkpoint — the
-          // documented at-least-once contract.
-          await onBatch(batch);
-          signal.throwIfAborted();
-          for (const event of events) {
-            await context.updateCheckpoint(event);
-          }
-          health?.onReady();
+            const batch: StreamEnvelope[] = [];
+            for (const event of events) {
+              const body = event.body as Record<string, unknown> | undefined;
+              if (
+                body === undefined ||
+                body.contractVersion !== STREAM_CONTRACT_VERSION ||
+                typeof body.envelopeId !== 'string'
+              ) {
+                // Poison envelope: quarantine via a synthetic record; the worker's
+                // quarantine store captures the trace id when present.
+                batch.push({
+                  contractVersion: STREAM_CONTRACT_VERSION,
+                  envelopeId: `poison-${String(event.offset ?? event.sequenceNumber)}`,
+                  matchId: config.matchId,
+                  kind: 'event',
+                  event: body as StreamEnvelope['event'],
+                  emittedAt: event.enqueuedTimeUtc?.getTime() ?? Date.now(),
+                  traceId:
+                    typeof body?.traceId === 'string' ? (body.traceId as string) : 'trc-unknown',
+                });
+                continue;
+              }
+              batch.push(body as unknown as StreamEnvelope);
+            }
+            // Durable obligations FIRST (archive etc.), then checkpoint — the
+            // documented at-least-once contract.
+            await onBatch(batch);
+            signal.throwIfAborted();
+            for (const event of events) {
+              guard();
+              await context.updateCheckpoint(event);
+            }
+            guard();
+            health?.onReady();
+          })();
+          inFlight.add(task);
+          void task.then(
+            () => inFlight.delete(task),
+            () => inFlight.delete(task),
+          );
+          return task;
         },
         processError: async (err) => {
           // Fail closed: let the runtime withdraw readiness and end the session.
@@ -256,6 +295,7 @@ export async function startEventHubsIngestion(
     try {
       await subscription?.close();
     } finally {
+      while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
       await client.close();
     }
   }
@@ -269,8 +309,11 @@ export async function startEventHubsIngestion(
 export async function broadcastViaWebPubSub(
   config: AzureLiveConfig,
   frame: LiveFrame,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   const { WebPubSubServiceClient } = await import('@azure/web-pubsub');
+  signal?.throwIfAborted();
   const service = new WebPubSubServiceClient(config.webPubSubConnectionString, config.hubName);
   // The ONE group identity — identical on broadcast, negotiation and any
   // future browser subscription (KYN-14 review D).

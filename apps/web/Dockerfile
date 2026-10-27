@@ -29,4 +29,7 @@ ENV NODE_ENV=production
 COPY --from=build /app ./
 # One authoritative live projection per stream generation — single process.
 EXPOSE 3000
-CMD ["pnpm", "--filter", "@kyneloom/web", "start"]
+# Node receives SIGTERM directly (PID 1); no package-manager parent can exit
+# before the cloud worker has drained. Fixtures still resolve from repo root.
+WORKDIR /app/apps/web
+CMD ["node", "node_modules/next/dist/bin/next", "start"]

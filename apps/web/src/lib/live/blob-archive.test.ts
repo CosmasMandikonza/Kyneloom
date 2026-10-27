@@ -739,9 +739,9 @@ describe('crash recovery against the authoritative worker', () => {
       },
     });
     await vi.waitFor(() => expect(readFinished).toBe(true));
-    await partial.stop();
+    const stopping = partial.stop();
     release();
-    await Promise.resolve();
+    await stopping;
     expect(partial.active).toBe(false);
     expect(partial.subscribed).toBe(false);
     expect(partial.admitted).toEqual([]);

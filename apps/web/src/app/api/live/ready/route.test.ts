@@ -26,6 +26,22 @@ afterAll(() => {
 });
 
 describe('/api/live/ready — worker readiness', () => {
+  it('partial cloud intent remains unready and is never reported as local', async () => {
+    vi.mocked(azureRuntimeStatus).mockReturnValue({
+      active: false,
+      detail: 'incomplete Azure configuration',
+      replayedEnvelopes: 0,
+      archivedBatches: 0,
+    });
+    vi.stubEnv('KYN_EVENTHUBS_NAMESPACE', 'partial');
+    try {
+      const response = await GET();
+      expect(response.status).toBe(503);
+      expect((await response.json()).mode).toBe('cloud-fed');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it('keeps the real local fixture producer ready without an Azure runtime', async () => {
     vi.mocked(azureRuntimeStatus).mockReturnValue({
       active: false,

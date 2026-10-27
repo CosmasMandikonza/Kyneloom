@@ -1,5 +1,6 @@
 import { mkdirSync, appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { azureModeRequested } from './azure-adapters';
 import {
   LiveProjectionWorker,
   LocalFixtureProducer,
@@ -229,6 +230,8 @@ export class LiveMatchService {
     chaos?: ProducerChaos;
     sessionId?: string;
   }): Promise<void> {
+    if (azureModeRequested(process.env))
+      throw new Error('cloud ingestion is ownership-managed; local producer disabled');
     const entryEpoch = this.lifecycleEpoch;
     if (this.running) return;
     if (this.initialization !== null) {

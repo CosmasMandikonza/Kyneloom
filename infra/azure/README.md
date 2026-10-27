@@ -14,7 +14,7 @@ the owner. No cloud traces, connections, or costs are claimed.
 | Web PubSub (Standard_S1) | LiveFrame fan-out to viewers | `broadcastViaWebPubSub`, subscribe-only negotiated access |
 | Key Vault (RBAC) | The ONLY secret home: `webpubsub-connection-string`, `eventhubs-sender-connection-string` (set by the operator, stage 1) | mounted into the app via managed identity — never in repo/outputs/browser |
 | User-assigned managed identity + role assignments (by role name, resource-scoped): Storage Blob Data Contributor, Azure Event Hubs Data Receiver, Key Vault Secrets User | Least-privilege data plane | the in-process worker |
-| Container Apps environment + `kyneloom-{env}-live` app (min=max=1 replicas: ONE authoritative projection per generation) with liveness/readiness probes on `/api/live/status` | The ONE service process: Next.js API/SSE + the Event Hubs worker + Web PubSub fan-out in-process | `apps/web/instrumentation.ts` → `src/lib/live/azure-runtime.ts` → the SAME `LiveMatchService` (no second reducer) |
+| Container Apps environment + `kyneloom-{env}-live` app (min=max=1 per revision; leased ownership across revisions) with liveness `/api/live/status` and readiness `/api/live/ready` | The ONE service process: Next.js API/SSE + the Event Hubs worker + Web PubSub fan-out in-process | `apps/web/instrumentation.ts` → `src/lib/live/azure-runtime.ts` → the SAME `LiveMatchService` (no second reducer) |
 | Log Analytics workspace | Container App system logs + metrics | runbook health/failure inspection |
 
 **Deliberately out of scope (documented, not deployed):** PostgreSQL (no code
@@ -65,7 +65,7 @@ az eventhubs namespace authorization-rule keys list -g kyneloom-dev-rg --namespa
   | az keyvault secret set --vault-name $KV --name eventhubs-sender-connection-string -f /dev/stdin
 ```
 
-## Stage 2 — the app (idempotent: stage 1 reruns as a no-op, then the app lands)
+## Stage 2 — the app (initial deployment; updates MUST use the handoff below)
 
 ```bash
 az deployment group create -g kyneloom-dev-rg -f infra/azure/main.bicep \
@@ -85,9 +85,28 @@ export KYN_EVENTHUBS_SENDER_CONNECTION_STRING=$(az keyvault secret show \
 SEND_SPEED=4 pnpm live:fixture:send
 ```
 
+## Downtime-tolerant revision handoff (owner; deployment/rollback updates)
+
+The Bicep uses **Multiple** revision mode, with one replica per revision and one leased worker per match. This avoids Single mode's circular wait (new worker needs the lease; Azure waits for new readiness before stopping the old lease holder). Keep API and worker together; there is no second Container App.
+
+For an existing app, BEFORE updating its image or waiting on a replacement deployment:
+
+1. Record the current image digest and active revision names for rollback. Ensure the replacement understands `commit-v1`/`batches-v2`; rollback to a pre-fencing writer is unsafe.
+2. For a previously Single-mode app, set `az containerapp revision set-mode -n <app> -g <rg> --mode multiple` (application configuration change).
+3. List active revisions: `az containerapp revision list -n <app> -g <rg> --query "[?properties.active].name" -o tsv`. Deactivate EACH old revision with `az containerapp revision deactivate --revision <revision> -g <rg>`. Confirm no old replicas remain (revision/replica list + system logs). Do not wait for replacement worker readiness before doing this.
+4. Deploy the new image with the Stage 2 command. Alternatively, if a replacement is already waiting unready for the lease, let it continue after step 3. Shutdown attempts drain then lease release; an abruptly killed owner requires lease expiry. No fixed downtime bound is promised.
+5. Verify replacement `ownershipGeneration` increased, archive replay completed and `/api/live/ready` becomes 200 only after a successful receive. Verify SSE reconnects to a new `cloud-<generation>-<uuid>` session and the authoritative fingerprint matches expected source. Keep all older revisions inactive; traffic targets the latest READY revision.
+6. Rollback repeats this entire handoff using the prior **fence-aware** image. Never reactivate a legacy writer against fenced history. If startup fails, remain down and diagnose; never break an active lease to force readiness.
+
+These are documented commands and local handoff simulations, NOT executed Azure evidence. Authorized deployment must verify deactivation, lease expiry/release, traffic routing, SIGTERM/drain, restart and rollback on the actual platform. The lease prevents an accidentally overlapping replica from committing canonical work; manual control avoids readiness deadlock.
+
+The cloud template sets `NEXT_MANUAL_SIG_HANDLE=1`; the Docker command runs Node directly as PID 1. The runtime handles SIGTERM/SIGINT, drains the worker and issued sends, releases ownership, then exits. Next's default signal cleanup is disabled because it can exit before the worker drain. A forced platform kill may interrupt drain; the commit fence and finite lease remain the safety boundary. Failed owners do not restart in-place: restart/deactivate the revision to create a fresh process.
+
+No new secret or Azure resource is needed. Ownership renewal adds Blob transactions. `commit-v1` is a bounded (4 MiB) private commit document; immutable `batches-v2` objects remain the source archive. Orphan uploads are ignored, not deleted. Existing legacy history requires a separately reviewed offline import; there is no automatic adoption or migration tool. See [the failure windows and checkpoint/broadcast limits](../../docs/09-azure-platform.md).
+
 ## Health, verification, rollback
 
-- Health: `curl <fqdn>/api/live/status` (liveness+readiness probes use it too).
+- Liveness: `curl <fqdn>/api/live/status`; worker readiness: `/api/live/ready`. Lease contention/failure/recovery never counts as worker readiness.
 - Verified consumer state: `/api/live/snapshot` returns the fingerprinted
   canonical snapshot; the viewer at `/explore` toggles Live mode.
 - Security checks: anonymous/wrong-token `POST /api/live/control` → **403**;
@@ -102,10 +121,10 @@ SEND_SPEED=4 pnpm live:fixture:send
   not exactly-once external publication or live Azure restart safety. Follow the
   [recovery invariant and ownership assumptions](../../docs/09-azure-platform.md)
   before attempting this check; stop/quiesce the old writer before replacement.
-  A distributed fencing decision is still needed for overlapping workers/revisions.
+  The fenced commit record protects canonical recovery during overlap; SDK checkpoints and best-effort broadcasts are not globally exactly-once.
 - **Authorized deployment smoke test (post stage 3):**
   1. `curl <fqdn>/api/live/ready` → 503 before ingestion, `mode:"cloud-fed"`
-     + 200 once the session begins.
+     + 200 only after ownership, committed recovery and a successful receive.
   2. `curl <fqdn>/api/live/status` → `azureRuntime.replayedEnvelopes` and
      `archivedBatches` grow as the fixture streams.
   3. Open `<fqdn>/explore` → toggle **Live Synthetic Stream** → connected
@@ -113,9 +132,7 @@ SEND_SPEED=4 pnpm live:fixture:send
   4. Anonymous/wrong-token `POST /api/live/control` → 403.
   5. `az containerapp revision restart` → replay + recovery without
      duplicate goals.
-- Rollback: `az deployment group create … -p …` with the previous
-  `containerImage` (activeRevisionsMode Single makes revisions explicit);
-  or `az containerapp revision list` → reactivate the previous revision.
+- Rollback: follow the downtime-tolerant handoff above with a fence-aware image; never reactivate old revisions concurrently as an ownership workaround.
 - **Teardown (everything, immediately):**
   `az group delete -n kyneloom-dev-rg --yes --no-wait`
 

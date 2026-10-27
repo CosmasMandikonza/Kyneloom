@@ -330,9 +330,14 @@ describe('maybeStartAzureLiveWorker — cloud-session lifecycle', () => {
     const { deps } = makeDeps(service, archive);
     await runtime.maybeStartAzureLiveWorker(FULL_ENV, deps);
     await until(() => vi.mocked(archive.readBatches).mock.calls.length === 1);
-    await runtime.stopAzureLiveWorker();
-    finishReplay([]);
+    let drained = false;
+    const stopping = runtime.stopAzureLiveWorker().then(() => {
+      drained = true;
+    });
     await Promise.resolve();
+    expect(drained).toBe(false);
+    finishReplay([]);
+    await stopping;
     expect(deps.startIngestion).not.toHaveBeenCalled();
     expect(service.beginExternalSession).not.toHaveBeenCalled();
     expect(runtime.azureRuntimeStatus().active).toBe(false);

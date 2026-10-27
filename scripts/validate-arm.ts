@@ -96,7 +96,11 @@ const ca = build('ca', 'infra/azure/modules/container-apps.bicep') as {
 const app = ca.resources.find((r) => r.type.includes('containerApps')) as ArmResource | undefined;
 const appProps = app?.properties as
   | {
-      configuration?: { secrets?: unknown[]; ingress?: { transport?: string } };
+      configuration?: {
+        activeRevisionsMode?: string;
+        secrets?: unknown[];
+        ingress?: { transport?: string };
+      };
       template?: {
         scale?: { minReplicas?: number; maxReplicas?: number };
         containers?: {
@@ -107,7 +111,15 @@ const appProps = app?.properties as
     }
   | undefined;
 const container = appProps?.template?.containers?.[0];
+check(
+  appProps?.configuration?.activeRevisionsMode === 'Multiple',
+  'manual revision handoff (deactivate old owner before waiting for replacement readiness)',
+);
 const envNames = new Set(container?.env?.map((e) => e.name));
+check(
+  container?.env?.find((e) => e.name === 'NEXT_MANUAL_SIG_HANDLE')?.value === '1',
+  'cloud SIGTERM exit waits for worker drain (Next automatic signal cleanup disabled)',
+);
 for (const required of [
   'KYN_EVENTHUBS_NAMESPACE',
   'KYN_EVENTHUB_NAME',

@@ -13,6 +13,8 @@ import type { AzureLiveConfig } from './azure-adapters';
  * business deduplication still belongs to the ONE existing projection worker.
  */
 export interface DurableArchive {
+  /** Present on the production cloud archive; absent on legacy readers/test doubles. */
+  readonly ownership?: ArchiveOwnership;
   appendEnvelopes(batch: readonly StreamEnvelope[]): Promise<void>;
   /** Recovery MUST admit each original batch separately in receipt order. */
   readBatches(): Promise<StreamEnvelope[][]>;
@@ -20,7 +22,14 @@ export interface DurableArchive {
   readAllEnvelopes(): Promise<StreamEnvelope[]>;
 }
 
-async function createArchiveContainer(config: AzureLiveConfig): Promise<ContainerClient> {
+export interface ArchiveOwnership {
+  readonly generation: string;
+  readonly signal: AbortSignal;
+  assertOwned(): void;
+  close(): Promise<void>;
+}
+
+export async function createArchiveContainer(config: AzureLiveConfig): Promise<ContainerClient> {
   const [{ ContainerClient }, { DefaultAzureCredential }] = await Promise.all([
     import('@azure/storage-blob'),
     import('@azure/identity'),
@@ -31,8 +40,37 @@ async function createArchiveContainer(config: AzureLiveConfig): Promise<Containe
   );
 }
 
+/** Content identity and create-only SDK contract shared by both archive formats. */
+export async function uploadImmutableBatch(
+  container: ContainerClient,
+  name: string,
+  data: Buffer,
+  metadata?: Record<string, string>,
+): Promise<void> {
+  try {
+    await container.getBlockBlobClient(name).upload(data, data.byteLength, {
+      blobHTTPHeaders: { blobContentType: 'application/json' },
+      conditions: { ifNoneMatch: '*' },
+      ...(metadata === undefined ? {} : { metadata }),
+    });
+  } catch (error) {
+    if (
+      !isRestError(error) ||
+      !(
+        (error.statusCode === 412 && error.code === 'ConditionNotMet') ||
+        (error.statusCode === 409 && error.code === 'BlobAlreadyExists')
+      )
+    )
+      throw error;
+    const previous = await container.getBlobClient(name).downloadToBuffer();
+    if (!previous.equals(data))
+      throw new Error(`archive content conflict: ${name}`, { cause: error });
+  }
+}
+
 /**
- * The existing runtime must remain the sole writer per match. Receipt ordinals
+ * Legacy v1 format for offline inspection and compatibility tests. Production
+ * ingestion uses acquireOwnedArchive (owned-archive.ts). Receipt ordinals
  * are metadata on the source objects, not a second archive or reducer. On a
  * restart the next ordinal is recovered from Blob, never from a process counter.
  * This is NOT a distributed writer lease or a checkpoint/publication transaction.
@@ -49,6 +87,8 @@ export async function createBlobArchive(
     const records: { name: string; order: bigint | null }[] = [];
     const orders = new Set<bigint>();
     for await (const item of container.listBlobsFlat({ prefix, includeMetadata: true })) {
+      if (item.name === `${prefix}commit-v1`)
+        throw new Error('fenced archive requires the owned reader');
       if (!item.name.endsWith('.json')) continue;
       let order: bigint | null = null;
       if (item.name.startsWith(contentPrefix)) {
@@ -104,31 +144,7 @@ export async function createBlobArchive(
       const digest = createHash('sha256').update(data).digest('hex');
       const name = `${contentPrefix}${digest}.json`;
       const order = nextOrder++;
-      try {
-        // The real SDK contract is (body, BYTE length, options). A conditional
-        // create is essential: content-addressed names alone do not stop writes.
-        await container.getBlockBlobClient(name).upload(data, data.byteLength, {
-          blobHTTPHeaders: { blobContentType: 'application/json' },
-          conditions: { ifNoneMatch: '*' },
-          metadata: { archive_order: String(order) },
-        });
-      } catch (error) {
-        if (
-          !isRestError(error) ||
-          !(
-            (error.statusCode === 412 && error.code === 'ConditionNotMet') ||
-            (error.statusCode === 409 && error.code === 'BlobAlreadyExists')
-          )
-        ) {
-          throw error;
-        }
-        // A lost response may mean the original write succeeded. Only exact
-        // bytes prove an idempotent retry; a corrupt/conflicting object fails shut.
-        const previous = await container.getBlobClient(name).downloadToBuffer();
-        if (!previous.equals(data)) {
-          throw new Error(`archive content conflict: ${name}`, { cause: error });
-        }
-      }
+      await uploadImmutableBatch(container, name, data, { archive_order: String(order) });
     },
     readBatches,
     async readAllEnvelopes(): Promise<StreamEnvelope[]> {

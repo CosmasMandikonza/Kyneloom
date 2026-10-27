@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { LiveMatchService } from '@/lib/live/service';
 import { azureRuntimeStatus } from '@/lib/live/azure-runtime';
+import { azureModeRequested } from '@/lib/live/azure-adapters';
 
 /**
  * KYN-14 — WORKER READINESS (not process liveness). 200 only when a real
@@ -15,12 +16,13 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(): Promise<Response> {
   const service = LiveMatchService.get();
-  const running = service.status.running;
+  const cloud = service.isExternalSession || azureModeRequested(process.env);
   const azure = azureRuntimeStatus();
-  const ready = running && (!service.isExternalSession || azure.active);
+  const running = service.status.running;
+  const ready = running && (!cloud || azure.active);
   const body = {
     ok: ready,
-    mode: service.isExternalSession ? 'cloud-fed' : running ? 'local' : 'none',
+    mode: cloud ? 'cloud-fed' : running ? 'local' : 'none',
     azureRuntime: azure,
   };
   return NextResponse.json(body, {

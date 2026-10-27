@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { LiveMatchService } from '@/lib/live/service';
 import { azureRuntimeStatus } from '@/lib/live/azure-runtime';
+import { azureModeRequested } from '@/lib/live/azure-adapters';
 
 /**
  * KYN-13 — operational status + latency telemetry for the local transport
@@ -15,12 +16,13 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(): Promise<Response> {
   const service = LiveMatchService.get();
+  const azure = azureRuntimeStatus();
   return NextResponse.json(
     {
       ok: true,
       status: service.status,
-      mode: service.isExternalSession ? 'cloud-fed' : 'local',
-      azureRuntime: azureRuntimeStatus(),
+      mode: azureModeRequested(process.env) || service.isExternalSession ? 'cloud-fed' : 'local',
+      azureRuntime: azure,
       latency: service.latencySamples().slice(-50),
       integrityFingerprint: service.integrityFingerprint(),
     },

@@ -291,4 +291,61 @@ describe('startEventHubsIngestion (injected fakes) — checkpoint ordering laws'
     await startEventHubsIngestion(CONFIG, async () => undefined, controller.signal, factories);
     expect(factories.createCredential).not.toHaveBeenCalled();
   });
+
+  it.each(['cancellation', 'ownership loss'])(
+    'rechecks %s before EVERY checkpoint and drains an issued update',
+    async (reason) => {
+      const fake = makeFakeConsumer();
+      const controller = new AbortController();
+      let owned = true;
+      let finish: () => void = () => undefined;
+      const context = {
+        updateCheckpoint: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              finish = resolve;
+            }),
+        ),
+      };
+      const health = {
+        onReady: vi.fn(),
+        onError: vi.fn(),
+        assertOwned: () => {
+          if (!owned) throw new Error('ownership lost');
+        },
+      };
+      const running = startEventHubsIngestion(
+        CONFIG,
+        async () => undefined,
+        controller.signal,
+        {
+          createCredential: async () => ({}),
+          createCheckpointStore: async () => ({}),
+          createConsumerClient: async () => fake.client,
+        },
+        health,
+      );
+      await vi.waitFor(() => expect(fake.captured.handlers).not.toBeNull());
+      const processed = fake.captured.handlers!.processEvents(
+        [envelopeEvent('one'), envelopeEvent('two')],
+        context,
+      );
+      const rejected = expect(processed).rejects.toThrow();
+      await vi.waitFor(() => expect(context.updateCheckpoint).toHaveBeenCalledTimes(1));
+      if (reason === 'cancellation') controller.abort();
+      else owned = false;
+      let stopped = false;
+      const stopping = running.then(() => {
+        stopped = true;
+      });
+      await Promise.resolve();
+      expect(stopped).toBe(false);
+      finish();
+      await rejected;
+      controller.abort();
+      await stopping;
+      expect(context.updateCheckpoint).toHaveBeenCalledTimes(1);
+      expect(health.onReady).not.toHaveBeenCalled();
+    },
+  );
 });
