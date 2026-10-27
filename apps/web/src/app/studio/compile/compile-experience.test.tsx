@@ -458,3 +458,127 @@ describe('KYN Ask Kyneloom — intent input drives the actual experience', () =>
     );
   });
 });
+
+describe('KYN Ask review round — build-up focus, cross-flow sync', () => {
+  function askFetch(): { calls: { readonly url: string; resolve: (payload: unknown) => void }[] } {
+    const calls: { readonly url: string; resolve: (payload: unknown) => void }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: unknown) =>
+          new Promise<Response>((resolve) => {
+            calls.push({
+              url: String(_url),
+              resolve: (payload: unknown) =>
+                resolve(new Response(JSON.stringify(payload), { status: 200 })),
+            });
+          }),
+      ) as unknown as typeof fetch,
+    );
+    return { calls };
+  }
+
+  function mount(world: Awaited<ReturnType<typeof realWorld>>): void {
+    render(
+      <CompileExperience
+        baseScene={world.scene}
+        evidence={world.evidence}
+        entries={world.entries}
+        initialResult={world.initial as CompileSuccess}
+        sourcePanel={<div>source</div>}
+      />,
+    );
+  }
+
+  it('a goal build-up answer seeks the stage to the WINDOW START (the real autoRun.fromMs), not the goal instant', async () => {
+    stubBrowserApis();
+    const world = await realWorld();
+    const goal = await resolveAskMoment('Show the build-up to the goal');
+    if (!goal.ok || !goal.result.ok) throw new Error('goal intent failed');
+    const { calls } = askFetch();
+    mount(world);
+    fireEvent.click(screen.getByTestId('ask-example-goal-buildup'));
+    await waitFor(() => expect(calls.length).toBe(1));
+    calls[0]!.resolve(goal);
+    await waitFor(() =>
+      expect(screen.getByTestId('ask-answer').textContent).toContain('goal-buildup'),
+    );
+    // The actual playback focus: the stage transport slider (the canonical
+    // clock) rests at the candidate window START — the build-up plays.
+    const sliderEl = document.querySelector('input.stage__slider') as HTMLInputElement;
+    expect(sliderEl).not.toBeNull();
+    await waitFor(
+      () => {
+        expect(Number(sliderEl.value)).toBe(goal.focusPlayheadMs);
+      },
+      { timeout: 6000 },
+    );
+    // And provably NOT the goal instant (the old defect).
+    const source = buildCompilerSource(await loadGoldenMatch());
+    const goalAt = source.ok
+      ? source.snapshot.context.events.find((event) => event.kind === 'goal')?.occurredAtMs
+      : undefined;
+    expect(goalAt).toBeDefined();
+    expect(Number(sliderEl.value)).not.toBe(goalAt);
+  });
+
+  it('a successful MANUAL compile retires the Ask answer and its focus (one artifact, one story)', async () => {
+    stubBrowserApis();
+    const world = await realWorld();
+    const wide = await resolveAskMoment('Give me a wide broadcast view');
+    if (!wide.ok || !wide.result.ok) throw new Error('wide intent failed');
+    const { calls } = askFetch();
+    mount(world);
+    // Ask first: the answer is visible and the sweep manifest is active.
+    fireEvent.click(screen.getByTestId('ask-example-broadcast-wide'));
+    await waitFor(() => expect(calls.length).toBe(1));
+    calls[0]!.resolve(wide);
+    await waitFor(() =>
+      expect(screen.getByTestId('ask-answer').textContent).toContain('broadcast-wide'),
+    );
+    // Then a manual corpus compile WINS (select + compile the golden entry).
+    fireEvent.click(screen.getByRole('button', { name: /well-formed proposal/i }));
+    fireEvent.click(screen.getByTestId('compile-proposal'));
+    await waitFor(() => expect(calls.length).toBe(2));
+    expect(calls[1]!.url).toContain('/api/moment/compile');
+    calls[1]!.resolve(world.initial);
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-compiled-hash]')?.getAttribute('data-compiled-hash'),
+      ).toBe(world.initial.manifestHash),
+    );
+    // The stale Ask answer is GONE (no answer describes a different artifact
+    // than the stage is playing) and the status returns to the idle guide.
+    await waitFor(() => expect(screen.queryByTestId('ask-answer')).toBeNull());
+    expect(screen.getByTestId('ask-status').textContent).toContain('Ask about');
+  });
+
+  it('a stale cross-flow response cannot replace the newest user action', async () => {
+    stubBrowserApis();
+    const world = await realWorld();
+    const wide = await resolveAskMoment('Give me a wide broadcast view');
+    if (!wide.ok || !wide.result.ok) throw new Error('wide intent failed');
+    const { calls } = askFetch();
+    mount(world);
+    // An ask is issued, and BEFORE it answers a manual compile is issued.
+    fireEvent.click(screen.getByTestId('ask-example-broadcast-wide'));
+    await waitFor(() => expect(calls.length).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: /well-formed proposal/i }));
+    fireEvent.click(screen.getByTestId('compile-proposal'));
+    await waitFor(() => expect(calls.length).toBe(2));
+    // The MANUAL response (the newest action) commits first.
+    calls[1]!.resolve(world.sweep);
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-compiled-hash]')?.getAttribute('data-compiled-hash'),
+      ).toBe(world.sweep.manifestHash),
+    );
+    // The stale ASK response arrives late — it must be dropped entirely.
+    calls[0]!.resolve(wide);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(document.querySelector('[data-compiled-hash]')?.getAttribute('data-compiled-hash')).toBe(
+      world.sweep.manifestHash,
+    );
+    expect(screen.queryByTestId('ask-answer')).toBeNull();
+  });
+});

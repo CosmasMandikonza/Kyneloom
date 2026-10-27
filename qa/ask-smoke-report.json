@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-10-27T19:43:59.627Z",
+  "steps": [
+    {
+      "step": "goal build-up: answer cites real event id",
+      "ok": true,
+      "detail": "evt-0010"
+    },
+    {
+      "step": "goal build-up: playback observed in the BUILD-UP region (before the goal instant)",
+      "ok": true,
+      "detail": "playhead sample 4726333.2 (playing forward from window start 4721700)"
+    },
+    {
+      "step": "goal build-up: manifest hash changed from baseline",
+      "ok": true,
+      "detail": "88a9f0d1789a (golden directed cut, as designed)"
+    },
+    {
+      "step": "wide view: Enter submits; DIFFERENT validated manifest hash",
+      "ok": true,
+      "detail": "88a9f0d1… -> 83856f05…"
+    },
+    {
+      "step": "off-ball: hypothesis kept as interpretation",
+      "ok": true,
+      "detail": "off-ball-run The directed cut follows the moment from 472170"
+    },
+    {
+      "step": "unsupported: honest refusal, stage hash unchanged",
+      "ok": true,
+      "detail": "88a9f0d1…"
+    },
+    {
+      "step": "desktop: zero console/page errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "mobile: Ask input is one line tall (no 18rem stretch)",
+      "ok": true,
+      "detail": "input 321x36px"
+    },
+    {
+      "step": "mobile: no horizontal overflow",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "step": "mobile: supported ask resolves with an answer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "mobile: zero console/page errors",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "failures": []
+}

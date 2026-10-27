@@ -65,7 +65,19 @@ describe('resolveAskMoment — grounding + compilation against the real fixture'
     const event = source.snapshot.context.events.find((candidate) => candidate.eventId === eventId);
     expect(event).toBeDefined();
     expect(event?.kind).toBe('goal');
-    expect(outcome.focusPlayheadMs).toBe(event?.occurredAtMs);
+    // The BUILD-UP plays: focus is the candidate window START, never the
+    // goal instant itself (which would skip what was asked for).
+    const goldenB = await loadGoldenMatch();
+    const sourceB = buildCompilerSource(goldenB);
+    if (!sourceB.ok) return;
+    const corpusB = buildCompileCorpus(sourceB.snapshot.context);
+    expect(outcome.focusPlayheadMs).toBe(corpusB.golden.timeRangeMs[0]);
+    expect(outcome.focusPlayheadMs).toBeLessThan(event!.occurredAtMs);
+    // Provenance typing: the goal event id is a REAL source event id, and no
+    // evidence/claim id leaks into the source-event field.
+    expect(outcome.sourceEventIds).toEqual([eventId]);
+    expect(outcome.evidenceIds).toEqual([]);
+    expect(outcome.claimIds).toEqual([]);
     expect(outcome.result.ok).toBe(true);
   });
 
@@ -74,12 +86,43 @@ describe('resolveAskMoment — grounding + compilation against the real fixture'
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     expect(outcome.intentId).toBe('off-ball-run');
-    expect(outcome.sourceEventIds).toContain('ev-separation');
+    // Typed provenance: ev-separation is EVIDENCE, the reading is a CLAIM —
+    // neither may appear as a source event id.
+    expect(outcome.evidenceIds).toContain('ev-separation');
+    expect(outcome.claimIds.length).toBeGreaterThanOrEqual(1);
+    expect(outcome.sourceEventIds).toEqual([]);
     expect(outcome.explanation).toMatch(/verified measurement|separation/iu);
     const note = outcome.evidenceNote + ' ' + outcome.explanation;
     expect(note).toMatch(/hypothesis|likely/iu);
     expect(note).not.toMatch(/proves|proven causation|caused the/iu);
     expect(outcome.resolver).toBe(ASK_RESOLVER_LABEL);
+  });
+
+  it('review round: every cited id belongs to its AUTHORITATIVE set, typed correctly', async () => {
+    const golden = await loadGoldenMatch();
+    const source = buildCompilerSource(golden);
+    if (!source.ok) return;
+    const corpus = buildCompileCorpus(source.snapshot.context);
+    const eventIds = new Set(source.snapshot.context.events.map((event) => event.eventId));
+    const evidenceIds = new Set(corpus.golden.evidence.map((entry) => entry.id));
+    const claimIds = new Set(corpus.golden.claims.map((claim) => claim.id));
+    for (const prompt of [
+      'Show me how the off-ball run opened space',
+      'Show the build-up to the goal',
+      'Give me a wide broadcast view',
+    ]) {
+      const outcome = await resolveAskMoment(prompt);
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) continue;
+      for (const id of outcome.sourceEventIds) expect(eventIds.has(id)).toBe(true);
+      for (const id of outcome.evidenceIds) expect(evidenceIds.has(id)).toBe(true);
+      for (const id of outcome.claimIds) expect(claimIds.has(id)).toBe(true);
+      // The sets are disjoint by TYPE: no id appears in the wrong field.
+      for (const id of outcome.sourceEventIds) {
+        expect(evidenceIds.has(id)).toBe(false);
+        expect(claimIds.has(id)).toBe(false);
+      }
+    }
   });
 
   it('a wide view resolves to the broadcast-sweep proposal — a DIFFERENT validated manifest than the directed cut', async () => {

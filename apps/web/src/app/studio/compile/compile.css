@@ -542,6 +542,13 @@
     flex-direction: column;
   }
 
+  /* Column layout: the input must size to one line — the desktop
+     flex-basis (18rem) would otherwise stretch it into a tall block. */
+  .ask__input {
+    flex: 0 1 auto;
+    width: 100%;
+  }
+
   .ask__go {
     width: 100%;
   }

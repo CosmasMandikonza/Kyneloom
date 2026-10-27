@@ -65,7 +65,9 @@ export async function resolveAskMoment(
   let proposal = corpus.golden;
   let explanation: string;
   let evidenceNote: string;
-  let sourceEventIds: readonly string[];
+  let sourceEventIds: readonly string[] = [];
+  let evidenceIds: readonly string[] = [];
+  let claimIds: readonly string[] = [];
   let focusPlayheadMs: number;
 
   switch (classification.intentId) {
@@ -80,7 +82,14 @@ export async function resolveAskMoment(
         claim.evidenceIds.includes('ev-separation'),
       );
       const hypothesis = corpus.golden.claims.find((claim) => claim.status === 'hypothesis');
-      sourceEventIds = ['ev-separation', ...(hypothesis ? [hypothesis.id] : [])];
+      // Provenance TYPES matter: ev-separation is an EVIDENCE id and the
+      // hypothesis is a CLAIM id — neither belongs in sourceEventIds.
+      sourceEventIds = [];
+      evidenceIds = ['ev-separation'];
+      claimIds = [
+        ...(separationClaim !== undefined ? [separationClaim.id] : []),
+        ...(hypothesis !== undefined ? [hypothesis.id] : []),
+      ];
       focusPlayheadMs = windowStart;
       explanation =
         `The directed cut follows the moment from ${String(windowStart)} ms. ` +
@@ -109,7 +118,11 @@ export async function resolveAskMoment(
       }
       proposal = corpus.golden;
       sourceEventIds = [goalEvent.eventId];
-      focusPlayheadMs = goalEvent.occurredAtMs;
+      // The question asks for the BUILD-UP: start at the verified candidate
+      // window start so the whole move plays — never at the goal itself
+      // (which would skip what was asked for). The event id and its real
+      // timestamp stay in the explanation.
+      focusPlayheadMs = corpus.golden.timeRangeMs[0];
       explanation = `The directed cut plays the build-up to the finish: the source event of kind "goal" (${goalEvent.eventId}) by ${goalEvent.actorId} at ${String(goalEvent.occurredAtMs)} ms anchors the answer, and playback focuses there.`;
       evidenceNote = `Cited directly from the authoritative source events (kind "goal", id ${goalEvent.eventId}) — no fabricated timestamps.`;
       break;
@@ -155,6 +168,8 @@ export async function resolveAskMoment(
     resolver: ASK_RESOLVER_LABEL,
     intentId: classification.intentId,
     sourceEventIds,
+    evidenceIds,
+    claimIds,
     explanation,
     evidenceNote,
     focusPlayheadMs,

@@ -56,6 +56,11 @@ export function CompileExperience({
     readonly errorCount: number;
   } | null>(null);
   const requestSeq = useRef(0);
+  // ONE cross-flow sequence: a manual corpus compile and an Ask resolution
+  // both bump it — only the response matching the LATEST issued user action
+  // may commit, so a stale response from the other flow can never replace
+  // the newest one.
+  const flowSeq = useRef(0);
 
   // "Ask Kyneloom" (deterministic intent input): its OWN sequence guard so
   // rapid submissions cannot commit stale resolutions, and a focus playhead
@@ -71,6 +76,7 @@ export function CompileExperience({
     // Rapid submissions are allowed: the sequence guard owns ordering, so
     // a stale resolution can never commit over a newer question.
     const seq = (askSeq.current += 1);
+    const flow = (flowSeq.current += 1);
     setAskBusy(true);
     try {
       const response = await fetch('/api/moment/intent', {
@@ -78,9 +84,9 @@ export function CompileExperience({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ prompt }),
       });
-      if (seq !== askSeq.current) return; // a newer question owns the state
+      if (seq !== askSeq.current || flow !== flowSeq.current) return; // a newer action owns the state
       const payload = (await response.json()) as AskMomentOutcome;
-      if (seq !== askSeq.current) return; // re-check after the await
+      if (seq !== askSeq.current || flow !== flowSeq.current) return; // re-check after the await
       setAskOutcome(payload);
       if (payload.ok && payload.result.ok) {
         // Rebind the ACTIVE artifact exactly like a successful compile:
@@ -94,7 +100,7 @@ export function CompileExperience({
       // Unsupported / invalid / rejected: the stage keeps the LAST
       // successfully compiled moment — nothing is substituted.
     } catch (error) {
-      if (seq !== askSeq.current) return;
+      if (seq !== askSeq.current || flow !== flowSeq.current) return;
       setAskOutcome({
         ok: false,
         routeVersion: 'kyneloom-ask-intent-v1',
@@ -135,6 +141,7 @@ export function CompileExperience({
     if (selected === undefined || busy) return;
     const entry = selected;
     const seq = (requestSeq.current += 1);
+    const flow = (flowSeq.current += 1);
     setBusy(true);
     setRequestError(null);
     try {
@@ -143,7 +150,7 @@ export function CompileExperience({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(entry.proposal),
       });
-      if (seq !== requestSeq.current) return; // a newer request owns the state
+      if (seq !== requestSeq.current || flow !== flowSeq.current) return; // a newer action owns the state
       if (!response.ok) {
         setRequestError(
           `The compile endpoint answered ${String(response.status)} — no result is shown.`,
@@ -151,12 +158,17 @@ export function CompileExperience({
         return;
       }
       const payload = (await response.json()) as CompileResult;
-      if (seq !== requestSeq.current) return; // re-check after the await
+      if (seq !== requestSeq.current || flow !== flowSeq.current) return; // re-check after the await
       setVerdict(payload);
       setVerdictEntryId(entry.id);
       if (payload.ok) {
         setActive(compiledViewFrom(payload));
         setLastRejected(null);
+        // A manual compile win retires the Ask answer and its focus: the
+        // stage, the visible answer and the playback focus must describe
+        // the SAME artifact.
+        setAskOutcome(null);
+        setAskFocusMs(null);
       } else {
         setLastRejected({
           entryId: entry.id,
@@ -165,7 +177,7 @@ export function CompileExperience({
         });
       }
     } catch (error) {
-      if (seq !== requestSeq.current) return;
+      if (seq !== requestSeq.current || flow !== flowSeq.current) return;
       setRequestError(
         error instanceof Error
           ? `Compilation request failed: ${error.message}`

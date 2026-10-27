@@ -66,7 +66,12 @@ export type AskMomentOutcome =
       readonly routeVersion: typeof ASK_ROUTE_VERSION;
       readonly resolver: typeof ASK_RESOLVER_LABEL;
       readonly intentId: AskIntentId;
+      /** ONLY accepted source event ids (authoritative eventIds). */
       readonly sourceEventIds: readonly string[];
+      /** Verified evidence entries cited (e.g. ev-separation). */
+      readonly evidenceIds: readonly string[];
+      /** Claims cited (calculated or hypothesis). */
+      readonly claimIds: readonly string[];
       /** Grounded plain-language answer; measured facts vs interpretation kept distinct. */
       readonly explanation: string;
       /** Honest limits of the evidence behind this answer. */
