@@ -107,8 +107,15 @@ describe('transcriptEntries', () => {
       fromMs: 4_720_500,
       toMs: 4_724_000,
     });
-    expect(entries.every((entry) => entry.kind === 'event')).toBe(true);
-    expect(entries).toHaveLength(4);
+    // KYN-20: unverified evidence now surfaces ONE honest unavailable
+    // measurement entry (window + reason, nothing fabricated) instead of
+    // silence; still never a measurement VALUE or interpretation.
+    expect(entries).toHaveLength(5);
+    const unavailable = entries.find((entry) => entry.id === 'measurement:unavailable');
+    expect(unavailable).toBeDefined();
+    if (unavailable === undefined) return;
+    expect(unavailable.description).toContain('verification failed');
+    expect(entries.filter((entry) => entry.kind === 'interpretation')).toHaveLength(0);
   });
 });
 
@@ -198,5 +205,45 @@ describe('neutral coordinate-relative pitch zones (review round 3)', () => {
       expect(ballLine).toBeDefined();
       expect(ballLine).not.toMatch(/home|away|attacking|defending|possession|carried by/i);
     }
+  });
+});
+
+describe('KYN-20 transcript honesty (unverified evidence)', () => {
+  it('KYN-20 — unverified evidence produces an HONEST unavailable measurement entry, never a fabrication', async () => {
+    const golden = await loadGoldenMatch();
+    const scene = buildSceneData(golden);
+    if (scene === null) throw new Error('scene unavailable');
+    const unverified = buildEvidenceProjection(golden);
+    expect(unverified.status).toBe('verified'); // the golden fixture verifies
+    // Corrupt the projection to the unverified branch the honest way: use the
+    // documented unverified shape with the same window.
+    const reason = 'tracking samples missing for the requested window';
+    const projection =
+      unverified.status === 'verified'
+        ? {
+            status: 'unverified' as const,
+            reason,
+            defenderId: 'away-03',
+            strikerId: 'home-09',
+            fromMs: 4_721_000,
+            toMs: 4_729_000,
+          }
+        : unverified;
+    const entries = transcriptEntries(scene, projection);
+    const unavailable = entries.find((entry) => entry.id === 'measurement:unavailable');
+    expect(unavailable).toBeDefined();
+    if (unavailable === undefined) return;
+    expect(unavailable.kind).toBe('measurement');
+    expect(unavailable.description).toContain(reason);
+    expect(unavailable.description).toContain('Nothing is fabricated');
+    // No invented measurement may ride along in its place.
+    expect(
+      entries.some(
+        (entry) => entry.id.startsWith('measurement:') && entry.id !== 'measurement:unavailable',
+      ),
+    ).toBe(false);
+    // The verified fixture (control) has no unavailable entry.
+    const verifiedEntries = transcriptEntries(scene, unverified);
+    expect(verifiedEntries.some((entry) => entry.id === 'measurement:unavailable')).toBe(false);
   });
 });

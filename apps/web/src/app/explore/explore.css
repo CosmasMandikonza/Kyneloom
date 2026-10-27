@@ -1371,6 +1371,18 @@
   transition: color var(--dur-fast) var(--ease-out);
 }
 
+/* KYN-20: the playhead's current transcript entry — distinguishable in
+   high contrast WITHOUT stealing focus or scrolling (aria-current mirrors
+   the same state for screen readers). */
+.a11y__entry--active > .a11y__entry-seek {
+  outline: 2px solid var(--evidence-400, #7fd4a8);
+  outline-offset: 2px;
+}
+
+.a11y__entry--active > .a11y__entry-kind::after {
+  content: ' · CURRENT';
+}
+
 .a11y__entry-desc {
   margin: 0.35rem 0 0;
   color: var(--text-muted);
