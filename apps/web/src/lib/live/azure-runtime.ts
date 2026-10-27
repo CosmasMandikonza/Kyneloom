@@ -201,7 +201,7 @@ async function runAzureLiveWorker(
       async (batch) => {
         signal.throwIfAborted();
         if (!ownsSession) throw new Error('cloud session ended');
-        await archive.appendEnvelopes(config.matchId, batchIndex, batch);
+        await archive.appendEnvelopes(batch);
         signal.throwIfAborted();
         if (!ownsSession) throw new Error('cloud session ended');
         batchIndex += 1;

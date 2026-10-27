@@ -25,9 +25,10 @@ import type { MatchEvent, TrackingSample } from '@kyneloom/contracts';
  *
  * DURABILITY (docs/09): Event Hubs retention is NOT an archive. Every
  * admitted, rejected and corrected envelope is appended to a local
- * append-only JSONL archive (the Blob equivalent when deployed), plus a
- * durable quarantine file with trace ids. Checkpoints (last durably
- * processed envelope id) are written only after the archive append
+ * append-only JSONL archive, plus a quarantine file with trace ids. In cloud
+ * mode these local files are ephemeral diagnostics: azure-runtime writes Blob
+ * FIRST and restores from Blob only; it never restores from this directory.
+ * Checkpoints (last durably processed envelope id) are written only after the archive append
  * succeeds — never merely because a handler saw the message.
  */
 
@@ -160,6 +161,9 @@ export class LiveMatchService {
    */
   beginExternalSession(sessionId?: string): void {
     if (this.running) return;
+    // External ingestion also writes local quarantine/checkpoint diagnostics.
+    // Initialize before claiming a running session; Blob remains cloud recovery.
+    mkdirSync(this.archiveDir, { recursive: true });
     this.lifecycleEpoch += 1; // invalidate any stale initialization
     this.sessionCounter += 1;
     this.sessionId = sessionId ?? `live-${String(this.sessionCounter)}-${String(Date.now())}`;
