@@ -13,20 +13,33 @@ import type { SceneData } from '@/lib/scene-data';
 import { createSpeechController, type SpeechController } from './speech';
 
 /**
- * The Accessible panel (KYN-11): a complete non-visual equivalent of the
- * moment, driven by the SAME authoritative timeline. Spatial descriptions
- * are GENERATED from the current sampled state (pure selector, unit
- * tested) — never hardcoded narration. The transcript lists every source
- * event with its id and actor plus the verified measurement and its
- * interpretation, each classified. Browser speech synthesis (feature
- * detected, honestly labeled as the device engine) is optional.
+ * The Accessible panel (KYN-11 + KYN-20): a complete non-visual equivalent
+ * of the moment, driven by the SAME authoritative timeline. Spatial
+ * descriptions are GENERATED from the current sampled state (pure selector,
+ * unit tested) — never hardcoded narration. The transcript lists every
+ * source event with its id and actor plus the verified measurement and its
+ * interpretation, each classified, with an HONEST unavailable entry when no
+ * verified measurement exists. Browser speech synthesis (feature detected,
+ * honestly labeled as the device engine) is optional and strictly opt-in:
+ * the follow-narration mode speaks only meaningful source-event transitions
+ * while playing, and deliberate seeks cancel stale narration.
  *
  * Updates run at a BOUNDED cadence (500 ms + engine revision), and the
  * live region announces only changes — assistive tech is never flooded
- * per animation frame.
+ * per animation frame. The active transcript entry follows the shared
+ * playhead (aria-current) without stealing focus or scrolling.
  */
 
 export interface AccessiblePanelProps {
+  /**
+   * Increments on every USER-INITIATED stage transport seek (slider input
+   * including 100 ms arrow steps, transport frame buttons, global keyboard
+   * arrows, reset, chapter/evidence seeks) — the reliable deliberate-
+   * navigation signal. Never increments from the automatic playback loop or
+   * from this panel's own onSeek/onStep callbacks, so transcript destination
+   * narration is never double-cancelled.
+   */
+  readonly deliberateSeekSignal: number;
   readonly scene: SceneData;
   readonly evidence: EvidenceProjection;
   /** Live engine reference (playhead read at bounded cadence). */
@@ -51,6 +64,7 @@ const KIND_LABELS: Record<TranscriptEntry['kind'], string> = {
 };
 
 export function AccessiblePanel({
+  deliberateSeekSignal,
   scene,
   evidence,
   engine,
@@ -67,6 +81,34 @@ export function AccessiblePanel({
   const speechRef = useRef<SpeechController | null>(null);
   const [rate, setRate] = useState(1);
   const [narrationStatus, setNarrationStatus] = useState('');
+  /** Opt-in follow mode: narrate meaningful transitions while playing. */
+  const [following, setFollowing] = useState(false);
+  /**
+   * Narration Pause is AUTHORITATIVE while following: the transition loop
+   * may not start new utterances until Resume (an engine pause alone would
+   * be overridden by the next speak()).
+   */
+  const [narrationPaused, setNarrationPaused] = useState(false);
+  /** The transcript entry the shared playhead is currently at. */
+  const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
+
+  // Live refs so the bounded sync interval never needs re-creating.
+  const followingRef = useRef(false);
+  const narrationPausedRef = useRef(false);
+  const playingRef = useRef(playing);
+  const rateRef = useRef(rate);
+  useEffect(() => {
+    followingRef.current = following;
+  }, [following]);
+  useEffect(() => {
+    narrationPausedRef.current = narrationPaused;
+  }, [narrationPaused]);
+  useEffect(() => {
+    playingRef.current = playing;
+  }, [playing]);
+  useEffect(() => {
+    rateRef.current = rate;
+  }, [rate]);
 
   /**
    * Concise live-announcement channel (review round): ONE short
@@ -94,6 +136,14 @@ export function AccessiblePanel({
   }, []);
 
   const transcript = useMemo(() => transcriptEntries(scene, evidence), [scene, evidence]);
+
+  /** Narrate through the controller (single utterance; cancels in flight — never a queue). */
+  const narrate = useCallback((text: string): void => {
+    const controller = speechRef.current;
+    if (controller === null || !controller.supported) return;
+    controller.setRate(rateRef.current);
+    controller.speak(text);
+  }, []);
 
   // Bounded-cadence spatial description: recomputed from the sampled state
   // at most every 500 ms (and on transport revisions), written directly to
@@ -130,19 +180,35 @@ export function AccessiblePanel({
         }
         existing.append(ul);
       }
+      // Active transcript entry = the last entry at/before the playhead
+      // (state written only on change; no scrolling, no focus stealing).
+      let activeId: string | null = null;
+      for (const entry of transcript) {
+        if (entry.atMs <= t) activeId = entry.id;
+        else break;
+      }
+      setActiveEntryId((current) => (current === activeId ? current : activeId));
       // Source-event transitions are the meaningful playback changes worth
       // announcing — concise, never the whole spatial paragraph.
       const active = eventAtPlayhead(t, scene.events);
       const key = active === null ? 'open' : `${active.phase}:${active.event.eventId}`;
       if (key !== lastEventKeyRef.current && !firstSync) {
         lastEventKeyRef.current = key;
-        announce(
+        const line =
           active === null
             ? `Open play at ${formatMatchClockTenths(t)}`
             : active.phase === 'active'
               ? `${active.event.label} by ${active.event.actorId} at ${formatMatchClockTenths(t)}`
-              : `Next: ${active.event.label} by ${active.event.actorId}`,
-        );
+              : `Next: ${active.event.label} by ${active.event.actorId}`;
+        announce(line);
+        // Follow narration speaks the SAME concise line — only while
+        // following AND playing AND NOT narration-paused (the pause gate is
+        // authoritative: a new utterance must never override it); a single
+        // utterance that cancels any in flight, so the queue can never grow
+        // or overlap.
+        if (followingRef.current && playingRef.current && !narrationPausedRef.current) {
+          narrate(line);
+        }
       } else if (firstSync) {
         lastEventKeyRef.current = key;
       }
@@ -151,10 +217,21 @@ export function AccessiblePanel({
     firstSync = false;
     const interval = window.setInterval(sync, 500);
     return () => window.clearInterval(interval);
-  }, [announce, engine, getFrame, scene, selectedEntityId]);
+  }, [announce, engine, getFrame, scene, selectedEntityId, transcript, narrate]);
+
+  // Deliberate stage-transport navigation (the reliable signal — replaces
+  // the former jump-magnitude/time heuristic the review rejected): cancel
+  // any utterance describing the OLD instant. Cancel only — never
+  // unsolicited new speech; the transition loop narrates the new instant
+  // when appropriate (following, playing, not paused).
+  useEffect(() => {
+    if (deliberateSeekSignal === 0) return; // initial mount, nothing played
+    speechRef.current?.stop();
+  }, [deliberateSeekSignal]);
 
   // Optional browser speech synthesis — created on demand, destroyed on
-  // unmount/lens exit so no voice outlives the panel.
+  // unmount/lens exit so no voice outlives the panel. Exiting the panel
+  // also ends follow mode (the state dies with the component).
   useEffect(() => {
     return () => {
       speechRef.current?.destroy();
@@ -162,12 +239,16 @@ export function AccessiblePanel({
     };
   }, []);
 
-  const speakCurrent = (): void => {
+  const ensureController = (): SpeechController | null => {
     if (speechRef.current === null) {
       speechRef.current = createSpeechController(window);
     }
-    const controller = speechRef.current;
-    if (!controller.supported) return;
+    return speechRef.current;
+  };
+
+  const speakCurrent = (): void => {
+    const controller = ensureController();
+    if (controller === null || !controller.supported) return;
     const t = engine.playheadMs;
     const description = describeSpatialState({
       scene,
@@ -179,6 +260,45 @@ export function AccessiblePanel({
     controller.setRate(rate);
     controller.speak(text);
     setNarrationStatus('Narration started');
+  };
+
+  /** Deliberate transcript seek: cancel stale narration, then (if following) speak the destination. */
+  const seekToEntry = (entry: TranscriptEntry): void => {
+    speechRef.current?.stop();
+    onSeek(entry.atMs);
+    const active = eventAtPlayhead(entry.atMs, scene.events);
+    lastEventKeyRef.current = active === null ? 'open' : `${active.phase}:${active.event.eventId}`;
+    const line = `Jumped to ${formatMatchClockTenths(entry.atMs)} — ${entry.title.split(' · ')[0]}`;
+    announce(line, { force: true });
+    // Destination narration only when actively following (never while
+    // narration-paused or stopped — no unsolicited speech).
+    if (followingRef.current && !narrationPausedRef.current) narrate(line);
+  };
+
+  const toggleFollowing = (): void => {
+    const controller = ensureController();
+    if (!following) {
+      // Explicit user start (never autoplay): narrate the current concise
+      // state once; transitions take over from here while playing.
+      if (controller !== null && controller.supported) {
+        const t = engine.playheadMs;
+        const active = eventAtPlayhead(t, scene.events);
+        narrate(
+          `Following narration. ${
+            active === null
+              ? `Open play at ${formatMatchClockTenths(t)}`
+              : `${active.event.label} by ${active.event.actorId} at ${formatMatchClockTenths(t)}`
+          }`,
+        );
+        setNarrationStatus('Following narration');
+      }
+      setFollowing(true);
+    } else {
+      controller?.stop();
+      setFollowing(false);
+      setNarrationPaused(false);
+      setNarrationStatus('Narration stopped');
+    }
   };
 
   const speechSupported = useMemo(() => {
@@ -236,6 +356,16 @@ export function AccessiblePanel({
               implemented yet).
             </p>
             <div className="a11y__audio-controls">
+              <button
+                type="button"
+                className="a11y__btn"
+                aria-pressed={following}
+                data-testid="follow-narration"
+                onClick={toggleFollowing}
+                title="Narrate source-event transitions while playing"
+              >
+                {following ? 'Following — stop' : 'Follow narration'}
+              </button>
               <button type="button" className="a11y__btn" onClick={speakCurrent}>
                 Speak current state
               </button>
@@ -243,16 +373,33 @@ export function AccessiblePanel({
                 type="button"
                 className="a11y__btn"
                 onClick={() => {
-                  speechRef.current?.repeat();
+                  speechRef.current?.pause();
+                  setNarrationPaused(true);
+                  setNarrationStatus('Narration paused');
                 }}
               >
-                Repeat
+                Pause
               </button>
               <button
                 type="button"
                 className="a11y__btn"
                 onClick={() => {
+                  speechRef.current?.resume();
+                  setNarrationPaused(false);
+                  setNarrationStatus('Narration resumed');
+                }}
+              >
+                Resume
+              </button>
+              <button
+                type="button"
+                className="a11y__btn"
+                onClick={() => {
+                  // Stop DISARMS follow mode entirely: later transitions stay
+                  // silent until the user opts in again.
                   speechRef.current?.stop();
+                  setFollowing(false);
+                  setNarrationPaused(false);
                   setNarrationStatus('Narration stopped');
                 }}
               >
@@ -294,34 +441,33 @@ export function AccessiblePanel({
           Transcript
         </h3>
         <ol className="a11y__transcript" data-testid="transcript">
-          {transcript.map((entry) => (
-            <li key={entry.id} className={`a11y__entry a11y__entry--${entry.kind}`}>
-              <button
-                type="button"
-                className="a11y__entry-seek"
-                onClick={() => {
-                  onSeek(entry.atMs);
-                  const active = eventAtPlayhead(entry.atMs, scene.events);
-                  lastEventKeyRef.current =
-                    active === null ? 'open' : `${active.phase}:${active.event.eventId}`;
-                  announce(
-                    `Jumped to ${formatMatchClockTenths(entry.atMs)} — ${entry.title.split(' · ')[0]}`,
-                    {
-                      force: true,
-                    },
-                  );
-                }}
-                title={`Seek to ${formatMatchClockTenths(entry.atMs)}`}
+          {transcript.map((entry) => {
+            const isActive = entry.id === activeEntryId;
+            return (
+              <li
+                key={entry.id}
+                className={`a11y__entry a11y__entry--${entry.kind}${isActive ? ' a11y__entry--active' : ''}`}
+                data-active={isActive ? 'true' : undefined}
               >
-                <span className="mono a11y__entry-kind">{KIND_LABELS[entry.kind]}</span>
-                <span className="a11y__entry-title">{entry.title}</span>
-                {entry.kind === 'event' ? (
+                <button
+                  type="button"
+                  className="a11y__entry-seek"
+                  aria-current={isActive ? 'true' : undefined}
+                  onClick={() => seekToEntry(entry)}
+                  title={`Seek to ${formatMatchClockTenths(entry.atMs)}`}
+                >
+                  <span className="mono a11y__entry-kind">{KIND_LABELS[entry.kind]}</span>
+                  <span className="a11y__entry-title">{entry.title}</span>
+                  {/* Provenance id for EVERY entry kind: events cite their
+                      source id; the measurement cites its input fingerprint
+                      (or its honest unavailable marker); interpretation
+                      cites its fixed selector identity. */}
                   <span className="mono a11y__entry-id">{entry.id}</span>
-                ) : null}
-              </button>
-              <p className="a11y__entry-desc">{entry.description}</p>
-            </li>
-          ))}
+                </button>
+                <p className="a11y__entry-desc">{entry.description}</p>
+              </li>
+            );
+          })}
         </ol>
       </section>
 
@@ -330,7 +476,10 @@ export function AccessiblePanel({
           <button
             type="button"
             className="a11y__btn"
-            onClick={() => onStep(-1)}
+            onClick={() => {
+              speechRef.current?.stop(); // cancel any stale utterance
+              onStep(-1);
+            }}
             title="Step back one source frame"
           >
             ◀ Frame
@@ -341,7 +490,10 @@ export function AccessiblePanel({
           <button
             type="button"
             className="a11y__btn"
-            onClick={() => onStep(1)}
+            onClick={() => {
+              speechRef.current?.stop(); // cancel any stale utterance
+              onStep(1);
+            }}
             title="Step forward one source frame"
           >
             Frame ▶
