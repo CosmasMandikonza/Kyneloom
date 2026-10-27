@@ -10,6 +10,7 @@ import {
   compileMomentProposal,
   type CompileSuccess,
 } from '@kyneloom/moment-compiler';
+import { resolveAskMoment } from '@/lib/ask-intent';
 import { CompileExperience } from './compile-experience';
 import type { CorpusEntryCard } from '@/lib/moment-compiler-service';
 
@@ -281,5 +282,179 @@ describe('CompileExperience — recompilation changes what you watch (blocker C)
     const hook = (window as unknown as { __kyneloomCompiled?: { manifestHash: string } })
       .__kyneloomCompiled;
     expect(hook?.manifestHash).toBe(world.sweep.manifestHash);
+  });
+});
+
+describe('KYN Ask Kyneloom — intent input drives the actual experience', () => {
+  /** Fetch stub that captures the URL so ask + compile calls resolve independently. */
+  function askFetch(): {
+    calls: { readonly url: string; resolve: (payload: unknown) => void }[];
+  } {
+    const calls: { readonly url: string; resolve: (payload: unknown) => void }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: unknown) =>
+          new Promise<Response>((resolve) => {
+            calls.push({
+              url: String(_url),
+              resolve: (payload: unknown) =>
+                resolve(new Response(JSON.stringify(payload), { status: 200 })),
+            });
+          }),
+      ) as unknown as typeof fetch,
+    );
+    return { calls };
+  }
+
+  it('a supported prompt rebinds the stage to the resolved manifest (hash + answer visible)', async () => {
+    stubBrowserApis();
+    const world = await realWorld();
+    const wide = await resolveAskMoment('Give me a wide broadcast view');
+    if (!wide.ok || !wide.result.ok) throw new Error('wide intent failed to resolve');
+    const wideHash = wide.result.manifestHash;
+    const { calls } = askFetch();
+    render(
+      <CompileExperience
+        baseScene={world.scene}
+        evidence={world.evidence}
+        entries={world.entries}
+        initialResult={world.initial}
+        sourcePanel={<div>source</div>}
+      />,
+    );
+    const hashBefore =
+      document.querySelector('[data-compiled-hash]')?.getAttribute('data-compiled-hash') ?? null;
+    const input = screen.getByTestId('ask-input');
+    fireEvent.change(input, { target: { value: 'Give me a wide broadcast view' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0]!.url).toContain('/api/moment/intent');
+    calls[0]!.resolve(wide);
+    await waitFor(() =>
+      expect(screen.getByTestId('ask-answer').textContent).toContain('broadcast-wide'),
+    );
+    // The ACTIVE artifact swapped to the sweep manifest: the identity chip
+    // changed — the resolved manifest reached the experience.
+    await waitFor(() => {
+      const hashAfter = document
+        .querySelector('[data-compiled-hash]')
+        ?.getAttribute('data-compiled-hash');
+      expect(hashAfter).toBe(wideHash);
+      expect(hashAfter).not.toBe(hashBefore);
+    });
+    expect(screen.getByTestId('ask-answer').textContent).toContain(
+      wide.result.manifestHash.slice(7, 19),
+    );
+  });
+
+  it('an unsupported prompt explains honestly and NEVER touches the active stage', async () => {
+    stubBrowserApis();
+    const world = await realWorld();
+    const refused = await resolveAskMoment('What is the referee\u2019s name?');
+    const { calls } = askFetch();
+    render(
+      <CompileExperience
+        baseScene={world.scene}
+        evidence={world.evidence}
+        entries={world.entries}
+        initialResult={world.initial}
+        sourcePanel={<div>source</div>}
+      />,
+    );
+    const hashBefore = document
+      .querySelector('[data-compiled-hash]')
+      ?.getAttribute('data-compiled-hash');
+    fireEvent.change(screen.getByTestId('ask-input'), {
+      target: { value: 'What is the referee\u2019s name?' },
+    });
+    fireEvent.submit(screen.getByTestId('ask-input').closest('form') as HTMLFormElement);
+    await waitFor(() => expect(calls.length).toBe(1));
+    calls[0]!.resolve(refused);
+    await waitFor(() =>
+      expect(screen.getByTestId('ask-status').textContent).toContain('nothing was substituted'),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(document.querySelector('[data-compiled-hash]')?.getAttribute('data-compiled-hash')).toBe(
+      hashBefore,
+    );
+  });
+
+  it('rapid submissions: a stale resolution can never overwrite the latest question', async () => {
+    stubBrowserApis();
+    const world = await realWorld();
+    const wide = await resolveAskMoment('Give me a wide broadcast view');
+    const goal = await resolveAskMoment('Show the build-up to the goal');
+    if (!wide.ok || !wide.result.ok || !goal.ok || !goal.result.ok) {
+      throw new Error('intents failed to resolve');
+    }
+    const goalHash = goal.result.manifestHash;
+    const { calls } = askFetch();
+    render(
+      <CompileExperience
+        baseScene={world.scene}
+        evidence={world.evidence}
+        entries={world.entries}
+        initialResult={world.initial}
+        sourcePanel={<div>source</div>}
+      />,
+    );
+    // First question, then a SECOND question before the first answers.
+    fireEvent.click(screen.getByTestId('ask-example-broadcast-wide'));
+    await waitFor(() => expect(calls.length).toBe(1));
+    fireEvent.change(screen.getByTestId('ask-input'), {
+      target: { value: 'Show the build-up to the goal' },
+    });
+    fireEvent.submit(screen.getByTestId('ask-input').closest('form') as HTMLFormElement);
+    await waitFor(() => expect(calls.length).toBe(2));
+    // The LATEST response commits first; the stale one arrives later and
+    // must be dropped entirely.
+    calls[1]!.resolve(goal);
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-compiled-hash]')?.getAttribute('data-compiled-hash'),
+      ).toBe(goalHash),
+    );
+    calls[0]!.resolve(wide);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(document.querySelector('[data-compiled-hash]')?.getAttribute('data-compiled-hash')).toBe(
+      goal.result.manifestHash,
+    );
+  });
+
+  it('Enter submits and the example chips run the same production handler', async () => {
+    stubBrowserApis();
+    const world = await realWorld();
+    const offBall = await resolveAskMoment('Show me how the off-ball run opened space');
+    if (!offBall.ok || !offBall.result.ok) throw new Error('off-ball intent failed');
+    const { calls } = askFetch();
+    render(
+      <CompileExperience
+        baseScene={world.scene}
+        evidence={world.evidence}
+        entries={world.entries}
+        initialResult={world.initial}
+        sourcePanel={<div>source</div>}
+      />,
+    );
+    // Enter in the input submits the form.
+    const input = screen.getByTestId('ask-input');
+    fireEvent.change(input, { target: { value: 'Show me how the off-ball run opened space' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    // Enter in a text input does not natively submit in jsdom; the form's
+    // submit handler is what the button uses — invoke it directly.
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0]!.url).toContain('/api/moment/intent');
+    calls[0]!.resolve(offBall);
+    await waitFor(() =>
+      expect(screen.getByTestId('ask-answer').textContent).toContain('off-ball-run'),
+    );
+    // The example chip populates the SAME input and calls the SAME handler.
+    fireEvent.click(screen.getByTestId('ask-example-goal-buildup'));
+    await waitFor(() => expect(calls.length).toBe(2));
+    expect((screen.getByTestId('ask-input') as HTMLInputElement).value).toBe(
+      'Show the build-up to the goal',
+    );
   });
 });

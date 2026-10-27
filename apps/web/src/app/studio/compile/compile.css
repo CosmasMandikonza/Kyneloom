@@ -439,3 +439,110 @@
     grid-column: 1;
   }
 }
+
+/* ---------- Ask Kyneloom (intent input above the stage) ---------- */
+
+.ask {
+  margin: var(--space-4) 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--ink-900);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+}
+
+.ask__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+
+.ask__title {
+  margin: 0;
+  font-size: var(--step-0);
+  letter-spacing: 0.02em;
+}
+
+.ask__form {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ask__input {
+  flex: 1 1 18rem;
+  min-width: 0;
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-soft);
+  background: var(--ink-950);
+  color: var(--text-primary);
+  font-size: var(--step-0);
+}
+
+.ask__input:focus-visible {
+  outline: 2px solid var(--violet-400);
+  outline-offset: 1px;
+}
+
+.ask__examples {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+.ask__example {
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-full);
+  border: 1px dashed color-mix(in srgb, var(--violet-400) 45%, transparent);
+  background: color-mix(in srgb, var(--violet-400) 7%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--step--1);
+  cursor: pointer;
+}
+
+.ask__example:hover {
+  color: var(--text-primary);
+  border-style: solid;
+}
+
+.ask__status {
+  margin-top: var(--space-2);
+  font-size: var(--step--1);
+  color: var(--text-secondary);
+  min-height: 1.2em;
+}
+
+.ask__answer {
+  margin: 0;
+}
+
+.ask__answer-intent {
+  color: var(--violet-300, var(--text-primary));
+}
+
+.ask__answer-note {
+  display: block;
+  margin-top: 0.25rem;
+  opacity: 0.85;
+}
+
+.ask__answer-hash {
+  display: inline-block;
+  margin-top: 0.25rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: var(--ink-950);
+}
+
+@media (max-width: 720px) {
+  .ask__form {
+    flex-direction: column;
+  }
+
+  .ask__go {
+    width: 100%;
+  }
+}

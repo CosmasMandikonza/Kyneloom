@@ -10,6 +10,8 @@ import {
   type CompiledMomentView,
 } from '@/lib/compiled-moment';
 import type { CorpusEntryCard } from '@/lib/moment-compiler-service';
+import type { AskMomentOutcome } from '@/lib/ask-intent-shared';
+import { AskPanel } from './ask-panel';
 import { CompiledStage } from './compiled-stage';
 import { CompilerWorkbench } from './compiler-workbench';
 import { RecapPanel } from './recap-panel';
@@ -55,7 +57,79 @@ export function CompileExperience({
   } | null>(null);
   const requestSeq = useRef(0);
 
+  // "Ask Kyneloom" (deterministic intent input): its OWN sequence guard so
+  // rapid submissions cannot commit stale resolutions, and a focus playhead
+  // that rebinds the stage to the resolved instant.
+  const askSeq = useRef(0);
+  const [askBusy, setAskBusy] = useState(false);
+  const [askOutcome, setAskOutcome] = useState<AskMomentOutcome | null>(null);
+  const [askFocusMs, setAskFocusMs] = useState<number | null>(null);
+
   const selected = entries.find((entry) => entry.id === selectedId) ?? entries[0];
+
+  const ask = useCallback(async (prompt: string): Promise<void> => {
+    // Rapid submissions are allowed: the sequence guard owns ordering, so
+    // a stale resolution can never commit over a newer question.
+    const seq = (askSeq.current += 1);
+    setAskBusy(true);
+    try {
+      const response = await fetch('/api/moment/intent', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      if (seq !== askSeq.current) return; // a newer question owns the state
+      const payload = (await response.json()) as AskMomentOutcome;
+      if (seq !== askSeq.current) return; // re-check after the await
+      setAskOutcome(payload);
+      if (payload.ok && payload.result.ok) {
+        // Rebind the ACTIVE artifact exactly like a successful compile:
+        // stage, camera/cues, recap and validated manifest identity all
+        // follow. Playback starts focused on the resolved instant.
+        setActive(compiledViewFrom(payload.result));
+        setAskFocusMs(payload.focusPlayheadMs);
+        setStarted(true);
+        setLastRejected(null);
+      }
+      // Unsupported / invalid / rejected: the stage keeps the LAST
+      // successfully compiled moment — nothing is substituted.
+    } catch (error) {
+      if (seq !== askSeq.current) return;
+      setAskOutcome({
+        ok: false,
+        routeVersion: 'kyneloom-ask-intent-v1',
+        resolver: 'Local deterministic interpretation · Synthetic match',
+        kind: 'unsupported',
+        message:
+          error instanceof Error
+            ? `The intent request failed: ${error.message} — the current moment is unchanged.`
+            : 'The intent request failed — the current moment is unchanged.',
+        supportedExamples: [],
+      });
+    } finally {
+      if (seq === askSeq.current) setAskBusy(false);
+    }
+  }, []);
+
+  const askStatus = useMemo(() => {
+    if (askBusy) return 'Resolving your question against the verified evidence…';
+    if (askOutcome === null) {
+      return 'Ask about the off-ball run, the build-up to the goal, or request a wide broadcast view — answers are compiled from this moment’s verified evidence.';
+    }
+    if (!askOutcome.ok) {
+      return askOutcome.message;
+    }
+    if (!askOutcome.result.ok) return null; // type narrowing; unreachable for displayed outcomes
+    return (
+      <p className="ask__answer" data-testid="ask-answer">
+        <span className="mono ask__answer-intent">{askOutcome.intentId}</span>{' '}
+        {askOutcome.explanation} <span className="ask__answer-note">{askOutcome.evidenceNote}</span>{' '}
+        <span className="mono ask__answer-hash" title={askOutcome.result.manifestHash}>
+          {askOutcome.result.manifestHash.slice(7, 19)}…
+        </span>
+      </p>
+    );
+  }, [askBusy, askOutcome]);
 
   const compile = useCallback(async (): Promise<void> => {
     if (selected === undefined || busy) return;
@@ -111,12 +185,16 @@ export function CompileExperience({
   );
   const momentDurationMs = active.momentWindowMs[1] - active.momentWindowMs[0];
   const autoRun = useMemo(
-    () => (started ? { camera: 'directed' as const, fromMs: active.momentWindowMs[0] } : null),
-    [started, active.momentWindowMs],
+    () =>
+      started
+        ? { camera: 'directed' as const, fromMs: askFocusMs ?? active.momentWindowMs[0] }
+        : null,
+    [started, active.momentWindowMs, askFocusMs],
   );
 
   return (
     <>
+      <AskPanel busy={askBusy} status={askStatus} onSubmit={(text) => void ask(text)} />
       <div className="compile__stage-zone">
         <CompiledStage
           scene={scene}
