@@ -3,7 +3,12 @@ import { CLAIM_STATUSES } from './data-origin';
 import { type ParseResult, toContractValidationErrors } from './errors';
 import { kebabId, languageTag, sourceHash } from './ids';
 import { MAX_ABS_COORDINATE_M, PITCH_COORDINATE_SYSTEM, vec3TupleM } from './spatial';
-import { MANIFEST_SCHEMA_VERSION, semver, unsupportedVersionError } from './versioning';
+import {
+  MANIFEST_SCHEMA_VERSION,
+  migrateDocument,
+  semver,
+  unsupportedVersionError,
+} from './versioning';
 
 /**
  * MomentManifest: the versioned, declarative scene proposal (docs/06,
@@ -278,6 +283,82 @@ export const releaseRecord = z
 
 export type ReleaseRecord = z.infer<typeof releaseRecord>;
 
+/**
+ * ---------------------------------------------------------------------------
+ * Presentation section (schema v0.2.0, KYN-16 review blocker B).
+ *
+ * One manifest identifies ONE audience experience: the broadcast cues and
+ * recap the viewers see live inside this content-addressed section, so the
+ * single approval hash (approvalContentPayload already spreads every content
+ * field) covers everything a user can read or watch. Compiler output always
+ * carries it; migrated 0.1.0 documents legitimately have none (no audience
+ * text exists for them).
+ *
+ * CLOCK LAW: like the scene section, cue times are OFFSETS from
+ * `timeRangeMs[0]` — consumers convert to the absolute match clock exactly
+ * once, at the presentation boundary.
+ *
+ * TEXT LAW: cue and recap text is compiler-authored — verified numbers come
+ * from the deterministic metric/event facts, editorial lines from
+ * number-free hypothesis claims (see contracts/editorial-text.ts).
+ */
+
+/** Version of the presentation grammar itself (a formatter change re-identities). */
+export const PRESENTATION_VERSION = 'kyneloom-presentation-v1' as const;
+
+export const BROADCAST_CUE_KINDS = ['metric', 'caption', 'event_marker'] as const;
+export type BroadcastCueKind = (typeof BROADCAST_CUE_KINDS)[number];
+
+/** A time-coded overlay cue whose text is part of the hashed artifact. */
+export const broadcastCue = z
+  .strictObject({
+    id: kebabId,
+    kind: z.enum(BROADCAST_CUE_KINDS),
+    /** Offsets from moment start. */
+    startMs: z.number().int().nonnegative(),
+    endMs: z.number().int().nonnegative(),
+    /** Compiler-authored audience text (verified fact or editorial claim). */
+    text: z.string().min(1).max(400),
+    evidenceIds: z.array(kebabId).max(16),
+    /** The verified metric a metric cue renders, by manifest alias. */
+    metricAlias: kebabId.optional(),
+  })
+  .superRefine((cue, ctx) => {
+    if (cue.endMs < cue.startMs) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['endMs'],
+        message: 'endMs must not precede startMs',
+      });
+    }
+  });
+
+export type BroadcastCue = z.infer<typeof broadcastCue>;
+
+/** One recap line mirroring a manifest claim. */
+export const recapLine = z.strictObject({
+  claimId: kebabId,
+  text: z.string().min(1).max(1000),
+  status: z.enum(CLAIM_STATUSES),
+  evidenceIds: z.array(kebabId).max(16),
+  /** Required when (and only when) the mirrored claim is a hypothesis. */
+  inferenceDisclosure: z.string().min(1).max(1000).optional(),
+});
+
+export type RecapLine = z.infer<typeof recapLine>;
+
+export const manifestPresentation = z.strictObject({
+  presentationVersion: z.literal(PRESENTATION_VERSION),
+  broadcast: z.array(broadcastCue).max(MAX_OVERLAYS),
+  recap: z.strictObject({
+    /** Editorial, number-free (the editorial-text policy applies at compile). */
+    headline: z.string().min(1).max(160),
+    lines: z.array(recapLine).max(MAX_CLAIMS),
+  }),
+});
+
+export type ManifestPresentation = z.infer<typeof manifestPresentation>;
+
 export const momentManifestSchema = z
   .strictObject({
     schemaVersion: semver,
@@ -307,6 +388,8 @@ export const momentManifestSchema = z
       .min(1, { error: 'at least one audience lens is required' })
       .max(4),
     rightsPolicyRef: z.string().min(1),
+    /** Audience-facing broadcast cues + recap (v0.2.0; always set by the compiler). */
+    presentation: manifestPresentation.optional(),
     /** Null until the publication service issues an approval for this exact revision. */
     approval: approvalRecord.nullable(),
   })
@@ -354,6 +437,42 @@ export const momentManifestSchema = z
           path: ['scene', 'overlays', overlayIndex, 'endMs'],
           message: `overlay ends at ${overlay.endMs} ms, outside the ${windowMs} ms moment window`,
         });
+      }
+    }
+
+    // Presentation cues obey the same offset clock law as the scene, and
+    // recap lines may only mirror claims this manifest declares.
+    if (manifest.presentation !== undefined) {
+      for (const [cueIndex, cue] of manifest.presentation.broadcast.entries()) {
+        if (cue.endMs > windowMs) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['presentation', 'broadcast', cueIndex, 'endMs'],
+            message: `broadcast cue ends at offset ${cue.endMs} ms, outside the ${windowMs} ms moment window`,
+          });
+        }
+      }
+      const claimIds = new Set(manifest.claims.map((claim) => claim.id));
+      for (const [lineIndex, line] of manifest.presentation.recap.lines.entries()) {
+        if (!claimIds.has(line.claimId)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['presentation', 'recap', 'lines', lineIndex, 'claimId'],
+            message: `recap line cites claim "${line.claimId}" which this manifest does not declare`,
+          });
+        }
+        const mirrored = manifest.claims.find((claim) => claim.id === line.claimId);
+        if (
+          mirrored !== undefined &&
+          mirrored.status === 'hypothesis' &&
+          line.inferenceDisclosure === undefined
+        ) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['presentation', 'recap', 'lines', lineIndex, 'inferenceDisclosure'],
+            message: 'recap lines mirroring hypothesis claims must carry the disclosure',
+          });
+        }
       }
     }
 
@@ -442,16 +561,36 @@ export type MomentManifest = z.infer<typeof momentManifestSchema>;
 
 /** Parse a MomentManifest draft or approved document. */
 export function parseMomentManifest(input: unknown): ParseResult<MomentManifest> {
-  const result = momentManifestSchema.safeParse(input);
+  // Registered older versions upgrade through MIGRATIONS (docs/06 policy);
+  // unregistered versions fail closed with the expected value named.
+  const found = (input as Record<string, unknown> | null)?.['schemaVersion'];
+  let document = input;
+  if (typeof found === 'string' && found !== MANIFEST_SCHEMA_VERSION) {
+    const migrated = migrateDocument(input, MANIFEST_SCHEMA_VERSION);
+    if (migrated.ok) {
+      document = migrated.document;
+    } else {
+      const result = momentManifestSchema.safeParse(input);
+      const errors = result.success ? [] : toContractValidationErrors(result.error);
+      if (semver.safeParse(found).success) {
+        errors.unshift(unsupportedVersionError('schemaVersion', MANIFEST_SCHEMA_VERSION, found));
+      }
+      return { ok: false, errors };
+    }
+  }
+  const result = momentManifestSchema.safeParse(document);
   if (!result.success) {
     const errors = toContractValidationErrors(result.error);
-    const found = (input as Record<string, unknown> | null)?.['schemaVersion'];
+    const foundAfterMigration =
+      (document as Record<string, unknown> | null)?.['schemaVersion'] ?? found;
     if (
-      typeof found === 'string' &&
-      found !== MANIFEST_SCHEMA_VERSION &&
-      /^\d+\.\d+\.\d+$/.test(found)
+      typeof foundAfterMigration === 'string' &&
+      foundAfterMigration !== MANIFEST_SCHEMA_VERSION &&
+      /^\d+\.\d+\.\d+$/.test(foundAfterMigration)
     ) {
-      errors.unshift(unsupportedVersionError('schemaVersion', MANIFEST_SCHEMA_VERSION, found));
+      errors.unshift(
+        unsupportedVersionError('schemaVersion', MANIFEST_SCHEMA_VERSION, foundAfterMigration),
+      );
     }
     return { ok: false, errors };
   }
@@ -543,6 +682,13 @@ export interface ApprovalContentPayload {
   readonly evidence: readonly EvidenceEntry[];
   readonly lenses: readonly Lens[];
   readonly rightsPolicyRef: string;
+  /**
+   * Audience-facing cues + recap (v0.2.0): the runtime payload spreads it in
+   * (everything except status/approval), so the declared type must list it —
+   * future publish code cannot accidentally drop it from the hashed identity.
+   * Absent only on stamp-migrated v0.1.0 documents.
+   */
+  readonly presentation?: ManifestPresentation;
 }
 
 export function approvalContentPayload(manifest: MomentManifest): ApprovalContentPayload {

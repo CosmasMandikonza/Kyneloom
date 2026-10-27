@@ -18,6 +18,7 @@
     "@azure/web-pubsub": "^1.2.0",
     "@azure/web-pubsub-client": "^1.1.0",
     "@kyneloom/contracts": "workspace:*",
+    "@kyneloom/moment-compiler": "workspace:*",
     "@kyneloom/scene-renderer": "workspace:*",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",

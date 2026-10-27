@@ -77,6 +77,8 @@ export {
   semver,
   unsupportedVersionError,
   MIGRATIONS,
+  migrateDocument,
+  type SchemaMigration,
 } from './versioning';
 
 export { assetUrl, type AssetUrl } from './asset-url';
@@ -128,6 +130,8 @@ export {
   MAX_EVIDENCE_ENTRIES,
   CAMERA_FOV_RANGE_DEG,
   MIN_CAMERA_HEIGHT_M,
+  PRESENTATION_VERSION,
+  BROADCAST_CUE_KINDS,
   cameraTrack,
   cameraKeyframe,
   visualOverlay,
@@ -135,6 +139,9 @@ export {
   evidenceEntry,
   approvalRecord,
   releaseRecord,
+  broadcastCue,
+  recapLine,
+  manifestPresentation,
   momentManifestSchema,
   parseMomentManifest,
   parseReleaseRecord,
@@ -154,9 +161,40 @@ export {
   type EvidenceEntry,
   type ApprovalRecord,
   type ReleaseRecord,
+  type BroadcastCueKind,
+  type BroadcastCue,
+  type RecapLine,
+  type ManifestPresentation,
   type MomentManifest,
 } from './moment-manifest';
 
 export { MANIFEST_SEMANTIC_CHECKS, type ManifestSemanticCheck } from './semantic-verification';
+
+export { EDITORIAL_NUMBER_POLICY, findUnsupportedNumericToken } from './editorial-text';
+
+export { formatBroadcastClock } from './clock';
+
+export {
+  PROPOSAL_SCHEMA_VERSION,
+  PROPOSAL_TOOL_ALLOWLIST,
+  PROPOSAL_ORIGINS,
+  METRIC_QUERY_KINDS,
+  metricQueryArgs,
+  proposalClaim,
+  proposalEvidence,
+  proposalMetricQuery,
+  proposalMetricAssertion,
+  momentProposalSchema,
+  parseMomentProposal,
+  type MomentProposal,
+  type ProposalClaim,
+  type ProposalEvidence,
+  type ProposalMetricAssertion,
+  type ProposalMetricQuery,
+  type ProposalTool,
+  type ProposalOrigin,
+  type MetricQueryKind,
+  type MetricQueryArgs,
+} from './moment-proposal';
 
 export { exampleMomentManifest } from './example-manifest';

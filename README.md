@@ -128,6 +128,7 @@ Architecture decisions and trade-offs: **[System architecture](docs/04-system-ar
 | [Competition evidence](docs/13-hackathon-submission.md) | Judging alignment without overclaiming |
 | [Competitive landscape](docs/14-competitive-landscape.md) | Inspiration, differentiation hypotheses, commercial risks |
 | **[Football intelligence (KYN-12)](docs/21-football-intelligence.md)** | Versioned metrics, source-quality policy, meaningful-moment detection, agent tool boundary |
+| **[Moment compiler (KYN-16)](docs/22-moment-compiler.md)** | Untrusted typed proposals → deterministic, content-hashed Playable Moment manifests; synchronized overlay + recap; the KYN-15 Foundry boundary |
 | **[Competition gallery radar — 13 Oct](docs/20-competitive-radar-2026-10-13.md)** | 128 reported / 126 visible descriptions, closest rivals, overlap, evidence limits and decisions |
 | [References](docs/REFERENCES.md) | Primary technical and product sources |
 | [First build: Playable Moment](docs/15-first-vertical-slice.md) | Golden fixture, proposed APIs, founder handoffs, build stories |\n| [Execution board & agent handoff](docs/18-execution-board.md) | Parallel founder workflow, issue order, copy-ready agent prompt and quality stoplights |

@@ -20,6 +20,9 @@ importers:
       '@kyneloom/match-core':
         specifier: workspace:*
         version: link:packages/match-core
+      '@kyneloom/moment-compiler':
+        specifier: workspace:*
+        version: link:packages/moment-compiler
       '@testing-library/dom':
         specifier: ^10.4.2
         version: 10.4.2
@@ -80,6 +83,9 @@ importers:
       '@kyneloom/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@kyneloom/moment-compiler':
+        specifier: workspace:*
+        version: link:../../packages/moment-compiler
       '@kyneloom/scene-renderer':
         specifier: workspace:*
         version: link:../../packages/scene-renderer
@@ -142,6 +148,19 @@ importers:
       '@kyneloom/contracts':
         specifier: workspace:*
         version: link:../contracts
+    devDependencies:
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+
+  packages/moment-compiler:
+    dependencies:
+      '@kyneloom/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@kyneloom/match-core':
+        specifier: workspace:*
+        version: link:../match-core
     devDependencies:
       typescript:
         specifier: ~5.9.3

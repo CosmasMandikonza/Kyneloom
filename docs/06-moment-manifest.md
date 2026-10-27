@@ -1,6 +1,13 @@
 # 06 — Moment Manifest: the center of the platform
 
 > **Status:** v0.1 proposal — **implemented as a runtime-validated Zod schema in [`packages/contracts/src/moment-manifest.ts`](../packages/contracts/src/moment-manifest.ts) (KYN-02)**, version `0.1.0`, with a validated corpus in [`tests/fixtures/contracts`](../tests/fixtures/contracts) and a shared example exported as `exampleMomentManifest()`.
+>
+> **Update (KYN-16, 2026-10-24): the deterministic compiler exists, and the schema is now v0.2.0.** The untrusted-input side of this contract is real: typed `MomentProposal` documents ([`contracts/moment-proposal.ts`](../packages/contracts/src/moment-proposal.ts)) are validated and compiled into trusted, content-hashed manifest drafts by [`@kyneloom/moment-compiler`](../packages/moment-compiler), with the semantic gates below enforced and a pinned golden artifact ([`tests/fixtures/compiled`](../tests/fixtures/compiled)). See [22 — Moment compiler](22-moment-compiler.md) for the boundary, the error vocabulary and the KYN-15 handoff contract. Approvals/releases remain a future server workflow; the compiler can never mint one.
+
+**v0.2.0 changes (registered migration `0.1.0 → 0.2.0`, first entry in `MIGRATIONS`):**
+- **`presentation` section (optional in schema; ALWAYS set by the compiler).** The audience-facing broadcast cues (`broadcast[]`, offset clock like the scene) and recap (`recap.headline` + `recap.lines[]` mirroring claims) live INSIDE the manifest, so the single approval hash — sha256 over canonical `approvalContentPayload`, which spreads every content field — covers everything a viewer can read or watch. Cue text is compiler-authored: verified numbers from the deterministic facts, editorial lines only from number-free hypothesis claims.
+- **The text law (proposals, v0.2.0).** Untrusted prose can never become a verified claim: `calculated` claims supply a required `metricAssertion` and the compiler GENERATES the sentence from the recomputed value; `observed` claims cite exactly one source event and the sentence is generated from it; `text` is only legal on `hypothesis` claims (with disclosure), and editorial text (hypothesis prose, disclosures, recap headline) must be number-free (`contracts/editorial-text.ts`).
+- 0.1.0 documents (e.g. the authored `invisible-assist.manifest.json`) parse through the migration unchanged; a schema-level gate still rejects unregistered versions.
 
 ## Why this exists
 
@@ -136,6 +143,8 @@ stateDiagram-v2
 
 - A valid fixture produces equivalent rendering instructions every replay.
 - Unknown overlay kind or malicious asset URL is rejected.
+- An overlay may display a metric only when a derived-metric evidence entry **it cites** computes that metric; a correct number under mismatched provenance is rejected (KYN-16 review).
+- Asset URLs are authorized by their **canonical parsed location** against tenant scopes — a URL that literally starts with the tenant prefix but resolves through `../` (or percent-encoded dot segments) into another tenant's directory is rejected.
 - Claim with no evidence cannot be `observed` or `calculated`.
 - Camera values containing NaN or unsafe duration are rejected.
 - Rights mismatch cannot enter `approved`.

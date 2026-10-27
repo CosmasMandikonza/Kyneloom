@@ -7,14 +7,15 @@
 #   docker build -f apps/web/Dockerfile -t <registry>/kyneloom-web:dev .
 #   docker push <registry>/kyneloom-web:dev
 #
-# STATUS (KYN-14): authored for the deploy runbook; NOT built in this
-# session (no registry authorization on this host).
+# STATUS (KYN-14): image-build verification is separate from Azure
+# deployment evidence; building this image does not provision resources.
 FROM node:22-alpine AS build
 RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/match-core/package.json packages/match-core/
+COPY packages/moment-compiler/package.json packages/moment-compiler/
 COPY packages/scene-renderer/package.json packages/scene-renderer/
 COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile

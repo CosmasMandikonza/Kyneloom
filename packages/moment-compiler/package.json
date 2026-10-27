@@ -1,0 +1,22 @@
+{
+  "name": "@kyneloom/moment-compiler",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The deterministic Playable Moment compiler (KYN-16): validates untrusted MomentProposals against source-derived match truth and compiles trusted, versioned, content-hashed MomentManifests plus their synchronized broadcast-overlay and recap derivations. May depend on @kyneloom/contracts and @kyneloom/match-core; nothing may depend on this package except applications.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kyneloom/contracts": "workspace:*",
+    "@kyneloom/match-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}
