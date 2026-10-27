@@ -411,6 +411,18 @@ function ReplayStageInner({
     engine.revision += 1;
   }, [playing, speed, engine]);
 
+  /**
+   * KYN-20: bumped by every USER-INITIATED transport seek (slider input incl.
+   * 100 ms arrow steps, transport frame buttons, keyboard arrows, reset,
+   * chapter/evidence seeks). The Accessible panel observes it to cancel
+   * stale narration. NEVER bumped by the automatic playback loop or by the
+   * panel's own onSeek/onStep callbacks (those own their cancellation).
+   */
+  const [deliberateSeekSignal, setDeliberateSeekSignal] = useState(0);
+  const markDeliberateSeek = useCallback((): void => {
+    setDeliberateSeekSignal((count) => count + 1);
+  }, []);
+
   const setPlayhead = useCallback(
     (ms: number): void => {
       engine.playheadMs = Math.min(momentWindow.endMs, Math.max(momentWindow.startMs, ms));
@@ -505,6 +517,7 @@ function ReplayStageInner({
     if (target.closest('button, input, a, select')) return;
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
       event.preventDefault();
+      markDeliberateSeek();
       setPlayhead(stepFrame(engine.playheadMs, event.key === 'ArrowRight' ? 1 : -1, momentWindow));
     } else if (event.key === ' ') {
       event.preventDefault();
@@ -760,6 +773,7 @@ function ReplayStageInner({
   }, [compiled, engine]);
 
   const onSliderInput = (event: React.FormEvent<HTMLInputElement>): void => {
+    markDeliberateSeek();
     const value = Number((event.target as HTMLInputElement).value);
     if (Number.isFinite(value)) setPlayhead(value);
   };
@@ -869,6 +883,7 @@ function ReplayStageInner({
               className="stage__evidence-context-seek"
               onClick={() => {
                 setPlaying(false);
+                markDeliberateSeek();
                 setPlayhead(MEASURED_WINDOW.startMs);
               }}
             >
@@ -922,6 +937,7 @@ function ReplayStageInner({
 
           {lens === 'accessible' ? (
             <AccessiblePanel
+              deliberateSeekSignal={deliberateSeekSignal}
               scene={scene}
               evidence={evidenceSafe ?? evidence}
               engine={engine}
@@ -996,10 +1012,12 @@ function ReplayStageInner({
             onSeek={(ms) => {
               if (ghostClick()) return;
               setPlaying(false);
+              markDeliberateSeek();
               setPlayhead(ms);
             }}
             onReturn={(ms) => {
               if (ghostClick()) return;
+              markDeliberateSeek();
               setPlayhead(ms);
               setInspectorOpen(false);
             }}
@@ -1050,7 +1068,10 @@ function ReplayStageInner({
             <button
               type="button"
               className="stage__step"
-              onClick={() => setPlayhead(stepFrame(engine.playheadMs, -1, momentWindow))}
+              onClick={() => {
+                markDeliberateSeek();
+                setPlayhead(stepFrame(engine.playheadMs, -1, momentWindow));
+              }}
               title="Step back one 100 ms frame (←)"
             >
               <span className="visually-hidden">Step back one frame</span>
@@ -1061,7 +1082,10 @@ function ReplayStageInner({
             <button
               type="button"
               className="stage__step"
-              onClick={() => setPlayhead(stepFrame(engine.playheadMs, 1, momentWindow))}
+              onClick={() => {
+                markDeliberateSeek();
+                setPlayhead(stepFrame(engine.playheadMs, 1, momentWindow));
+              }}
               title="Step forward one 100 ms frame (→)"
             >
               <span className="visually-hidden">Step forward one frame</span>
@@ -1074,6 +1098,7 @@ function ReplayStageInner({
               className="stage__step stage__step--reset"
               onClick={() => {
                 setPlaying(false);
+                markDeliberateSeek();
                 setPlayhead(resetPlayhead(momentWindow, scene.checkpointMs));
               }}
               title="Deterministic reset to the confirmed 22-player checkpoint"
@@ -1129,6 +1154,7 @@ function ReplayStageInner({
                   // playback even while the scrubber holds focus.
                   if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
                     event.preventDefault();
+                    markDeliberateSeek();
                     setPlayhead(
                       stepFrame(
                         engine.playheadMs,

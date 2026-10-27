@@ -852,31 +852,75 @@ describe('KYN-20 review round — narration-control synchronization', () => {
     );
   });
 
-  it('R3 — frame stepping and the canonical slider cancel stale narration without unsolicited speech', async () => {
+  it('R3 — stage transport seeks cancel stale speech deterministically; playback never notifies', async () => {
     const speech = stubSpeechStateful();
     await renderStage();
     const panel = await enterAccessiblePanel();
     await startFollowing(panel);
     await waitFor(() => expect(speech.spoken.length).toBeGreaterThanOrEqual(1));
-    // Frame step (panel transport): deliberate navigation cancels in-flight.
-    const cancelsBefore = speech.cancelled();
+
+    // Position deterministically FIRST (this slider input itself notifies),
+    // then let the signal effect land — the baseline is measured AFTER every
+    // panel/startup action so the assertions below isolate the STAGE slider.
+    fireEvent.input(slider(), { target: { value: '4728300' } });
+    await waitFor(() => expect(slider().value).toBe('4728300'));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const baseline = speech.cancelled();
+    expect(speech.spoken.length).toBe(1);
+
+    // A SINGLE 100 ms keyboard-arrow step on the stage slider — the exact
+    // case the old magnitude heuristic missed — cancels the stale utterance.
+    fireEvent.keyDown(slider(), { key: 'ArrowRight' });
+    await waitFor(() => expect(Number(slider().value)).toBeGreaterThan(4_728_300));
+    await waitFor(() => expect(speech.cancelled()).toBeGreaterThan(baseline));
+    expect(speech.spoken.length).toBe(1); // cancel-only: no unsolicited speech
+
+    // Reset to checkpoint is a deliberate transport seek: cancels again.
+    const beforeReset = speech.cancelled();
+    fireEvent.click(screen.getByRole('button', { name: /Reset to checkpoint/ }));
+    await waitFor(() => expect(speech.cancelled()).toBeGreaterThan(beforeReset));
+    expect(speech.spoken.length).toBe(1);
+
+    // A stage seek IMMEDIATELY after a panel frame step still cancels — the
+    // time-based suppression is gone (the signal is disjoint: the panel's
+    // own handlers never notify, so no double-cancel of its narration).
+    fireEvent.input(slider(), { target: { value: '4726200' } });
+    await waitFor(() => expect(slider().value).toBe('4726200'));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const afterPositioning = speech.cancelled();
     fireEvent.click(
       within(within(panel).getByRole('region', { name: 'Playback' })).getByRole('button', {
         name: /Frame ▶/,
       }),
     );
-    expect(speech.cancelled()).toBeGreaterThan(cancelsBefore);
-    // Main transport slider (canonical clock, outside the panel): a jump
-    // impossible at playback speed cancels the stale utterance — and while
-    // NOT playing, never starts new speech.
-    fireEvent.input(slider(), { target: { value: '4728300' } });
-    await waitFor(() => expect(slider().value).toBe('4728300'));
-    await new Promise((resolve) => setTimeout(resolve, 900)); // one sync cycle
-    const cancelsAfterSlider = speech.cancelled();
-    expect(cancelsAfterSlider).toBeGreaterThan(cancelsBefore);
-    expect(speech.spoken.length).toBe(1); // cancel-only, no unsolicited speak
-    // The canonical playhead carries the seek (no second clock).
-    expect(slider().value).toBe('4728300');
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    fireEvent.keyDown(slider(), { key: 'ArrowRight' });
+    await waitFor(() => expect(speech.cancelled()).toBeGreaterThan(afterPositioning));
+    expect(speech.spoken.length).toBe(1);
+
+    // Automatic playback NEVER notifies: with narration disarmed, playing
+    // drift produces neither speech nor cancellations.
+    fireEvent.click(
+      within(within(panel).getByTestId('audio-controls')).getByRole('button', {
+        name: /^Stop$/,
+      }),
+    );
+    const driftBaseline = speech.cancelled();
+    fireEvent.click(
+      within(within(panel).getByRole('region', { name: 'Playback' })).getByRole('button', {
+        name: 'Play',
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(speech.cancelled()).toBe(driftBaseline);
+    expect(speech.spoken.length).toBe(1);
+    fireEvent.click(
+      within(within(panel).getByRole('region', { name: 'Playback' })).getByRole('button', {
+        name: /^Pause$/,
+      }),
+    );
+    // The canonical clock carried every step (no second clock).
+    expect(Number(slider().value)).toBeGreaterThan(4_726_200);
   });
 
   it('R3c — while narration-paused, a transcript seek cancels but does NOT speak the destination', async () => {

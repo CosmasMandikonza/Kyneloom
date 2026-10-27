@@ -31,6 +31,15 @@ import { createSpeechController, type SpeechController } from './speech';
  */
 
 export interface AccessiblePanelProps {
+  /**
+   * Increments on every USER-INITIATED stage transport seek (slider input
+   * including 100 ms arrow steps, transport frame buttons, global keyboard
+   * arrows, reset, chapter/evidence seeks) — the reliable deliberate-
+   * navigation signal. Never increments from the automatic playback loop or
+   * from this panel's own onSeek/onStep callbacks, so transcript destination
+   * narration is never double-cancelled.
+   */
+  readonly deliberateSeekSignal: number;
   readonly scene: SceneData;
   readonly evidence: EvidenceProjection;
   /** Live engine reference (playhead read at bounded cadence). */
@@ -55,6 +64,7 @@ const KIND_LABELS: Record<TranscriptEntry['kind'], string> = {
 };
 
 export function AccessiblePanel({
+  deliberateSeekSignal,
   scene,
   evidence,
   engine,
@@ -87,9 +97,6 @@ export function AccessiblePanel({
   const narrationPausedRef = useRef(false);
   const playingRef = useRef(playing);
   const rateRef = useRef(rate);
-  /** Last deliberate panel navigation (transcript seek / frame step) — the
-   * external-seek detector must not re-cancel speech these handlers own. */
-  const deliberateAtRef = useRef(0);
   useEffect(() => {
     followingRef.current = following;
   }, [following]);
@@ -145,19 +152,8 @@ export function AccessiblePanel({
   useEffect(() => {
     let lastText = '';
     let firstSync = true;
-    let lastT = engine.playheadMs;
     const sync = (): void => {
       const t = engine.playheadMs;
-      // External transport seeks (the canonical stage slider / keyboard
-      // shortcuts) produce jumps impossible at playback speed between two
-      // 500 ms syncs. A stale utterance describing the OLD instant is
-      // cancelled — cancel only, never unsolicited new speech. Deliberate
-      // panel navigations (transcript seek / frame step) are excluded: they
-      // own their cancellation and destination narration.
-      if (Math.abs(t - lastT) > 1_500 && Date.now() - deliberateAtRef.current > 700) {
-        speechRef.current?.stop();
-      }
-      lastT = t;
       const description = describeSpatialState({
         scene,
         frame: getFrame(t),
@@ -223,6 +219,16 @@ export function AccessiblePanel({
     return () => window.clearInterval(interval);
   }, [announce, engine, getFrame, scene, selectedEntityId, transcript, narrate]);
 
+  // Deliberate stage-transport navigation (the reliable signal — replaces
+  // the former jump-magnitude/time heuristic the review rejected): cancel
+  // any utterance describing the OLD instant. Cancel only — never
+  // unsolicited new speech; the transition loop narrates the new instant
+  // when appropriate (following, playing, not paused).
+  useEffect(() => {
+    if (deliberateSeekSignal === 0) return; // initial mount, nothing played
+    speechRef.current?.stop();
+  }, [deliberateSeekSignal]);
+
   // Optional browser speech synthesis — created on demand, destroyed on
   // unmount/lens exit so no voice outlives the panel. Exiting the panel
   // also ends follow mode (the state dies with the component).
@@ -258,7 +264,6 @@ export function AccessiblePanel({
 
   /** Deliberate transcript seek: cancel stale narration, then (if following) speak the destination. */
   const seekToEntry = (entry: TranscriptEntry): void => {
-    deliberateAtRef.current = Date.now();
     speechRef.current?.stop();
     onSeek(entry.atMs);
     const active = eventAtPlayhead(entry.atMs, scene.events);
@@ -472,7 +477,6 @@ export function AccessiblePanel({
             type="button"
             className="a11y__btn"
             onClick={() => {
-              deliberateAtRef.current = Date.now();
               speechRef.current?.stop(); // cancel any stale utterance
               onStep(-1);
             }}
@@ -487,7 +491,6 @@ export function AccessiblePanel({
             type="button"
             className="a11y__btn"
             onClick={() => {
-              deliberateAtRef.current = Date.now();
               speechRef.current?.stop(); // cancel any stale utterance
               onStep(1);
             }}
