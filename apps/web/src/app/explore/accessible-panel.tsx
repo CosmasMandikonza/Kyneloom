@@ -73,16 +73,29 @@ export function AccessiblePanel({
   const [narrationStatus, setNarrationStatus] = useState('');
   /** Opt-in follow mode: narrate meaningful transitions while playing. */
   const [following, setFollowing] = useState(false);
+  /**
+   * Narration Pause is AUTHORITATIVE while following: the transition loop
+   * may not start new utterances until Resume (an engine pause alone would
+   * be overridden by the next speak()).
+   */
+  const [narrationPaused, setNarrationPaused] = useState(false);
   /** The transcript entry the shared playhead is currently at. */
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
 
   // Live refs so the bounded sync interval never needs re-creating.
   const followingRef = useRef(false);
+  const narrationPausedRef = useRef(false);
   const playingRef = useRef(playing);
   const rateRef = useRef(rate);
+  /** Last deliberate panel navigation (transcript seek / frame step) — the
+   * external-seek detector must not re-cancel speech these handlers own. */
+  const deliberateAtRef = useRef(0);
   useEffect(() => {
     followingRef.current = following;
   }, [following]);
+  useEffect(() => {
+    narrationPausedRef.current = narrationPaused;
+  }, [narrationPaused]);
   useEffect(() => {
     playingRef.current = playing;
   }, [playing]);
@@ -132,8 +145,19 @@ export function AccessiblePanel({
   useEffect(() => {
     let lastText = '';
     let firstSync = true;
+    let lastT = engine.playheadMs;
     const sync = (): void => {
       const t = engine.playheadMs;
+      // External transport seeks (the canonical stage slider / keyboard
+      // shortcuts) produce jumps impossible at playback speed between two
+      // 500 ms syncs. A stale utterance describing the OLD instant is
+      // cancelled — cancel only, never unsolicited new speech. Deliberate
+      // panel navigations (transcript seek / frame step) are excluded: they
+      // own their cancellation and destination narration.
+      if (Math.abs(t - lastT) > 1_500 && Date.now() - deliberateAtRef.current > 700) {
+        speechRef.current?.stop();
+      }
+      lastT = t;
       const description = describeSpatialState({
         scene,
         frame: getFrame(t),
@@ -182,9 +206,13 @@ export function AccessiblePanel({
               : `Next: ${active.event.label} by ${active.event.actorId}`;
         announce(line);
         // Follow narration speaks the SAME concise line — only while
-        // following AND playing; a single utterance that cancels any in
-        // flight, so the queue can never grow or overlap.
-        if (followingRef.current && playingRef.current) narrate(line);
+        // following AND playing AND NOT narration-paused (the pause gate is
+        // authoritative: a new utterance must never override it); a single
+        // utterance that cancels any in flight, so the queue can never grow
+        // or overlap.
+        if (followingRef.current && playingRef.current && !narrationPausedRef.current) {
+          narrate(line);
+        }
       } else if (firstSync) {
         lastEventKeyRef.current = key;
       }
@@ -230,13 +258,16 @@ export function AccessiblePanel({
 
   /** Deliberate transcript seek: cancel stale narration, then (if following) speak the destination. */
   const seekToEntry = (entry: TranscriptEntry): void => {
+    deliberateAtRef.current = Date.now();
     speechRef.current?.stop();
     onSeek(entry.atMs);
     const active = eventAtPlayhead(entry.atMs, scene.events);
     lastEventKeyRef.current = active === null ? 'open' : `${active.phase}:${active.event.eventId}`;
     const line = `Jumped to ${formatMatchClockTenths(entry.atMs)} — ${entry.title.split(' · ')[0]}`;
     announce(line, { force: true });
-    if (followingRef.current) narrate(line);
+    // Destination narration only when actively following (never while
+    // narration-paused or stopped — no unsolicited speech).
+    if (followingRef.current && !narrationPausedRef.current) narrate(line);
   };
 
   const toggleFollowing = (): void => {
@@ -260,6 +291,7 @@ export function AccessiblePanel({
     } else {
       controller?.stop();
       setFollowing(false);
+      setNarrationPaused(false);
       setNarrationStatus('Narration stopped');
     }
   };
@@ -337,6 +369,7 @@ export function AccessiblePanel({
                 className="a11y__btn"
                 onClick={() => {
                   speechRef.current?.pause();
+                  setNarrationPaused(true);
                   setNarrationStatus('Narration paused');
                 }}
               >
@@ -347,6 +380,7 @@ export function AccessiblePanel({
                 className="a11y__btn"
                 onClick={() => {
                   speechRef.current?.resume();
+                  setNarrationPaused(false);
                   setNarrationStatus('Narration resumed');
                 }}
               >
@@ -356,7 +390,11 @@ export function AccessiblePanel({
                 type="button"
                 className="a11y__btn"
                 onClick={() => {
+                  // Stop DISARMS follow mode entirely: later transitions stay
+                  // silent until the user opts in again.
                   speechRef.current?.stop();
+                  setFollowing(false);
+                  setNarrationPaused(false);
                   setNarrationStatus('Narration stopped');
                 }}
               >
@@ -433,7 +471,11 @@ export function AccessiblePanel({
           <button
             type="button"
             className="a11y__btn"
-            onClick={() => onStep(-1)}
+            onClick={() => {
+              deliberateAtRef.current = Date.now();
+              speechRef.current?.stop(); // cancel any stale utterance
+              onStep(-1);
+            }}
             title="Step back one source frame"
           >
             ◀ Frame
@@ -444,7 +486,11 @@ export function AccessiblePanel({
           <button
             type="button"
             className="a11y__btn"
-            onClick={() => onStep(1)}
+            onClick={() => {
+              deliberateAtRef.current = Date.now();
+              speechRef.current?.stop(); // cancel any stale utterance
+              onStep(1);
+            }}
             title="Step forward one source frame"
           >
             Frame ▶

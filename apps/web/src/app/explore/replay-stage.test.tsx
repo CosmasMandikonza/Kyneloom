@@ -622,10 +622,10 @@ describe('KYN-20 — audio-first playback & synchronized transcript', () => {
     fireEvent.click(within(audio).getByRole('button', { name: 'Speak current state' }));
     await waitFor(() => expect(speech.spoken.length).toBeGreaterThanOrEqual(2));
     expect(speech.spoken.at(-1)!.rate).toBe(1.25);
-    // Stop (either control) cancels; the follow toggle also resets the mode.
+    // Stop cancels AND disarms follow mode (review round): the toggle
+    // resets to off by itself — later transitions stay silent.
     fireEvent.click(within(audio).getByRole('button', { name: /^Stop$/ }));
     expect(speech.cancelled()).toBeGreaterThanOrEqual(1);
-    fireEvent.click(within(panel).getByRole('button', { name: /Following — stop/ }));
     expect(
       within(panel)
         .getByRole('button', { name: /Follow narration/ })
@@ -717,5 +717,198 @@ describe('KYN-20 — audio-first playback & synchronized transcript', () => {
     await enterAccessible();
     const live = screen.getByTestId('live-announcement');
     expect(Number(live.dataset.count ?? '0')).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('KYN-20 review round — narration-control synchronization', () => {
+  function stubSpeechStateful(): {
+    spoken: { text: string; rate: number }[];
+    cancelled: () => number;
+    paused: () => number;
+    resumed: () => number;
+  } {
+    const state = {
+      spoken: [] as { text: string; rate: number }[],
+      cancel: 0,
+      pause: 0,
+      resume: 0,
+    };
+    class Utterance {
+      readonly text: string;
+      rate: number;
+      constructor(text: string) {
+        this.text = text;
+        this.rate = 1;
+      }
+    }
+    vi.stubGlobal('SpeechSynthesisUtterance', Utterance);
+    const engine = {
+      speaking: true,
+      paused: false,
+      speak: (u: { text: string; rate: number }): void => {
+        state.spoken.push({ text: u.text, rate: u.rate });
+      },
+      cancel: (): void => {
+        state.cancel += 1;
+      },
+      pause: (): void => {
+        state.pause += 1;
+        engine.paused = true;
+      },
+      resume: (): void => {
+        state.resume += 1;
+        engine.paused = false;
+      },
+    };
+    vi.stubGlobal('speechSynthesis', engine);
+    return {
+      spoken: state.spoken,
+      cancelled: (): number => state.cancel,
+      paused: (): number => state.pause,
+      resumed: (): number => state.resume,
+    };
+  }
+
+  async function enterAccessiblePanel(): Promise<HTMLElement> {
+    fireEvent.click(screen.getByRole('radio', { name: 'Accessible' }));
+    return screen.findByTestId('accessible-panel');
+  }
+
+  async function startFollowing(panel: HTMLElement): Promise<void> {
+    fireEvent.click(within(panel).getByRole('button', { name: /Follow narration/ }));
+    await waitFor(() =>
+      expect(within(panel).getByTestId('follow-narration').getAttribute('aria-pressed')).toBe(
+        'true',
+      ),
+    );
+  }
+
+  it('R1 — Pause is authoritative: a real transition during playback does NOT speak until Resume', async () => {
+    const speech = stubSpeechStateful();
+    await renderStage();
+    const panel = await enterAccessiblePanel();
+    await startFollowing(panel);
+    await waitFor(() => expect(speech.spoken.length).toBeGreaterThanOrEqual(1));
+    // Pause the narration controls (not the transport).
+    fireEvent.click(
+      within(within(panel).getByTestId('audio-controls')).getByRole('button', { name: /^Pause$/ }),
+    );
+    // Position BEFORE the pass-release window, then play across it — a
+    // genuine source-event transition fires (the VISUAL announcement
+    // channel still reports it), but narration must stay silent.
+    fireEvent.input(slider(), { target: { value: '4723600' } });
+    await waitFor(() => expect(slider().value).toBe('4723600'));
+    fireEvent.click(
+      within(within(panel).getByRole('region', { name: 'Playback' })).getByRole('button', {
+        name: 'Play',
+      }),
+    );
+    const live = screen.getByTestId('live-announcement');
+    await waitFor(() => expect(live.textContent).toContain('Pass released'), { timeout: 8000 });
+    const spokenAtTransition = speech.spoken.length;
+    expect(spokenAtTransition).toBe(1); // only the explicit start line
+    // Keep playing past more drift: still no new utterances.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    expect(speech.spoken.length).toBe(spokenAtTransition);
+    fireEvent.click(
+      within(within(panel).getByRole('region', { name: 'Playback' })).getByRole('button', {
+        name: /^Pause$/,
+      }),
+    );
+    // Resume re-opens the gate: a deliberate transcript seek narrates again.
+    fireEvent.click(
+      within(within(panel).getByTestId('audio-controls')).getByRole('button', { name: /^Resume$/ }),
+    );
+    fireEvent.click(within(panel).getByRole('button', { name: /GOAL · 78:48.3/ }));
+    await waitFor(() => expect(speech.spoken.at(-1)!.text).toContain('Jumped to 78:48.3'));
+  });
+
+  it('R2 — Stop cancels AND disarms follow: later transitions stay silent, button resets to off', async () => {
+    const speech = stubSpeechStateful();
+    await renderStage();
+    const panel = await enterAccessiblePanel();
+    await startFollowing(panel);
+    await waitFor(() => expect(speech.spoken.length).toBeGreaterThanOrEqual(1));
+    fireEvent.click(
+      within(within(panel).getByTestId('audio-controls')).getByRole('button', { name: /^Stop$/ }),
+    );
+    const follow = within(panel).getByTestId('follow-narration');
+    expect(follow.getAttribute('aria-pressed')).toBe('false'); // disarmed
+    // A later genuine transition during playback must not revive it.
+    fireEvent.input(slider(), { target: { value: '4723600' } });
+    fireEvent.click(
+      within(within(panel).getByRole('region', { name: 'Playback' })).getByRole('button', {
+        name: 'Play',
+      }),
+    );
+    const live = screen.getByTestId('live-announcement');
+    await waitFor(() => expect(live.textContent).toContain('Pass released'), { timeout: 8000 });
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(speech.spoken.length).toBe(1); // nothing beyond the start line
+    fireEvent.click(
+      within(within(panel).getByRole('region', { name: 'Playback' })).getByRole('button', {
+        name: /^Pause$/,
+      }),
+    );
+  });
+
+  it('R3 — frame stepping and the canonical slider cancel stale narration without unsolicited speech', async () => {
+    const speech = stubSpeechStateful();
+    await renderStage();
+    const panel = await enterAccessiblePanel();
+    await startFollowing(panel);
+    await waitFor(() => expect(speech.spoken.length).toBeGreaterThanOrEqual(1));
+    // Frame step (panel transport): deliberate navigation cancels in-flight.
+    const cancelsBefore = speech.cancelled();
+    fireEvent.click(
+      within(within(panel).getByRole('region', { name: 'Playback' })).getByRole('button', {
+        name: /Frame ▶/,
+      }),
+    );
+    expect(speech.cancelled()).toBeGreaterThan(cancelsBefore);
+    // Main transport slider (canonical clock, outside the panel): a jump
+    // impossible at playback speed cancels the stale utterance — and while
+    // NOT playing, never starts new speech.
+    fireEvent.input(slider(), { target: { value: '4728300' } });
+    await waitFor(() => expect(slider().value).toBe('4728300'));
+    await new Promise((resolve) => setTimeout(resolve, 900)); // one sync cycle
+    const cancelsAfterSlider = speech.cancelled();
+    expect(cancelsAfterSlider).toBeGreaterThan(cancelsBefore);
+    expect(speech.spoken.length).toBe(1); // cancel-only, no unsolicited speak
+    // The canonical playhead carries the seek (no second clock).
+    expect(slider().value).toBe('4728300');
+  });
+
+  it('R3c — while narration-paused, a transcript seek cancels but does NOT speak the destination', async () => {
+    const speech = stubSpeechStateful();
+    await renderStage();
+    const panel = await enterAccessiblePanel();
+    await startFollowing(panel);
+    await waitFor(() => expect(speech.spoken.length).toBeGreaterThanOrEqual(1));
+    fireEvent.click(
+      within(within(panel).getByTestId('audio-controls')).getByRole('button', { name: /^Pause$/ }),
+    );
+    const spokenBefore = speech.spoken.length;
+    fireEvent.click(within(panel).getByRole('button', { name: /GOAL · 78:48.3/ }));
+    await waitFor(() => expect(slider().value).toBe('4728300'));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(speech.spoken.length).toBe(spokenBefore); // no destination narration
+    expect(speech.cancelled()).toBeGreaterThanOrEqual(1); // stale cancelled
+  });
+
+  it('R4 — leaving the lens destroys the controller: cancel observed, nothing speaks afterwards', async () => {
+    const speech = stubSpeechStateful();
+    await renderStage();
+    const panel = await enterAccessiblePanel();
+    await startFollowing(panel);
+    await waitFor(() => expect(speech.spoken.length).toBeGreaterThanOrEqual(1));
+    const cancelsBefore = speech.cancelled();
+    const spokenBefore = speech.spoken.length;
+    fireEvent.click(screen.getByRole('radio', { name: 'Fan' }));
+    await waitFor(() => expect(() => screen.getByTestId('accessible-panel')).toThrow());
+    // destroy() cancels; time passes with the lens off — no further speech.
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(speech.cancelled()).toBeGreaterThan(cancelsBefore);
+    expect(speech.spoken.length).toBe(spokenBefore);
   });
 });
