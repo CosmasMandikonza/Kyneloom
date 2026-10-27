@@ -9,6 +9,8 @@
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
   const { maybeStartAzureLiveWorker } = await import('./src/lib/live/azure-runtime');
+  // This schedules the worker; it does not await archive recovery or the
+  // consumer lifetime. /api/live/ready reports background initialization.
   const result = await maybeStartAzureLiveWorker(process.env);
   console.log(`[live] azure runtime: ${result.detail}`);
 }

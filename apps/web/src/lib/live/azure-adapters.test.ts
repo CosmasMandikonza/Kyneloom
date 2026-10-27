@@ -111,6 +111,7 @@ describe('startEventHubsIngestion (injected fakes) — checkpoint ordering laws'
       }),
     };
     const client = {
+      close: vi.fn(async () => undefined),
       subscribe(handlers: typeof captured.handlers) {
         captured.handlers = handlers;
         return subscription;
@@ -181,6 +182,7 @@ describe('startEventHubsIngestion (injected fakes) — checkpoint ordering laws'
     controller.abort();
     await running;
     expect(fake.captured.closed).toBe(true);
+    expect(fake.client.close).toHaveBeenCalledTimes(1);
   });
 
   it('a failing batch NEVER advances the checkpoint (retried delivery stays safe)', async () => {
@@ -231,5 +233,62 @@ describe('startEventHubsIngestion (injected fakes) — checkpoint ordering laws'
     await vi.waitFor(() => expect(fake.captured.checkpoints).toHaveLength(1));
     controller.abort();
     await running;
+  });
+
+  it('reports readiness only after a successful receive, including an empty receive', async () => {
+    const fake = makeFakeConsumer();
+    const factories = {
+      createCredential: vi.fn(async () => ({})),
+      createCheckpointStore: vi.fn(async () => ({})),
+      createConsumerClient: vi.fn(async () => fake.client),
+    };
+    const ready = vi.fn();
+    const controller = new AbortController();
+    const running = startEventHubsIngestion(
+      CONFIG,
+      async () => undefined,
+      controller.signal,
+      factories,
+      { onReady: ready, onError: vi.fn() },
+    );
+    await vi.waitFor(() => expect(fake.captured.handlers).not.toBeNull());
+    expect(ready).not.toHaveBeenCalled();
+    await fake.captured.handlers!.processEvents([], fake.context);
+    expect(ready).toHaveBeenCalledTimes(1);
+    controller.abort();
+    await running;
+  });
+
+  it('consumer errors reject the lifetime promise and close subscription AND client', async () => {
+    const fake = makeFakeConsumer();
+    const factories = {
+      createCredential: vi.fn(async () => ({})),
+      createCheckpointStore: vi.fn(async () => ({})),
+      createConsumerClient: vi.fn(async () => fake.client),
+    };
+    const running = startEventHubsIngestion(
+      CONFIG,
+      async () => undefined,
+      new AbortController().signal,
+      factories,
+    );
+    const failed = expect(running).rejects.toThrow('authentication failed');
+    await vi.waitFor(() => expect(fake.captured.handlers).not.toBeNull());
+    await fake.captured.handlers!.processError(new Error('authentication failed'));
+    await failed;
+    expect(fake.subscription.close).toHaveBeenCalledTimes(1);
+    expect(fake.client.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('an already cancelled start creates no SDK clients', async () => {
+    const factories = {
+      createCredential: vi.fn(async () => ({})),
+      createCheckpointStore: vi.fn(async () => ({})),
+      createConsumerClient: vi.fn(async () => ({})),
+    };
+    const controller = new AbortController();
+    controller.abort();
+    await startEventHubsIngestion(CONFIG, async () => undefined, controller.signal, factories);
+    expect(factories.createCredential).not.toHaveBeenCalled();
   });
 });

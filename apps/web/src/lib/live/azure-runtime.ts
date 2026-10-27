@@ -59,6 +59,14 @@ export function azureRuntimeStatus(): AzureRuntimeStatus {
 
 /** Module-level single-start guard: one consumer per process, ever. */
 let startupAttempted = false;
+let workerController: AbortController | null = null;
+let workerTask: Promise<void> | null = null;
+
+/** Stop the background consumer and await its resource cleanup. No restart in this process. */
+export async function stopAzureLiveWorker(): Promise<void> {
+  workerController?.abort();
+  await workerTask;
+}
 
 export interface AzureRuntimeDeps {
   startIngestion: typeof startEventHubsIngestion;
@@ -83,7 +91,9 @@ export const defaultAzureRuntimeDeps: AzureRuntimeDeps = {
 /**
  * Start the Azure live worker if — and ONLY if — the deployed env contract
  * is complete. The module-level guard makes overlapping startup calls
- * no-ops: exactly one authoritative consumer/session per process.
+ * no-ops: exactly one authoritative consumer/session per process. Scheduling
+ * returns immediately; archive recovery and the consumer lifetime must NEVER
+ * hold Next.js register() open. Readiness stays false until a receive succeeds.
  */
 export async function maybeStartAzureLiveWorker(
   env: { readonly [key: string]: string | undefined },
@@ -101,22 +111,77 @@ export async function maybeStartAzureLiveWorker(
     return { started: false, detail: 'azure live worker already attempted in this process' };
   }
   startupAttempted = true;
-
   const service = deps.getService();
   const controller = new AbortController();
+  workerController = controller;
+  runtimeStatus = { ...runtimeStatus, active: false, detail: 'cloud ingestion starting' };
+
+  const shutdown = (): void => {
+    void stopAzureLiveWorker().catch((error) => {
+      console.error('[live] cloud shutdown failed:', String(error).slice(0, 160));
+    });
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
+  workerTask = runAzureLiveWorker(config, deps, service, controller).finally(() => {
+    process.removeListener('SIGTERM', shutdown);
+    process.removeListener('SIGINT', shutdown);
+  });
+  return { started: true, detail: 'cloud ingestion starting in background' };
+}
+
+async function runAzureLiveWorker(
+  config: AzureLiveConfig,
+  deps: AzureRuntimeDeps,
+  service: ReturnType<AzureRuntimeDeps['getService']>,
+  controller: AbortController,
+): Promise<void> {
+  const { signal } = controller;
+  let ownsSession = false;
+  const endSession = (): void => {
+    if (!ownsSession) return;
+    service.setPublishHook(null);
+    service.endExternalSession('cloud ingestion ended');
+    ownsSession = false;
+  };
+  const onAbort = (): void => {
+    runtimeStatus = { ...runtimeStatus, active: false, detail: 'cloud ingestion stopping' };
+    endSession();
+  };
+  signal.addEventListener('abort', onAbort, { once: true });
+
+  // Archive SDK operations are not abort-aware yet. Stop waiting on them on
+  // cancellation, and never let a late completion create a new session.
+  async function duringStartup<T>(operation: () => Promise<T>): Promise<T> {
+    signal.throwIfAborted();
+    let abort: () => void = () => undefined;
+    const cancelled = new Promise<never>((_, reject) => {
+      abort = () => reject(signal.reason);
+      signal.addEventListener('abort', abort, { once: true });
+    });
+    try {
+      return await Promise.race([operation(), cancelled]);
+    } finally {
+      signal.removeEventListener('abort', abort);
+    }
+  }
+
   let batchIndex = 0;
   let replayedCount = 0;
   try {
-    const archive = await deps.createArchive(config);
+    const archive = await duringStartup(() => deps.createArchive(config));
     // 1. REPLAY the durable archive: reconstruct the authoritative corpus
     //    BEFORE the session begins (restart recovery law).
-    const replayed = await archive.readAllEnvelopes();
+    const replayed = await duringStartup(() => archive.readAllEnvelopes());
+    signal.throwIfAborted();
     replayedCount = replayed.length;
+    if (service.status.running) throw new Error('another stream session is already running');
     // 2. BEGIN the external session (new generation; NO local producer).
     service.beginExternalSession();
+    ownsSession = true;
     runtimeStatus = {
-      active: true,
-      detail: 'cloud session active — event hubs ingestion starting',
+      active: false,
+      detail: 'cloud session starting — awaiting successful event hubs receive',
       replayedEnvelopes: replayedCount,
       archivedBatches: 0,
     };
@@ -134,30 +199,49 @@ export async function maybeStartAzureLiveWorker(
     await deps.startIngestion(
       config,
       async (batch) => {
+        signal.throwIfAborted();
+        if (!ownsSession) throw new Error('cloud session ended');
         await archive.appendEnvelopes(config.matchId, batchIndex, batch);
+        signal.throwIfAborted();
+        if (!ownsSession) throw new Error('cloud session ended');
         batchIndex += 1;
         runtimeStatus = { ...runtimeStatus, archivedBatches: batchIndex };
         service.ingest(batch);
       },
-      controller.signal,
+      signal,
+      undefined,
+      {
+        onReady: () => {
+          if (!signal.aborted && ownsSession) {
+            runtimeStatus = { ...runtimeStatus, active: true, detail: 'cloud ingestion active' };
+          }
+        },
+        onError: (error) => {
+          runtimeStatus = {
+            ...runtimeStatus,
+            active: false,
+            detail: `cloud ingestion failed: ${String(error).slice(0, 160)}`,
+          };
+          endSession();
+        },
+      },
     );
     // startIngestion resolves only on abort: end truthfully.
-    service.endExternalSession('ingestion stopped');
     runtimeStatus = { ...runtimeStatus, active: false, detail: 'cloud ingestion ended' };
-    return { started: false, detail: 'cloud ingestion ended' };
   } catch (error) {
     // Fail closed: no fabricated healthy session, truthful diagnostics.
-    if (service.status.running) {
-      service.endExternalSession('ingestion failed');
-    }
     const reason = String(error).slice(0, 160);
     runtimeStatus = {
       active: false,
-      detail: `cloud ingestion failed: ${reason}`,
+      detail: signal.aborted ? 'cloud ingestion stopped' : `cloud ingestion failed: ${reason}`,
       replayedEnvelopes: replayedCount,
       archivedBatches: batchIndex,
     };
-    console.error('[live] event hubs ingestion failed:', reason);
-    return { started: false, detail: `cloud ingestion failed: ${reason}` };
+    if (!signal.aborted) console.error('[live] event hubs ingestion failed:', reason);
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+    controller.abort();
+    endSession();
+    runtimeStatus = { ...runtimeStatus, active: false };
   }
 }

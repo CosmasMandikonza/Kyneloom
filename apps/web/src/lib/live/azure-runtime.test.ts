@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LiveFrame, StreamEnvelope } from '@kyneloom/match-core';
-import { azureConfigFromEnv } from './azure-adapters';
+import { azureConfigFromEnv, type IngestionHealth } from './azure-adapters';
 import { createMemoryArchive, type DurableArchive } from './blob-archive';
 
 /**
@@ -26,7 +26,7 @@ const FULL_ENV: Record<string, string | undefined> = {
 
 interface FakeService {
   ingest: (batch: readonly StreamEnvelope[]) => void;
-  setPublishHook: (hook: (frame: LiveFrame) => void) => void;
+  setPublishHook: (hook: ((frame: LiveFrame) => void) | null) => void;
   beginExternalSession: () => void;
   endExternalSession: (detail: string) => void;
   running: boolean;
@@ -73,17 +73,26 @@ function makeDeps(service: ReturnType<typeof makeService>, archive: DurableArchi
     onBatch: null as null | ((batch: readonly StreamEnvelope[]) => Promise<void>),
     broadcast: vi.fn(async () => undefined),
     ingests: 0,
+    signal: null as AbortSignal | null,
+    onReady: null as (() => void) | null,
   };
   const deps = {
     startIngestion: vi.fn(
       (
         _config: unknown,
         onBatch: (batch: readonly StreamEnvelope[]) => Promise<void>,
-        _signal: AbortSignal,
+        signal: AbortSignal,
+        _factories: unknown = undefined,
+        health?: IngestionHealth,
       ) => {
         calls.onBatch = onBatch;
+        calls.signal = signal;
+        calls.onReady = health?.onReady ?? (() => undefined);
         // Stays pending = a live consumer loop (resolves only on abort).
-        return new Promise<void>(() => undefined);
+        return new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener('abort', () => resolve(), { once: true });
+        });
       },
     ),
     broadcast: calls.broadcast,
@@ -93,7 +102,7 @@ function makeDeps(service: ReturnType<typeof makeService>, archive: DurableArchi
         calls.ingests += 1;
         service.ingest(batch);
       },
-      setPublishHook: (hook: (frame: LiveFrame) => void) => service.setPublishHook(hook),
+      setPublishHook: (hook: ((frame: LiveFrame) => void) | null) => service.setPublishHook(hook),
       beginExternalSession: () => service.beginExternalSession(),
       endExternalSession: (detail: string) => service.endExternalSession(detail),
       get status(): { running: boolean } {
@@ -106,6 +115,13 @@ function makeDeps(service: ReturnType<typeof makeService>, archive: DurableArchi
 
 beforeEach(() => {
   vi.resetModules();
+});
+
+afterEach(async () => {
+  const { stopAzureLiveWorker } = await loadRuntime();
+  await stopAzureLiveWorker();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe('azureConfigFromEnv — all-or-nothing contract (fail closed)', () => {
@@ -129,6 +145,24 @@ describe('azureConfigFromEnv — all-or-nothing contract (fail closed)', () => {
 });
 
 describe('maybeStartAzureLiveWorker — cloud-session lifecycle', () => {
+  it('Next.js register completes while the consumer remains running', async () => {
+    const runtime = await loadRuntime();
+    const service = makeService();
+    const { deps, calls } = makeDeps(service, createMemoryArchive());
+    Object.assign(runtime.defaultAzureRuntimeDeps, deps);
+    vi.stubEnv('NEXT_RUNTIME', 'nodejs');
+    for (const [key, value] of Object.entries(FULL_ENV)) vi.stubEnv(key, value);
+    try {
+      const { register } = await import('../../../instrumentation');
+      await register();
+      await until(() => calls.onBatch !== null);
+      expect(service._running).toBe(true);
+      expect(deps.startIngestion).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }, 1000);
+
   it('does NOTHING without the complete env contract (local mode unchanged)', async () => {
     const { maybeStartAzureLiveWorker, azureRuntimeStatus } = await loadRuntime();
     const service = makeService();
@@ -151,10 +185,8 @@ describe('maybeStartAzureLiveWorker — cloud-session lifecycle', () => {
     ] as unknown as StreamEnvelope[];
     archive.stored.push(replayedBatch);
     const { deps, calls } = makeDeps(service, archive);
-    // NOT awaited: with a live consumer loop the runtime call stays pending
-    // (resolves only when ingestion ends) — exactly the active state.
-    void maybeStartAzureLiveWorker(FULL_ENV, deps);
-    await until(() => service.beginExternalSession.mock.calls.length === 1);
+    await maybeStartAzureLiveWorker(FULL_ENV, deps);
+    await until(() => calls.onBatch !== null);
 
     // Archive was read for replay, the session began, and the replayed
     // corpus was ingested FIRST; the runtime reports the replay count.
@@ -163,7 +195,7 @@ describe('maybeStartAzureLiveWorker — cloud-session lifecycle', () => {
       { envelopeId: 'env-replay-1', matchId: 'synthetic-derby-01' },
     ]);
     expect(azureRuntimeStatus().replayedEnvelopes).toBe(1);
-    expect(azureRuntimeStatus().active).toBe(true);
+    expect(azureRuntimeStatus().active).toBe(false);
 
     // A live batch: archive-append happens BEFORE ingest (durable first).
     const liveBatch = [{ envelopeId: 'env-live-1' }] as unknown as readonly StreamEnvelope[];
@@ -171,6 +203,8 @@ describe('maybeStartAzureLiveWorker — cloud-session lifecycle', () => {
     expect(archive.stored).toHaveLength(2);
     expect(archive.stored[1]).toEqual(liveBatch as unknown as StreamEnvelope[]);
     expect(service.ingest).toHaveBeenCalledTimes(2);
+    calls.onReady!();
+    expect(azureRuntimeStatus().active).toBe(true);
 
     // The publish hook broadcasts every authoritative frame to Web PubSub.
     const hook = service.setPublishHook.mock.calls[0]![0] as (f: LiveFrame) => void;
@@ -207,9 +241,8 @@ describe('maybeStartAzureLiveWorker — cloud-session lifecycle', () => {
     deps.createArchive = vi.fn(async () => {
       throw new Error('blob container unreachable (injected)');
     });
-    const result = await maybeStartAzureLiveWorker(FULL_ENV, deps);
-    expect(result.started).toBe(false);
-    expect(result.detail).toContain('cloud ingestion failed');
+    await maybeStartAzureLiveWorker(FULL_ENV, deps);
+    await until(() => azureRuntimeStatus().detail.includes('cloud ingestion failed'));
     expect(service.beginExternalSession).not.toHaveBeenCalled();
     expect(azureRuntimeStatus().active).toBe(false);
     expect(azureRuntimeStatus().detail).toContain('blob container unreachable');
@@ -222,9 +255,9 @@ describe('maybeStartAzureLiveWorker — cloud-session lifecycle', () => {
     deps.startIngestion = vi.fn(async () => {
       throw new Error('consumer error (injected)');
     });
-    const result = await maybeStartAzureLiveWorker(FULL_ENV, deps);
-    expect(result.detail).toContain('cloud ingestion failed');
-    expect(service.endExternalSession).toHaveBeenCalledWith('ingestion failed');
+    await maybeStartAzureLiveWorker(FULL_ENV, deps);
+    await until(() => azureRuntimeStatus().detail.includes('cloud ingestion failed'));
+    expect(service.endExternalSession).toHaveBeenCalledTimes(1);
     expect(azureRuntimeStatus().active).toBe(false);
   });
 
@@ -232,7 +265,7 @@ describe('maybeStartAzureLiveWorker — cloud-session lifecycle', () => {
     const { maybeStartAzureLiveWorker } = await loadRuntime();
     const service = makeService();
     const { deps } = makeDeps(service, createMemoryArchive());
-    // The first call takes the create path (stays pending = active loop);
+    // The first call takes the create path (background consumer loop);
     // the overlapping second call is a synchronous-guard no-op.
     void maybeStartAzureLiveWorker(FULL_ENV, deps);
     const second = await maybeStartAzureLiveWorker(FULL_ENV, deps);
@@ -240,5 +273,119 @@ describe('maybeStartAzureLiveWorker — cloud-session lifecycle', () => {
     await until(() => service.beginExternalSession.mock.calls.length === 1);
     expect(deps.startIngestion).toHaveBeenCalledTimes(1);
     expect(deps.createArchive).toHaveBeenCalledTimes(1);
+  });
+
+  it('consumer failure after a healthy receive withdraws readiness and ends the session', async () => {
+    const { maybeStartAzureLiveWorker, azureRuntimeStatus } = await loadRuntime();
+    const service = makeService();
+    const { deps } = makeDeps(service, createMemoryArchive());
+    let fail: (error: Error) => void = () => undefined;
+    deps.startIngestion = vi.fn((_config, _batch, _signal, _factories, health) => {
+      health?.onReady();
+      return new Promise<void>((_, reject) => {
+        fail = reject;
+      });
+    });
+    await maybeStartAzureLiveWorker(FULL_ENV, deps);
+    await until(() => azureRuntimeStatus().active);
+    fail(new Error('consumer disconnected (injected)'));
+    await until(() => !azureRuntimeStatus().active);
+    expect(service._running).toBe(false);
+    expect(service.setPublishHook).toHaveBeenLastCalledWith(null);
+    expect(azureRuntimeStatus().detail).toContain('consumer disconnected');
+  });
+
+  it('shutdown aborts the consumer, ends readiness and does not permit a second initialization', async () => {
+    const runtime = await loadRuntime();
+    const service = makeService();
+    const { deps, calls } = makeDeps(service, createMemoryArchive());
+    const termListeners = process.listenerCount('SIGTERM');
+    const intListeners = process.listenerCount('SIGINT');
+    await runtime.maybeStartAzureLiveWorker(FULL_ENV, deps);
+    await until(() => calls.onReady !== null);
+    calls.onReady!();
+    await runtime.stopAzureLiveWorker();
+    await runtime.stopAzureLiveWorker();
+    expect(calls.signal!.aborted).toBe(true);
+    expect(runtime.azureRuntimeStatus().active).toBe(false);
+    expect(service._running).toBe(false);
+    expect(service.endExternalSession).toHaveBeenCalledTimes(1);
+    expect(process.listenerCount('SIGTERM')).toBe(termListeners);
+    expect(process.listenerCount('SIGINT')).toBe(intListeners);
+    await runtime.maybeStartAzureLiveWorker(FULL_ENV, deps);
+    expect(deps.startIngestion).toHaveBeenCalledTimes(1);
+  });
+
+  it('shutdown during slow archive recovery cannot start a late consumer', async () => {
+    const runtime = await loadRuntime();
+    const service = makeService();
+    const archive = createMemoryArchive();
+    let finishReplay: (batch: StreamEnvelope[]) => void = () => undefined;
+    archive.readAllEnvelopes = vi.fn(
+      () =>
+        new Promise<StreamEnvelope[]>((resolve) => {
+          finishReplay = resolve;
+        }),
+    );
+    const { deps } = makeDeps(service, archive);
+    await runtime.maybeStartAzureLiveWorker(FULL_ENV, deps);
+    await until(() => vi.mocked(archive.readAllEnvelopes).mock.calls.length === 1);
+    await runtime.stopAzureLiveWorker();
+    finishReplay([]);
+    await Promise.resolve();
+    expect(deps.startIngestion).not.toHaveBeenCalled();
+    expect(service.beginExternalSession).not.toHaveBeenCalled();
+    expect(runtime.azureRuntimeStatus().active).toBe(false);
+  });
+
+  it('HTTP readiness follows actual runtime receive and consumer failure', async () => {
+    const runtime = await loadRuntime();
+    const { startEventHubsIngestion } = await import('./azure-adapters');
+    const { LiveMatchService } = await import('./service');
+    const { GET } = await import('../../app/api/live/ready/route');
+    type Handlers = {
+      processEvents: (
+        events: [],
+        context: { updateCheckpoint: () => Promise<void> },
+      ) => Promise<void>;
+      processError: (error: Error) => Promise<void>;
+    };
+    let handlers: Handlers | null = null;
+    let finishClose: () => void = () => undefined;
+    const client = {
+      subscribe: (value: Handlers) => {
+        handlers = value;
+        return { close: async () => undefined };
+      },
+      close: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finishClose = resolve;
+          }),
+      ),
+    };
+    const factories = {
+      createCredential: async () => ({}),
+      createCheckpointStore: async () => ({}),
+      createConsumerClient: async () => client,
+    };
+    await runtime.maybeStartAzureLiveWorker(FULL_ENV, {
+      ...runtime.defaultAzureRuntimeDeps,
+      createArchive: async () => createMemoryArchive(),
+      startIngestion: (config, batch, signal, _factories, ready) =>
+        startEventHubsIngestion(config, batch, signal, factories, ready),
+    });
+    await until(() => handlers !== null);
+    expect((await GET()).status).toBe(503);
+    await handlers!.processEvents([], { updateCheckpoint: async () => undefined });
+    expect((await GET()).status).toBe(200);
+    await handlers!.processError(new Error('receive failed (injected)'));
+    await until(() => !runtime.azureRuntimeStatus().active);
+    expect((await GET()).status).toBe(503);
+    expect(LiveMatchService.get().status.running).toBe(false);
+    await until(() => client.close.mock.calls.length === 1);
+    expect(client.close).toHaveBeenCalledTimes(1);
+    finishClose();
+    await until(() => runtime.azureRuntimeStatus().detail.includes('cloud ingestion failed'));
   });
 });

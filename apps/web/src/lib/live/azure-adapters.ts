@@ -140,12 +140,19 @@ export const azureClientFactories = {
   },
 };
 
+export interface IngestionHealth {
+  onReady(): void;
+  onError(error: unknown): void;
+}
+
 export async function startEventHubsIngestion(
   config: AzureLiveConfig,
   onBatch: (batch: readonly StreamEnvelope[]) => Promise<void>,
   signal: AbortSignal,
   factories: typeof azureClientFactories = azureClientFactories,
+  health?: IngestionHealth,
 ): Promise<void> {
+  if (signal.aborted) return;
   const credential = await factories.createCredential(config);
   const checkpointStore = await factories.createCheckpointStore(config, credential);
   const client = (await factories.createConsumerClient(config, credential, checkpointStore)) as {
@@ -160,53 +167,86 @@ export async function startEventHubsIngestion(
         context: { updateCheckpoint: (event: unknown) => Promise<void> },
       ) => Promise<void>;
       processError: (err: unknown) => Promise<void>;
+      processClose: (reason: string) => Promise<void>;
     }): { close(): Promise<void> };
+    close(): Promise<void>;
   };
 
-  const subscriptions = client.subscribe({
-    processEvents: async (events, context) => {
-      if (events.length === 0) return;
-      const batch: StreamEnvelope[] = [];
-      for (const event of events) {
-        const body = event.body as Record<string, unknown> | undefined;
-        if (
-          body === undefined ||
-          body.contractVersion !== STREAM_CONTRACT_VERSION ||
-          typeof body.envelopeId !== 'string'
-        ) {
-          // Poison envelope: quarantine via a synthetic record; the worker's
-          // quarantine store captures the trace id when present.
-          batch.push({
-            contractVersion: STREAM_CONTRACT_VERSION,
-            envelopeId: `poison-${String(event.offset ?? event.sequenceNumber)}`,
-            matchId: config.matchId,
-            kind: 'event',
-            event: body as StreamEnvelope['event'],
-            emittedAt: event.enqueuedTimeUtc?.getTime() ?? Date.now(),
-            traceId: typeof body?.traceId === 'string' ? (body.traceId as string) : 'trc-unknown',
-          });
-          continue;
+  let resolveStopped: () => void = () => undefined;
+  let rejectStopped: (error: unknown) => void = () => undefined;
+  const stopped = new Promise<void>((resolve, reject) => {
+    resolveStopped = resolve;
+    rejectStopped = reject;
+  });
+  const onAbort = (): void => resolveStopped();
+  signal.addEventListener('abort', onAbort, { once: true });
+  let subscription: { close(): Promise<void> } | undefined;
+  try {
+    if (signal.aborted) return;
+    subscription = client.subscribe({
+      processEvents: async (events, context) => {
+        if (signal.aborted) return;
+        if (events.length === 0) {
+          health?.onReady(); // A successful empty receive also proves consumer connectivity.
+          return;
         }
-        batch.push(body as unknown as StreamEnvelope);
-      }
-      // Durable obligations FIRST (archive etc.), then checkpoint — the
-      // documented at-least-once contract.
-      await onBatch(batch);
-      for (const event of events) {
-        await context.updateCheckpoint(event);
-      }
-    },
-    processError: async (err) => {
-      // Bounded retry policy lives in the SDK client options; surface the
-      // error for telemetry without crashing the consumer loop.
-      console.error('[live] event hubs consumer error:', String(err).slice(0, 200));
-    },
-  });
-
-  signal.addEventListener('abort', () => {
-    void subscriptions.close();
-  });
-  await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()));
+        const batch: StreamEnvelope[] = [];
+        for (const event of events) {
+          const body = event.body as Record<string, unknown> | undefined;
+          if (
+            body === undefined ||
+            body.contractVersion !== STREAM_CONTRACT_VERSION ||
+            typeof body.envelopeId !== 'string'
+          ) {
+            // Poison envelope: quarantine via a synthetic record; the worker's
+            // quarantine store captures the trace id when present.
+            batch.push({
+              contractVersion: STREAM_CONTRACT_VERSION,
+              envelopeId: `poison-${String(event.offset ?? event.sequenceNumber)}`,
+              matchId: config.matchId,
+              kind: 'event',
+              event: body as StreamEnvelope['event'],
+              emittedAt: event.enqueuedTimeUtc?.getTime() ?? Date.now(),
+              traceId: typeof body?.traceId === 'string' ? (body.traceId as string) : 'trc-unknown',
+            });
+            continue;
+          }
+          batch.push(body as unknown as StreamEnvelope);
+        }
+        // Durable obligations FIRST (archive etc.), then checkpoint — the
+        // documented at-least-once contract.
+        await onBatch(batch);
+        signal.throwIfAborted();
+        for (const event of events) {
+          await context.updateCheckpoint(event);
+        }
+        health?.onReady();
+      },
+      processError: async (err) => {
+        // Fail closed: let the runtime withdraw readiness and end the session.
+        // Recovery is a process restart; no second consumer is started here.
+        if (!signal.aborted) {
+          health?.onError(err); // Withdraw readiness before potentially slow SDK cleanup.
+          rejectStopped(err);
+        }
+      },
+      processClose: async (reason) => {
+        if (!signal.aborted) {
+          const error = new Error(`event hubs partition closed: ${reason}`);
+          health?.onError(error);
+          rejectStopped(error);
+        }
+      },
+    });
+    await stopped;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+    try {
+      await subscription?.close();
+    } finally {
+      await client.close();
+    }
+  }
 }
 
 /**
