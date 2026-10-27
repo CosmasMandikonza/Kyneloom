@@ -26,6 +26,7 @@ import { draftCues, proposalDiffers } from '@/lib/studio/draft-cues';
 import { sceneWithDraftCamera } from '@/lib/studio/draft-scene';
 import {
   createLocalDraftRepository,
+  type DraftConcurrencyToken,
   type StudioDraftRepository,
 } from '@/lib/studio/local-draft-store';
 import type { ReplayEngine } from '@/app/explore/scene/scene-context';
@@ -86,12 +87,24 @@ export function StudioExperience({
     readonly CompileSuccess['metrics'][number][]
   >(() => initialResult.metrics);
   const [compilePhase, setCompilePhase] = useState<CompilePhase>({ kind: 'idle' });
-  const [savedRevision, setSavedRevision] = useState(0);
+  /**
+   * The editor's expected concurrency identity — the full typed token, NOT a
+   * bare revision. A stale tab's old-generation token can never CAS onto a
+   * recreated lineage (review 6429754954's ABA race); the repository compares
+   * generation + revision atomically.
+   */
+  const [savedToken, setSavedToken] = useState<DraftConcurrencyToken>({
+    generation: 1,
+    revision: 0,
+  });
   const [savedProposal, setSavedProposal] = useState<MomentProposal | null>(null);
   const [saveBusy, setSaveBusy] = useState(false);
   const [conflict, setConflict] = useState<{ readonly theirRevision: number } | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
-  const [confirmDiscard, setConfirmDiscard] = useState<{ readonly revision: number } | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState<{
+    readonly revision: number;
+    readonly token: DraftConcurrencyToken;
+  } | null>(null);
   const [restoreOffer, setRestoreOffer] = useState<
     | { readonly kind: 'checking' }
     | { readonly kind: 'none' }
@@ -107,6 +120,8 @@ export function StudioExperience({
   const [previewMode, setPreviewMode] = useState(false);
 
   const engineRef = useRef<ReplayEngine | null>(null);
+  /** The full token of the latest LIVE load (the banner offers by revision, the restore/discard needs the identity). */
+  const pendingLiveToken = useRef<DraftConcurrencyToken | null>(null);
   const repositoryRef = useRef<StudioDraftRepository | null>(null);
   const repository = (): StudioDraftRepository => {
     if (repositoryRef.current === null) {
@@ -116,14 +131,15 @@ export function StudioExperience({
   };
   const compileSeq = useRef(0);
 
+  const savedRevision = savedToken.revision; // the truthful within-lineage display number
   const asDraft = useCallback(
     (document: MomentProposal): StudioDraft => ({
       schemaVersion: STUDIO_DRAFT_SCHEMA_VERSION,
       draftId,
-      revision: savedRevision,
+      revision: savedToken.revision,
       proposal: document,
     }),
-    [draftId, savedRevision],
+    [draftId, savedToken.revision],
   );
 
   /** Apply a validated edit as ONE history command; surface rejections verbatim. */
@@ -166,17 +182,22 @@ export function StudioExperience({
       try {
         const loaded = await repository().load(draftId);
         if (cancelled) return;
-        if (loaded === null) {
-          setRestoreOffer({ kind: 'none' });
-        } else if (!loaded.ok) {
+        if (!loaded.ok) {
           setRestoreOffer({ kind: 'invalid', message: loaded.message });
-        } else {
+        } else if (loaded.kind === 'live') {
           setRestoreOffer({
             kind: 'offer',
             proposal: loaded.draft.proposal,
             revision: loaded.draft.revision,
             savedAt: loaded.savedAt,
           });
+          pendingLiveToken.current = loaded.token;
+        } else {
+          // Nothing live (never saved, or the lineage was discarded): this
+          // tab's baseline expects the STORE's next generation token — never
+          // a bare revision 0 (the ABA fix on the editor side).
+          setRestoreOffer({ kind: 'none' });
+          setSavedToken(loaded.token);
         }
       } catch (error) {
         if (cancelled) return;
@@ -191,31 +212,36 @@ export function StudioExperience({
     };
   }, [draftId]);
 
-  const restoreSavedDraft = useCallback((offer: { proposal: MomentProposal; revision: number }) => {
-    setHistory(createHistory({ proposal: offer.proposal, selection: null }));
-    setSavedRevision(offer.revision);
-    setSavedProposal(offer.proposal);
-    setEditErrors([]);
-    setConflict(null);
-    setRestoreOffer({ kind: 'none' });
-    setConfirmDiscard(null);
-  }, []);
+  const restoreSavedDraft = useCallback(
+    (offer: { proposal: MomentProposal; token: DraftConcurrencyToken; savedAt: string }) => {
+      setHistory(createHistory({ proposal: offer.proposal, selection: null }));
+      setSavedToken(offer.token);
+      setSavedProposal(offer.proposal);
+      setEditErrors([]);
+      setConflict(null);
+      setRestoreOffer({ kind: 'none' });
+      setConfirmDiscard(null);
+    },
+    [],
+  );
 
   /** Re-read the store and refresh the restore offer (used when a reset raced). */
   const refreshRestoreOffer = useCallback(async (): Promise<void> => {
     try {
       const loaded = await repository().load(draftId);
-      if (loaded === null) {
-        setRestoreOffer({ kind: 'none' });
-      } else if (!loaded.ok) {
+      if (!loaded.ok) {
         setRestoreOffer({ kind: 'invalid', message: loaded.message });
-      } else {
+      } else if (loaded.kind === 'live') {
         setRestoreOffer({
           kind: 'offer',
           proposal: loaded.draft.proposal,
           revision: loaded.draft.revision,
           savedAt: loaded.savedAt,
         });
+        pendingLiveToken.current = loaded.token;
+      } else {
+        setRestoreOffer({ kind: 'none' });
+        setSavedToken(loaded.token);
       }
     } catch (error) {
       setStorageError(
@@ -231,11 +257,13 @@ export function StudioExperience({
    * offer refreshes so the user re-decides against the real stored state.
    */
   const discardSavedDraft = useCallback(
-    async (expectedRevision: number): Promise<void> => {
+    async (expected: DraftConcurrencyToken): Promise<void> => {
       try {
-        const outcome = await repository().reset(draftId, expectedRevision);
+        const outcome = await repository().reset(draftId, expected);
         if (outcome.ok) {
-          setSavedRevision(0);
+          // Adopt the FOLLOW-UP lineage's fresh token — a successful reset
+          // updates the editor's full expected identity, not just a number.
+          setSavedToken(outcome.nextToken);
           setSavedProposal(null);
           setConflict(null);
           setConfirmDiscard(null);
@@ -267,20 +295,24 @@ export function StudioExperience({
   const reloadSavedDraft = useCallback(async (): Promise<void> => {
     try {
       const loaded = await repository().load(draftId);
-      if (loaded === null) {
-        // The stored draft vanished (another tab discarded it). Adopt the
-        // fresh lineage honestly: this tab saves from revision 0 next.
-        setSavedRevision(0);
-        setSavedProposal(null);
-        setConflict(null);
-        setStorageError(null);
-        return;
-      }
       if (!loaded.ok) {
         setStorageError(loaded.message);
         return;
       }
-      restoreSavedDraft(loaded.draft);
+      if (loaded.kind === 'live') {
+        restoreSavedDraft({
+          proposal: loaded.draft.proposal,
+          token: loaded.token,
+          savedAt: loaded.savedAt,
+        });
+        setStorageError(null);
+        return;
+      }
+      // Nothing live (another tab discarded the lineage): adopt the store's
+      // next-generation token honestly — this tab saves a FRESH lineage next.
+      setSavedToken(loaded.token);
+      setSavedProposal(null);
+      setConflict(null);
       setStorageError(null);
     } catch (error) {
       setStorageError(
@@ -293,14 +325,14 @@ export function StudioExperience({
     if (saveBusy) return;
     setSaveBusy(true);
     try {
-      const outcome = await repository().save(asDraft(proposal), savedRevision);
+      const outcome = await repository().save(asDraft(proposal), savedToken);
       if (outcome.ok) {
-        setSavedRevision(outcome.revision);
+        setSavedToken(outcome.token);
         setSavedProposal(proposal);
         setConflict(null);
         setStorageError(null);
       } else if (outcome.kind === 'conflict') {
-        setConflict({ theirRevision: outcome.currentRevision });
+        setConflict({ theirRevision: outcome.current.revision });
       }
     } catch (error) {
       setStorageError(
@@ -309,7 +341,7 @@ export function StudioExperience({
     } finally {
       setSaveBusy(false);
     }
-  }, [asDraft, proposal, saveBusy, savedRevision]);
+  }, [asDraft, proposal, saveBusy, savedToken]);
 
   const recompile = useCallback(async (): Promise<void> => {
     if (compilePhase.kind === 'busy') return;
@@ -530,7 +562,15 @@ export function StudioExperience({
               type="button"
               className="btn btn--primary"
               data-restore-draft=""
-              onClick={() => restoreSavedDraft(restoreOffer)}
+              onClick={() => {
+                if (pendingLiveToken.current !== null) {
+                  restoreSavedDraft({
+                    proposal: restoreOffer.proposal,
+                    token: pendingLiveToken.current,
+                    savedAt: restoreOffer.savedAt,
+                  });
+                }
+              }}
             >
               Restore saved draft
             </button>
@@ -538,7 +578,14 @@ export function StudioExperience({
               type="button"
               className="btn btn--ghost"
               data-start-fresh=""
-              onClick={() => setConfirmDiscard({ revision: restoreOffer.revision })}
+              onClick={() => {
+                if (pendingLiveToken.current !== null) {
+                  setConfirmDiscard({
+                    revision: restoreOffer.revision,
+                    token: pendingLiveToken.current,
+                  });
+                }
+              }}
             >
               Start from baseline
             </button>
@@ -563,7 +610,7 @@ export function StudioExperience({
               type="button"
               className="btn btn--primary"
               data-discard-draft=""
-              onClick={() => void discardSavedDraft(restoreOffer.revision)}
+              onClick={() => void discardSavedDraft(confirmDiscard.token)}
             >
               Discard and start fresh
             </button>

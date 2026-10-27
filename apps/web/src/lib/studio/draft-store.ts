@@ -12,108 +12,174 @@ import { STUDIO_DRAFT_SCHEMA_VERSION, type StudioDraft } from './draft';
  * authorized server adapter implements without rewriting the editor — the
  * editor code never talks to storage directly.
  *
- * Compare-and-save law: `save(draft, expectedRevision)` succeeds ONLY when
- * the stored revision equals `expectedRevision` (or nothing is stored yet);
- * it then stores the draft at `expectedRevision + 1` and returns the new
- * revision. A concurrent editor (another tab) that saved first produces a
- * CONFLICT result naming the stored revision — never a silent overwrite.
+ * Concurrency identity — generation + revision, never revision alone:
+ * a discard does NOT delete the concurrency history. It writes a durable
+ * TOMBSTONE naming the discarded generation, and the next save starts a NEW
+ * generation (previous + 1) at revision 1. Every save/reset compares the
+ * caller's full expected token `{generation, revision}` against the stored
+ * entry inside ONE atomic transaction. A stale tab holding an OLD
+ * generation's token can therefore never CAS onto an unrelated new lineage
+ * that happens to reuse the same revision number (the ABA race from review
+ * 6429754954) — it receives an explicit conflict, and the new lineage's
+ * data survives untouched.
  */
 
-/** The persisted record: schema-validated on write AND on load (fail closed). */
+/** The typed compare-and-save token: lineage identity + revision within it. */
+export interface DraftConcurrencyToken {
+  /** Monotonic lineage number; increases across discard/recreate. */
+  readonly generation: number;
+  /** Revision within the generation; 0 means "nothing saved in this lineage yet". */
+  readonly revision: number;
+}
+
+/** The persisted live record: schema-validated on write AND on load (fail closed). */
 export interface StoredDraftRecord {
   readonly schemaVersion: typeof STUDIO_DRAFT_SCHEMA_VERSION;
   readonly draftId: string;
+  readonly generation: number;
   readonly revision: number;
   readonly savedAt: string;
   readonly proposal: MomentProposal;
 }
 
+/**
+ * The durable marker that a generation existed and was explicitly discarded.
+ * Retained FOREVER (never the target of a bare delete) so a fresh lineage can
+ * never reuse an older generation's identity — this is the ABA fix.
+ */
+export interface DraftTombstoneRecord {
+  readonly schemaVersion: typeof STUDIO_DRAFT_SCHEMA_VERSION;
+  readonly draftId: string;
+  readonly generation: number;
+  readonly discardedAt: string;
+}
+
+/** Anything the store may hold for a draftId. */
+export type StoredDraftEntry = StoredDraftRecord | DraftTombstoneRecord;
+
+export function isTombstone(entry: StoredDraftEntry): entry is DraftTombstoneRecord {
+  return (entry as DraftTombstoneRecord).discardedAt !== undefined;
+}
+
 export type LoadOutcome =
-  | { readonly ok: true; readonly draft: StudioDraft; readonly savedAt: string }
+  | {
+      readonly ok: true;
+      readonly kind: 'live';
+      readonly draft: StudioDraft;
+      readonly savedAt: string;
+      readonly token: DraftConcurrencyToken;
+    }
+  | {
+      /** Nothing live: the token a FRESH lineage in this store must present. */
+      readonly ok: true;
+      readonly kind: 'empty';
+      readonly token: DraftConcurrencyToken;
+    }
   | { readonly ok: false; readonly kind: 'invalid'; readonly message: string };
 
 export type SaveOutcome =
-  | { readonly ok: true; readonly revision: number }
-  | { readonly ok: false; readonly kind: 'conflict'; readonly currentRevision: number };
+  | { readonly ok: true; readonly token: DraftConcurrencyToken }
+  | { readonly ok: false; readonly kind: 'conflict'; readonly current: DraftConcurrencyToken };
 
-/**
- * Reset (discard the saved local draft) under the SAME compare-and-save law:
- * the delete only proceeds when the stored revision still equals what the
- * user confirmed discarding — a concurrent tab that saved in between moves
- * the revision, and the reset refuses (conflict) instead of silently
- * discarding that tab's update. Never a bare unconditional delete.
- */
 export type ResetOutcome =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly kind: 'conflict'; readonly currentRevision: number }
+  | { readonly ok: true; readonly nextToken: DraftConcurrencyToken }
+  | { readonly ok: false; readonly kind: 'conflict'; readonly current: DraftConcurrencyToken }
   | { readonly ok: false; readonly kind: 'unavailable'; readonly message: string };
 
 export interface StudioDraftRepository {
-  /** The stored draft for this id, or null when none exists. A corrupt record REJECTS (never coerced). */
-  load(draftId: string): Promise<LoadOutcome | null>;
-  /** Atomic compare-and-save. */
-  save(draft: StudioDraft, expectedRevision: number): Promise<SaveOutcome>;
-  /** Atomic compare-and-discard of the stored record (explicit user action). */
-  reset(draftId: string, expectedRevision: number): Promise<ResetOutcome>;
+  /** The stored state for this id. A corrupt entry REJECTS (never coerced). */
+  load(draftId: string): Promise<LoadOutcome>;
+  /** Atomic compare-and-save over the full concurrency token. */
+  save(draft: StudioDraft, expected: DraftConcurrencyToken): Promise<SaveOutcome>;
+  /** Atomic compare-and-discard (explicit user action) — writes a tombstone. */
+  reset(draftId: string, expected: DraftConcurrencyToken): Promise<ResetOutcome>;
+}
+
+const freshToken = (generation = 1): DraftConcurrencyToken => ({ generation, revision: 0 });
+
+/**
+ * Pure CAS resolution shared by every backend. Decides a save against what is
+ * stored; exercised directly by tests. STRICT: only the exact expected token
+ * proceeds — a stale generation OR a stale revision conflicts.
+ */
+export function resolveSave(
+  stored: StoredDraftEntry | null,
+  expected: DraftConcurrencyToken,
+):
+  | { readonly proceed: true; readonly token: DraftConcurrencyToken }
+  | {
+      readonly proceed: false;
+      readonly current: DraftConcurrencyToken;
+    } {
+  if (stored === null) {
+    return expected.revision === 0
+      ? { proceed: true, token: { generation: expected.generation, revision: 1 } }
+      : { proceed: false, current: freshToken() };
+  }
+  // Legacy v1 live records carry no generation — the first lineage (the
+  // same normalization validateEntryShape applies on load).
+  const storedGeneration = isTombstone(stored) ? stored.generation : (stored.generation ?? 1);
+  if (isTombstone(stored)) {
+    const next = freshToken(stored.generation + 1);
+    return expected.generation === stored.generation + 1 && expected.revision === 0
+      ? { proceed: true, token: { generation: next.generation, revision: 1 } }
+      : { proceed: false, current: next };
+  }
+  return expected.generation === storedGeneration && expected.revision === stored.revision
+    ? { proceed: true, token: { generation: storedGeneration, revision: stored.revision + 1 } }
+    : { proceed: false, current: { generation: storedGeneration, revision: stored.revision } };
 }
 
 /**
- * Pure CAS resolution shared by every backend: given what is stored and what
- * a tab wants to save, decide the outcome. Exercised directly by tests.
+ * Pure reset resolution: same strict law, applied to the discard. A live
+ * record is discarded only with its exact token; a tombstone accepts only the
+ * FOLLOW-UP lineage's fresh token (idempotent no-op); anything stale —
+ * including an OLD generation's token after the lineage was recreated —
+ * conflicts, and the stored data survives.
  */
-export function resolveSave(
-  stored: { readonly revision: number } | null,
-  expectedRevision: number,
-): { readonly proceed: true } | { readonly proceed: false; readonly currentRevision: number } {
-  if (stored === null) {
-    return expectedRevision === 0 ? { proceed: true } : { proceed: false, currentRevision: 0 };
-  }
-  return stored.revision === expectedRevision
-    ? { proceed: true }
-    : { proceed: false, currentRevision: stored.revision };
-}
-
-/** Pure reset resolution: same CAS law as resolveSave, except an absent
- * record is an idempotent success (discarding nothing cannot lose anyone's
- * update — if another tab reset first, this tab just confirms the same end
- * state). */
 export function resolveReset(
-  stored: { readonly revision: number } | null,
-  expectedRevision: number,
-): { readonly proceed: true } | { readonly proceed: false; readonly currentRevision: number } {
-  if (stored === null) return { proceed: true };
-  return stored.revision === expectedRevision
-    ? { proceed: true }
-    : { proceed: false, currentRevision: stored.revision };
-}
-
-/** Validate a stored record back into a StudioDraft (fail closed on any drift). */
-export function recordToDraft(record: unknown): LoadOutcome {
-  if (typeof record !== 'object' || record === null) {
-    return { ok: false, kind: 'invalid', message: 'the stored draft record is malformed' };
+  stored: StoredDraftEntry | null,
+  expected: DraftConcurrencyToken,
+):
+  | { readonly proceed: true; readonly tombstone: DraftTombstoneRecord | null }
+  | {
+      readonly proceed: false;
+      readonly current: DraftConcurrencyToken;
+    } {
+  if (stored === null) {
+    return expected.revision === 0
+      ? { proceed: true, tombstone: null }
+      : { proceed: false, current: freshToken() };
   }
-  const source = record as Record<string, unknown>;
-  if (source['schemaVersion'] !== STUDIO_DRAFT_SCHEMA_VERSION) {
+  if (isTombstone(stored)) {
+    const next = freshToken(stored.generation + 1);
+    return expected.generation === stored.generation + 1 && expected.revision === 0
+      ? { proceed: true, tombstone: null } // already discarded; nothing new to erase
+      : { proceed: false, current: next };
+  }
+  const legacyGeneration = stored.generation ?? 1; // legacy v1 record
+  if (expected.generation === legacyGeneration && expected.revision === stored.revision) {
     return {
-      ok: false,
-      kind: 'invalid',
-      message: `the stored draft was written by a different Studio version (${String(source['schemaVersion'])}) — start from the compiled baseline or clear the local draft`,
+      proceed: true,
+      tombstone: {
+        schemaVersion: stored.schemaVersion,
+        draftId: stored.draftId,
+        generation: legacyGeneration,
+        discardedAt: new Date().toISOString(),
+      },
     };
   }
-  if (typeof source['draftId'] !== 'string' || source['draftId'].length === 0) {
-    return { ok: false, kind: 'invalid', message: 'the stored draft id is malformed' };
-  }
-  if (
-    typeof source['revision'] !== 'number' ||
-    !Number.isInteger(source['revision']) ||
-    source['revision'] < 0
-  ) {
-    return { ok: false, kind: 'invalid', message: 'the stored draft revision is malformed' };
-  }
-  if (typeof source['savedAt'] !== 'string' || source['savedAt'].length === 0) {
-    return { ok: false, kind: 'invalid', message: 'the stored draft timestamp is malformed' };
-  }
-  const proposal = parseMomentProposal(source['proposal']);
+  return {
+    proceed: false,
+    current: { generation: legacyGeneration, revision: stored.revision },
+  };
+}
+
+/** Validate a stored LIVE record back into a StudioDraft (fail closed on drift). */
+export function recordToDraft(record: StoredDraftRecord): LoadOutcome {
+  const shape = validateEntryShape(record, record.draftId);
+  if (!shape.ok) return shape;
+  const proposal = parseMomentProposal(record.proposal);
   if (!proposal.ok) {
     return {
       ok: false,
@@ -123,18 +189,69 @@ export function recordToDraft(record: unknown): LoadOutcome {
   }
   return {
     ok: true,
-    savedAt: source['savedAt'],
+    kind: 'live',
+    savedAt: record.savedAt,
+    token: shape.token,
     draft: {
       schemaVersion: STUDIO_DRAFT_SCHEMA_VERSION,
-      draftId: source['draftId'],
-      revision: source['revision'],
+      draftId: record.draftId,
+      revision: record.revision,
       proposal: proposal.data,
     },
   };
 }
 
+/**
+ * Structural validation of a stored entry (live or tombstone). Legacy v1
+ * records without a generation are read as generation 1 (their lineage IS
+ * the first); a present-but-malformed generation fails closed.
+ */
+export function validateEntryShape(
+  entry: StoredDraftEntry,
+  expectedDraftId: string,
+):
+  | { readonly ok: true; readonly token: DraftConcurrencyToken }
+  | {
+      readonly ok: false;
+      readonly kind: 'invalid';
+      readonly message: string;
+    } {
+  if (typeof entry !== 'object' || entry === null) {
+    return { ok: false, kind: 'invalid', message: 'the stored draft record is malformed' };
+  }
+  const source = entry as unknown as Record<string, unknown>;
+  if (source['schemaVersion'] !== STUDIO_DRAFT_SCHEMA_VERSION) {
+    return {
+      ok: false,
+      kind: 'invalid',
+      message: `the stored draft was written by a different Studio version (${String(source['schemaVersion'])}) — start from the compiled baseline or clear the local draft`,
+    };
+  }
+  if (source['draftId'] !== expectedDraftId) {
+    return { ok: false, kind: 'invalid', message: 'the stored draft id is malformed' };
+  }
+  const generation = source['generation'] ?? 1; // legacy v1 record → first lineage
+  if (typeof generation !== 'number' || !Number.isInteger(generation) || generation < 1) {
+    return { ok: false, kind: 'invalid', message: 'the stored draft generation is malformed' };
+  }
+  if (isTombstone(entry)) {
+    if (typeof source['discardedAt'] !== 'string' || source['discardedAt'].length === 0) {
+      return { ok: false, kind: 'invalid', message: 'the stored tombstone is malformed' };
+    }
+    return { ok: true, token: freshToken(generation + 1) };
+  }
+  const revision = source['revision'];
+  if (typeof revision !== 'number' || !Number.isInteger(revision) || revision < 1) {
+    return { ok: false, kind: 'invalid', message: 'the stored draft revision is malformed' };
+  }
+  if (typeof source['savedAt'] !== 'string' || source['savedAt'].length === 0) {
+    return { ok: false, kind: 'invalid', message: 'the stored draft timestamp is malformed' };
+  }
+  return { ok: true, token: { generation, revision } };
+}
+
 /** Validate the draft BEFORE it reaches storage (the same fail-closed law). */
-export function buildRecord(draft: StudioDraft, nextRevision: number): StoredDraftRecord {
+export function buildRecord(draft: StudioDraft, token: DraftConcurrencyToken): StoredDraftRecord {
   const proposal = parseMomentProposal(draft.proposal);
   if (!proposal.ok) {
     throw new Error(
@@ -144,7 +261,8 @@ export function buildRecord(draft: StudioDraft, nextRevision: number): StoredDra
   return {
     schemaVersion: STUDIO_DRAFT_SCHEMA_VERSION,
     draftId: draft.draftId,
-    revision: nextRevision,
+    generation: token.generation,
+    revision: token.revision,
     savedAt: new Date().toISOString(),
     proposal: proposal.data,
   };

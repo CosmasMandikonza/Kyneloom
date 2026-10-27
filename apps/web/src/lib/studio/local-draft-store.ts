@@ -1,27 +1,34 @@
 import {
   buildRecord,
+  isTombstone,
   recordToDraft,
   resolveReset,
   resolveSave,
+  validateEntryShape,
+  type DraftConcurrencyToken,
+  type DraftTombstoneRecord,
   type LoadOutcome,
   type ResetOutcome,
   type SaveOutcome,
-  type StudioDraftRepository,
+  type StoredDraftEntry,
   type StoredDraftRecord,
+  type StudioDraftRepository,
 } from './draft-store';
 
 /**
  * KYN-17 — local backends for the draft repository.
  *
  * IndexedDB backend: one database (`kyneloom-studio`), one object store
- * keyed by draftId. The compare-and-save runs inside a SINGLE `readwrite`
- * transaction — IndexedDB serializes readwrite transactions per store across
- * connections, so two tabs over the same database cannot interleave a
- * read-modify-write: the revision check and the write commit atomically.
+ * keyed by draftId holding EITHER the live record OR the lineage tombstone.
+ * Every compare-and-save / compare-and-discard runs inside a SINGLE
+ * `readwrite` transaction — IndexedDB serializes readwrite transactions per
+ * store across connections, so two tabs over the same database cannot
+ * interleave a read-modify-write: the full-token check and the write (or
+ * tombstone) commit atomically.
  *
  * Memory backend: the same law over a shared map — also the test double for
- * two concurrent "tabs" (two repository facades over one backend) and the
- * honest fallback where IndexedDB is unavailable.
+ * concurrent "tabs" (two repository facades over one backend) and the honest
+ * fallback where IndexedDB is unavailable.
  */
 
 const DB_NAME = 'kyneloom-studio';
@@ -30,24 +37,20 @@ const STORE = 'drafts';
 
 /** Shared in-memory backend — inject one instance to simulate concurrent tabs. */
 export interface MemoryDraftBackend {
-  get(draftId: string): StoredDraftRecord | null;
-  put(record: StoredDraftRecord): void;
-  delete(draftId: string): void;
+  get(draftId: string): StoredDraftEntry | null;
+  put(entry: StoredDraftEntry): void;
   clear(): void;
 }
 
 export function createMemoryDraftBackend(): MemoryDraftBackend {
-  const records = new Map<string, StoredDraftRecord>();
+  const entries = new Map<string, StoredDraftEntry>();
   return {
-    get: (draftId) => records.get(draftId) ?? null,
-    put: (record) => {
-      records.set(record.draftId, record);
-    },
-    delete: (draftId) => {
-      records.delete(draftId);
+    get: (draftId) => entries.get(draftId) ?? null,
+    put: (entry) => {
+      entries.set(entry.draftId, entry);
     },
     clear: () => {
-      records.clear();
+      entries.clear();
     },
   };
 }
@@ -57,26 +60,52 @@ export function createMemoryDraftRepository(
 ): StudioDraftRepository {
   return {
     async load(draftId) {
-      const record = backend.get(draftId);
-      if (record === null) return null;
-      return recordToDraft(record);
-    },
-    async save(draft, expectedRevision) {
-      const stored = backend.get(draft.draftId);
-      const outcome = resolveSave(stored, expectedRevision);
-      if (!outcome.proceed) {
-        return { ok: false, kind: 'conflict', currentRevision: outcome.currentRevision };
+      const entry = backend.get(draftId);
+      if (entry === null) {
+        return { ok: true, kind: 'empty', token: { generation: 1, revision: 0 } };
       }
-      backend.put(buildRecord(draft, expectedRevision + 1));
-      return { ok: true, revision: expectedRevision + 1 };
+      const shape = validateEntryShape(entry, draftId);
+      if (!shape.ok) return shape;
+      if (isTombstone(entry)) return { ok: true, kind: 'empty', token: shape.token };
+      return recordToDraft(entry);
     },
-    async reset(draftId, expectedRevision) {
-      const outcome = resolveReset(backend.get(draftId), expectedRevision);
-      if (!outcome.proceed) {
-        return { ok: false, kind: 'conflict', currentRevision: outcome.currentRevision };
+    async save(draft, expected) {
+      const entry = backend.get(draft.draftId);
+      if (entry !== null) {
+        const shape = validateEntryShape(entry, draft.draftId);
+        if (!shape.ok) {
+          return { ok: false, kind: 'conflict', current: { generation: 1, revision: 0 } };
+        }
       }
-      backend.delete(draftId);
-      return { ok: true };
+      const outcome = resolveSave(entry, expected);
+      if (!outcome.proceed) {
+        return { ok: false, kind: 'conflict', current: outcome.current };
+      }
+      backend.put(buildRecord(draft, outcome.token));
+      return { ok: true, token: outcome.token };
+    },
+    async reset(draftId, expected) {
+      const entry = backend.get(draftId);
+      if (entry !== null) {
+        const shape = validateEntryShape(entry, draftId);
+        if (!shape.ok) {
+          return { ok: false, kind: 'conflict', current: { generation: 1, revision: 0 } };
+        }
+      }
+      const outcome = resolveReset(entry, expected);
+      if (!outcome.proceed) {
+        return { ok: false, kind: 'conflict', current: outcome.current };
+      }
+      if (outcome.tombstone !== null) backend.put(outcome.tombstone);
+      // Derive the follow-up generation from the RESOLVED outcome (the raw
+      // entry may be a legacy record without a generation field).
+      const nextGeneration =
+        entry === null
+          ? expected.generation
+          : (outcome.tombstone !== null
+              ? outcome.tombstone.generation
+              : (entry as { generation: number }).generation) + 1;
+      return { ok: true, nextToken: { generation: nextGeneration, revision: 0 } };
     },
   };
 }
@@ -113,72 +142,88 @@ export function createIndexedDbDraftRepository(): StudioDraftRepository {
     async load(draftId) {
       const database = await db();
       const transaction = database.transaction(STORE, 'readonly');
-      const record = await requestToPromise(
+      const entry = (await requestToPromise(
         transaction.objectStore(STORE).get(draftId) as IDBRequest<unknown>,
-      );
-      if (record === undefined || record === null) return null;
-      return recordToDraft(record);
+      )) as StoredDraftEntry | undefined;
+      if (entry === undefined || entry === null) {
+        return { ok: true, kind: 'empty', token: { generation: 1, revision: 0 } };
+      }
+      const shape = validateEntryShape(entry, draftId);
+      if (!shape.ok) return shape;
+      if (isTombstone(entry)) return { ok: true, kind: 'empty', token: shape.token };
+      return recordToDraft(entry);
     },
-    async save(draft, expectedRevision) {
+    async save(draft, expected) {
       const database = await db();
-      // ONE readwrite transaction: get + check + put commit or abort together,
-      // and IndexedDB serializes it against every other tab's transaction.
+      // ONE readwrite transaction: get + full-token check + put commit (or
+      // abort) together, serialized against every other tab's transaction.
       const transaction = database.transaction(STORE, 'readwrite');
       const store = transaction.objectStore(STORE);
-      const stored = (await requestToPromise(store.get(draft.draftId) as IDBRequest<unknown>)) as
-        { revision: unknown } | null | undefined;
-      const outcome = resolveSave(
-        stored === undefined || stored === null
-          ? null
-          : typeof stored.revision === 'number'
-            ? { revision: stored.revision }
-            : null,
-        expectedRevision,
-      );
+      const entry = (await requestToPromise(store.get(draft.draftId) as IDBRequest<unknown>)) as
+        StoredDraftEntry | undefined;
+      const stored = entry === undefined || entry === null ? null : entry;
+      if (stored !== null) {
+        const shape = validateEntryShape(stored, draft.draftId);
+        if (!shape.ok) {
+          transaction.abort();
+          return { ok: false, kind: 'conflict', current: { generation: 1, revision: 0 } };
+        }
+      }
+      const outcome = resolveSave(stored, expected);
       if (!outcome.proceed) {
         transaction.abort();
-        return { ok: false, kind: 'conflict', currentRevision: outcome.currentRevision };
+        return { ok: false, kind: 'conflict', current: outcome.current };
       }
       await new Promise<void>((resolve, reject) => {
         transaction.oncomplete = () => resolve();
         transaction.onabort = () =>
           reject(transaction.error ?? new Error('indexeddb save aborted'));
         transaction.onerror = () => reject(transaction.error ?? new Error('indexeddb save failed'));
-        store.put(buildRecord(draft, expectedRevision + 1));
+        store.put(buildRecord(draft, outcome.token));
       });
-      return { ok: true, revision: expectedRevision + 1 };
+      return { ok: true, token: outcome.token };
     },
-    async reset(draftId, expectedRevision) {
+    async reset(draftId, expected) {
       const database = await db();
-      // ONE readwrite transaction: get + revision check + delete commit (or
-      // abort) together — serialized against every other tab's transaction,
-      // exactly like save. The delete only commits when the stored revision
-      // still equals the one the user confirmed discarding.
+      // ONE readwrite transaction: get + full-token check + tombstone write
+      // (or abort) together — the discard never erases the generation record.
       const transaction = database.transaction(STORE, 'readwrite');
       const store = transaction.objectStore(STORE);
-      const stored = (await requestToPromise(store.get(draftId) as IDBRequest<unknown>)) as
-        { revision: unknown } | null | undefined;
-      const outcome = resolveReset(
-        stored === undefined || stored === null
-          ? null
-          : typeof stored.revision === 'number'
-            ? { revision: stored.revision }
-            : null,
-        expectedRevision,
-      );
+      const entry = (await requestToPromise(store.get(draftId) as IDBRequest<unknown>)) as
+        StoredDraftEntry | undefined;
+      const stored = entry === undefined || entry === null ? null : entry;
+      if (stored !== null) {
+        const shape = validateEntryShape(stored, draftId);
+        if (!shape.ok) {
+          transaction.abort();
+          return { ok: false, kind: 'conflict', current: { generation: 1, revision: 0 } };
+        }
+      }
+      const outcome = resolveReset(stored, expected);
       if (!outcome.proceed) {
         transaction.abort();
-        return { ok: false, kind: 'conflict', currentRevision: outcome.currentRevision };
+        return { ok: false, kind: 'conflict', current: outcome.current };
       }
-      await new Promise<void>((resolve, reject) => {
-        transaction.oncomplete = () => resolve();
-        transaction.onabort = () =>
-          reject(transaction.error ?? new Error('indexeddb reset aborted'));
-        transaction.onerror = () =>
-          reject(transaction.error ?? new Error('indexeddb reset failed'));
-        store.delete(draftId);
-      });
-      return { ok: true };
+      if (outcome.tombstone !== null) {
+        await new Promise<void>((resolve, reject) => {
+          transaction.oncomplete = () => resolve();
+          transaction.onabort = () =>
+            reject(transaction.error ?? new Error('indexeddb reset aborted'));
+          transaction.onerror = () =>
+            reject(transaction.error ?? new Error('indexeddb reset failed'));
+          store.put(outcome.tombstone);
+        });
+      }
+      // Nothing to write when the entry was already a tombstone (idempotent
+      // no-op for the follow-up lineage's fresh token) — the read-only
+      // transaction commits harmlessly.
+      const nextGeneration =
+        stored === null
+          ? expected.generation
+          : (outcome.tombstone !== null
+              ? outcome.tombstone.generation
+              : (stored as { generation: number }).generation) + 1;
+      return { ok: true, nextToken: { generation: nextGeneration, revision: 0 } };
     },
   };
 }
@@ -212,4 +257,13 @@ export function createLocalDraftRepository(): StudioDraftRepository & {
   });
 }
 
-export type { LoadOutcome, ResetOutcome, SaveOutcome, StudioDraftRepository };
+export type {
+  DraftConcurrencyToken,
+  DraftTombstoneRecord,
+  LoadOutcome,
+  ResetOutcome,
+  SaveOutcome,
+  StoredDraftEntry,
+  StoredDraftRecord,
+  StudioDraftRepository,
+};

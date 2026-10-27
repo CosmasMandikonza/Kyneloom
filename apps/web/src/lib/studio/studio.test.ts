@@ -25,7 +25,13 @@ import { applyCommand, createHistory, redo, undo } from './history';
 import { buildShotPreset, wingerFollow } from './presets';
 import { draftCues, draftDiffersFromCompiled } from './draft-cues';
 import { createMemoryDraftBackend, createMemoryDraftRepository } from './local-draft-store';
-import { recordToDraft, resolveSave } from './draft-store';
+import {
+  recordToDraft,
+  resolveSave,
+  validateEntryShape,
+  type StoredDraftRecord,
+} from './draft-store';
+import { STUDIO_DRAFT_SCHEMA_VERSION } from './draft';
 
 /**
  * KYN-17 — the editing model against the REAL trusted world: the committed
@@ -337,73 +343,259 @@ describe('studio draft cues — verified text, editorial timing (red-team #4)', 
   });
 });
 
-describe('studio draft repository — atomic compare-and-save (red-team #9/#10)', () => {
-  it('resolveSave decides CAS exactly', () => {
-    expect(resolveSave(null, 0).proceed).toBe(true);
-    expect(resolveSave(null, 2).proceed).toBe(false);
-    expect(resolveSave({ revision: 3 }, 3).proceed).toBe(true);
-    const stale = resolveSave({ revision: 4 }, 3);
-    expect(stale.proceed).toBe(false);
-    if (stale.proceed) return;
-    expect(stale.currentRevision).toBe(4);
+describe('studio draft repository — typed generation+revision CAS (red-team #9/#10 + ABA red-team A–E)', () => {
+  const token = (generation: number, revision: number) => ({ generation, revision });
+
+  it('resolveSave decides the full-token CAS exactly', () => {
+    expect(resolveSave(null, token(1, 0)).proceed).toBe(true);
+    expect(resolveSave(null, token(1, 2)).proceed).toBe(false);
+    const live = {
+      schemaVersion: STUDIO_DRAFT_SCHEMA_VERSION,
+      draftId: 'd',
+      generation: 2,
+      revision: 3,
+      savedAt: 't',
+      proposal: null,
+    } as unknown as StoredDraftRecord;
+    expect(resolveSave(live, token(2, 3)).proceed).toBe(true);
+    const staleRevision = resolveSave(live, token(2, 2));
+    expect(staleRevision.proceed).toBe(false);
+    if (staleRevision.proceed) return;
+    expect(staleRevision.current).toEqual(token(2, 3));
+    const staleGeneration = resolveSave(live, token(1, 3));
+    expect(staleGeneration.proceed).toBe(false);
   });
 
-  it('two tabs over one backend: the second save conflicts and names the winner', async () => {
+  it('two tabs over one backend: the second save conflicts and names the winner (legit flow C)', async () => {
     const backend = createMemoryDraftBackend();
     const tabA = createMemoryDraftRepository(backend);
     const tabB = createMemoryDraftRepository(backend);
     const { draft } = await realWorld();
 
-    const first = await tabA.save(draft, 0);
+    const first = await tabA.save(draft, token(1, 0));
     expect(first.ok).toBe(true);
-    const second = await tabB.save(draft, 0);
+    if (!first.ok) return;
+    expect(first.token).toEqual(token(1, 1));
+
+    const second = await tabB.save(draft, token(1, 0));
     expect(second.ok).toBe(false);
     if (second.ok) return;
     expect(second.kind).toBe('conflict');
-    expect(second.currentRevision).toBe(1);
+    expect(second.current).toEqual(token(1, 1));
 
+    // Legitimate recovery: B reloads the latest, then saves the next revision.
     const reloaded = await tabB.load(draft.draftId);
-    expect(reloaded !== null && reloaded.ok).toBe(true);
-    if (reloaded === null || !reloaded.ok) return;
-    const retry = await tabB.save(reloaded.draft, reloaded.draft.revision);
+    expect(reloaded.ok && reloaded.kind === 'live').toBe(true);
+    if (!reloaded.ok || reloaded.kind !== 'live') return;
+    const retry = await tabB.save(reloaded.draft, reloaded.token);
     expect(retry.ok).toBe(true);
+    if (!retry.ok) return;
+    expect(retry.token).toEqual(token(1, 2));
   });
 
   it('a corrupt stored record is rejected on load, never coerced', () => {
-    const invalid = recordToDraft({ schemaVersion: 'something-else', draftId: 'x' });
-    expect(invalid !== null && !invalid.ok).toBe(true);
-    expect(recordToDraft('not-a-record') !== null).toBe(true);
-    expect(recordToDraft(null) !== null).toBe(true);
+    const invalid = recordToDraft({
+      schemaVersion: 'something-else',
+      draftId: 'x',
+    } as unknown as StoredDraftRecord);
+    expect(invalid.ok).toBe(false);
+    const malformed = validateEntryShape(
+      {
+        schemaVersion: STUDIO_DRAFT_SCHEMA_VERSION,
+        draftId: 'd',
+        generation: 'x',
+        revision: 1,
+        savedAt: 't',
+        proposal: null,
+      } as unknown as StoredDraftRecord,
+      'd',
+    );
+    expect(malformed.ok).toBe(false);
   });
 
-  it('reset discards under the same CAS law: stale expectations refuse, fresh lineages restart at revision 0', async () => {
+  it('RED-TEAM A — a stale token cannot save over a recreated lineage (the ABA race)', async () => {
+    const backend = createMemoryDraftBackend();
+    const repoA = createMemoryDraftRepository(backend);
+    const repoB = createMemoryDraftRepository(backend);
+    const repoC = createMemoryDraftRepository(backend);
+    const { draft } = await realWorld();
+    const documentA = draft;
+    // A DIFFERENT document: the hypothesis claim's editorial words differ
+    // (calculated claims cannot carry text — the contract law enforces that).
+    const documentC: typeof draft = {
+      ...draft,
+      proposal: {
+        ...draft.proposal,
+        claims: draft.proposal.claims.map((claim) =>
+          claim.status === 'hypothesis'
+            ? { ...claim, text: 'a different producers take on the same run' }
+            : claim,
+        ),
+      },
+    };
+
+    // 1. Tab A saves document A → {gen 1, rev 1}; A keeps the token open.
+    const savedA = await repoA.save(documentA, token(1, 0));
+    expect(savedA.ok).toBe(true);
+    if (!savedA.ok) return;
+    const staleToken = savedA.token; // {gen 1, rev 1}
+
+    // 2. Tab B explicitly resets that exact token → tombstone generation 1.
+    const reset = await repoB.reset(draft.draftId, staleToken);
+    expect(reset.ok).toBe(true);
+    if (!reset.ok) return;
+    expect(reset.nextToken).toEqual(token(2, 0));
+
+    // 3. Tab C creates a NEW document, saved with the follow-up fresh token.
+    const savedC = await repoC.save(documentC, reset.nextToken);
+    expect(savedC.ok).toBe(true);
+    if (!savedC.ok) return;
+    expect(savedC.token).toEqual(token(2, 1));
+
+    // 4/5. Stale tab A saves with the OLD generation token — revision numbers
+    // collide (1 vs 1) but the generations do not. MUST conflict.
+    const staleSave = await repoA.save(documentA, staleToken);
+    expect(staleSave.ok).toBe(false);
+    if (staleSave.ok) return;
+    expect(staleSave.kind).toBe('conflict');
+    expect(staleSave.current).toEqual(token(2, 1));
+
+    // 6. Generation B's data is UNCHANGED by the attack.
+    const after = await repoC.load(draft.draftId);
+    expect(after.ok && after.kind === 'live').toBe(true);
+    if (!after.ok || after.kind !== 'live') return;
+    expect(after.token).toEqual(token(2, 1));
+    expect(after.draft.proposal.claims.find((claim) => claim.status === 'hypothesis')?.text).toBe(
+      'a different producers take on the same run',
+    );
+  });
+
+  it('RED-TEAM B — a stale token cannot reset a recreated lineage either', async () => {
+    const backend = createMemoryDraftBackend();
+    const repoA = createMemoryDraftRepository(backend);
+    const repoB = createMemoryDraftRepository(backend);
+    const repoC = createMemoryDraftRepository(backend);
+    const { draft } = await realWorld();
+
+    const savedA = await repoA.save(draft, token(1, 0));
+    expect(savedA.ok).toBe(true);
+    if (!savedA.ok) return;
+    const staleToken = savedA.token;
+    const reset = await repoB.reset(draft.draftId, staleToken);
+    expect(reset.ok).toBe(true);
+    if (!reset.ok) return;
+    const savedC = await repoC.save(draft, reset.nextToken);
+    expect(savedC.ok).toBe(true);
+    if (!savedC.ok) return;
+
+    // The stale tab attempts the DISCARD with its old token. MUST reject.
+    const staleReset = await repoA.reset(draft.draftId, staleToken);
+    expect(staleReset.ok).toBe(false);
+    if (staleReset.ok) return;
+    expect(staleReset.kind).toBe('conflict');
+    if (staleReset.kind !== 'conflict') return;
+    expect(staleReset.current).toEqual(token(2, 1));
+
+    // Generation B's document remains intact.
+    const after = await repoC.load(draft.draftId);
+    expect(after.ok && after.kind === 'live').toBe(true);
+    if (!after.ok || after.kind !== 'live') return;
+    expect(after.token).toEqual(token(2, 1));
+  });
+
+  it('RED-TEAM D — a fresh lineage after discard: save, reload, truthfully numbered', async () => {
     const backend = createMemoryDraftBackend();
     const repository = createMemoryDraftRepository(backend);
     const { draft } = await realWorld();
 
-    // Nothing stored: reset is an idempotent success.
-    expect((await repository.reset(draft.draftId, 0)).ok).toBe(true);
-
-    const saved = await repository.save(draft, 0);
+    const saved = await repository.save(draft, token(1, 0));
     expect(saved.ok).toBe(true);
     if (!saved.ok) return;
+    const reset = await repository.reset(draft.draftId, saved.token);
+    expect(reset.ok).toBe(true);
+    if (!reset.ok) return;
 
-    // A concurrent tab moved the revision: the confirmed discard REFUSES and
-    // names the winner — that tab's update survives.
-    const raced = await repository.reset(draft.draftId, 0);
-    expect(raced.ok).toBe(false);
-    if (raced.ok) return;
-    expect(raced.kind).toBe('conflict');
-    if (raced.kind !== 'conflict') return;
-    expect(raced.currentRevision).toBe(1);
+    // After the discard the store reports the FOLLOW-UP generation token.
+    const emptied = await repository.load(draft.draftId);
+    expect(emptied.ok && emptied.kind === 'empty').toBe(true);
+    if (!emptied.ok || emptied.kind !== 'empty') return;
+    expect(emptied.token).toEqual(token(2, 0));
 
-    // Discarding the revision the user actually confirmed succeeds, and the
-    // next save starts a FRESH lineage from revision 0.
-    expect((await repository.reset(draft.draftId, 1)).ok).toBe(true);
-    expect(await repository.load(draft.draftId)).toBeNull();
-    const fresh = await repository.save(draft, 0);
+    // Save a fresh document with that token; reload persists it, generation 2.
+    const fresh = await repository.save(draft, emptied.token);
     expect(fresh.ok).toBe(true);
     if (!fresh.ok) return;
-    expect(fresh.revision).toBe(1);
+    expect(fresh.token).toEqual(token(2, 1)); // revision truthfully restarts at 1
+    const reloaded = await repository.load(draft.draftId);
+    expect(reloaded.ok && reloaded.kind === 'live').toBe(true);
+    if (!reloaded.ok || reloaded.kind !== 'live') return;
+    expect(reloaded.token).toEqual(token(2, 1));
+    expect(reloaded.draft.revision).toBe(1);
+  });
+
+  it('RED-TEAM E — conflicting reset/save races: exactly the allowed operation succeeds', async () => {
+    const backend = createMemoryDraftBackend();
+    const repoA = createMemoryDraftRepository(backend);
+    const repoB = createMemoryDraftRepository(backend);
+    const repoC = createMemoryDraftRepository(backend);
+    const { draft } = await realWorld();
+
+    const saved = await repoA.save(draft, token(1, 0));
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+    const liveToken = saved.token;
+
+    // Two tabs race the SAME legitimate discard: the first wins, the second
+    // (now stale) rejects without side effects.
+    const winner = await repoB.reset(draft.draftId, liveToken);
+    expect(winner.ok).toBe(true);
+    const loser = await repoC.reset(draft.draftId, liveToken);
+    expect(loser.ok).toBe(false);
+    if (loser.ok) return;
+    expect(loser.kind).toBe('conflict');
+
+    // Reset vs save race: after the tombstone, only the follow-up fresh token
+    // may save; the discarded lineage's token is dead forever.
+    const savedFresh = await repoB.save(draft, winner.ok ? winner.nextToken : token(2, 0));
+    expect(savedFresh.ok).toBe(true);
+    const zombieSave = await repoA.save(draft, liveToken);
+    expect(zombieSave.ok).toBe(false);
+    const zombieReset = await repoA.reset(draft.draftId, liveToken);
+    expect(zombieReset.ok).toBe(false);
+  });
+
+  it('legacy v1 records (no generation) load as generation 1 and are re-stamped on save', async () => {
+    const backend = createMemoryDraftBackend();
+    const repository = createMemoryDraftRepository(backend);
+    const { draft } = await realWorld();
+    // A record written by the previous schema (revision-only).
+    backend.put({
+      schemaVersion: STUDIO_DRAFT_SCHEMA_VERSION,
+      draftId: draft.draftId,
+      revision: 2,
+      savedAt: new Date().toISOString(),
+      proposal: draft.proposal,
+    } as unknown as StoredDraftRecord);
+
+    const loaded = await repository.load(draft.draftId);
+    expect(loaded.ok && loaded.kind === 'live').toBe(true);
+    if (!loaded.ok || loaded.kind !== 'live') return;
+    expect(loaded.token).toEqual(token(1, 2)); // legacy lineage read as generation 1
+
+    const next = await repository.save(loaded.draft, loaded.token);
+    expect(next.ok).toBe(true);
+    if (!next.ok) return;
+    expect(next.token).toEqual(token(1, 3)); // CAS continues within the legacy generation
+
+    // Discarding a LEGACY record must produce a well-formed follow-up token
+    // (never NaN from the missing generation field).
+    const legacyReset = await repository.reset(draft.draftId, next.token);
+    expect(legacyReset.ok).toBe(true);
+    if (!legacyReset.ok) return;
+    expect(legacyReset.nextToken).toEqual(token(2, 0));
+    const legacyFresh = await repository.save(draft, legacyReset.nextToken);
+    expect(legacyFresh.ok).toBe(true);
+    if (!legacyFresh.ok) return;
+    expect(legacyFresh.token).toEqual(token(2, 1));
   });
 });

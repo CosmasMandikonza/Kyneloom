@@ -1,16 +1,16 @@
 {
-  "generatedAt": "2026-10-26T23:03:52.370Z",
+  "generatedAt": "2026-10-27T00:10:40.281Z",
   "desktop": {
     "scene": {
       "perf": {
         "fps": 1,
-        "p50Ms": 961.6,
-        "p95Ms": 3639.7,
+        "p50Ms": 728.9,
+        "p95Ms": 2684.5,
         "drawCalls": 125,
         "triangles": 607412,
-        "geometries": 30,
+        "geometries": 32,
         "textures": 49,
-        "samples": 10
+        "samples": 13
       },
       "players": 22,
       "ball": true,
@@ -78,7 +78,7 @@
         "step": "mobile-scrub",
         "ok": true,
         "activation": "real",
-        "detail": "playhead 4725035.03"
+        "detail": "playhead 4725035.598"
       }
     ],
     "consoleErrors": [],
