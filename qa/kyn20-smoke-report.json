@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-10-27T03:31:40.996Z",
+  "steps": [
+    {
+      "step": "keyboard: Accessible lens via Space",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "keyboard: Play then Pause via Space",
+      "ok": true,
+      "detail": "playhead 4725166.6"
+    },
+    {
+      "step": "keyboard: ArrowRight seeks the canonical transport",
+      "ok": true,
+      "detail": "4717950 -> 4727170"
+    },
+    {
+      "step": "keyboard: transcript entry via Enter seeks to 78:48.3",
+      "ok": true,
+      "detail": "id evt-0010"
+    },
+    {
+      "step": "transcript: exactly one aria-current entry at the playhead",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "narration: strictly opt-in toggle via keyboard",
+      "ok": true,
+      "detail": "aria-pressed false -> true"
+    },
+    {
+      "step": "keyboard: lens switch preserves the shared playhead",
+      "ok": true,
+      "detail": "playhead 4728300"
+    },
+    {
+      "step": "mobile 390x844: accessible panel mounts, no horizontal overflow",
+      "ok": true,
+      "detail": "overflow 0px"
+    },
+    {
+      "step": "mobile: transcript seek via keyboard reaches 78:46.2",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "failures": []
+}

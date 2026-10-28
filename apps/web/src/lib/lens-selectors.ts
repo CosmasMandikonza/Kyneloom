@@ -215,6 +215,18 @@ export function transcriptEntries(
       kind: 'interpretation',
       actorId: null,
     });
+  } else {
+    // Honest absence: no verified measurement exists for this moment, so the
+    // transcript SAYS so — never a fabricated description. The window and
+    // reason come from the projection itself.
+    entries.push({
+      id: 'measurement:unavailable',
+      atMs: evidence.toMs,
+      title: `Measured separation · unavailable · ${formatMatchClockTenths(evidence.fromMs)}–${formatMatchClockTenths(evidence.toMs)}`,
+      description: `No verified separation measurement is available for ${evidence.defenderId} and ${evidence.strikerId} in this window (${evidence.reason}). Nothing is fabricated in its place.`,
+      kind: 'measurement',
+      actorId: null,
+    });
   }
   return entries.sort((a, b) => a.atMs - b.atMs);
 }

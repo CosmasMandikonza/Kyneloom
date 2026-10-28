@@ -128,6 +128,14 @@ export interface ReplayStageProps {
    * the moment start and play. Null keeps the default broadcast entry.
    */
   readonly autoRun?: { readonly camera: CameraMode; readonly fromMs: number } | null;
+  /**
+   * KYN-17 (Studio): optional external handle to this stage's engine object.
+   * The parent (the Studio timeline) reads `engine.playheadMs` for its
+   * synchronized playhead and seeks by writing `playheadMs` + bumping
+   * `revision` — the same transport law the stage's own controls use. The
+   * stage remains the engine's owner; this ref only PUBLISHES it.
+   */
+  readonly engineRef?: { current: ReplayEngine | null } | null;
 }
 
 /** KYN-16: compiler-verified overlay data bound to this stage's clock. */
@@ -150,6 +158,7 @@ export function ReplayStage({
   chapterTitle,
   compiled,
   autoRun,
+  engineRef,
 }: ReplayStageProps) {
   let timeline: ReturnType<typeof sceneTimeline> | null = null;
   let invalidReason: string | null = null;
@@ -178,6 +187,7 @@ export function ReplayStage({
       chapterTitle={chapterTitle ?? null}
       compiled={compiled ?? null}
       autoRun={autoRun ?? null}
+      engineRef={engineRef ?? null}
     />
   );
 }
@@ -189,10 +199,12 @@ function ReplayStageInner({
   chapterTitle,
   compiled,
   autoRun,
+  engineRef: externalEngineHandle,
 }: ReplayStageProps & {
   timeline: ReturnType<typeof sceneTimeline>;
   compiled: CompiledMomentOverlay | null;
   autoRun: { readonly camera: CameraMode; readonly fromMs: number } | null;
+  engineRef: { current: ReplayEngine | null } | null;
 }) {
   const speedGroupId = useId();
 
@@ -256,6 +268,16 @@ function ReplayStageInner({
     revision: 0,
   });
   const engine = engineRef.current;
+
+  // KYN-17: publish the engine to the optional external handle while this
+  // stage is mounted (cleared on unmount so a stale engine is never read).
+  useEffect(() => {
+    if (externalEngineHandle === null) return;
+    externalEngineHandle.current = engine;
+    return () => {
+      externalEngineHandle.current = null;
+    };
+  }, [externalEngineHandle, engine]);
 
   // Live mode: the engine window follows what has genuinely arrived, and a
   // FOLLOWING viewer jumps to the latest streamed match time (the user can
@@ -389,6 +411,18 @@ function ReplayStageInner({
     engine.revision += 1;
   }, [playing, speed, engine]);
 
+  /**
+   * KYN-20: bumped by every USER-INITIATED transport seek (slider input incl.
+   * 100 ms arrow steps, transport frame buttons, keyboard arrows, reset,
+   * chapter/evidence seeks). The Accessible panel observes it to cancel
+   * stale narration. NEVER bumped by the automatic playback loop or by the
+   * panel's own onSeek/onStep callbacks (those own their cancellation).
+   */
+  const [deliberateSeekSignal, setDeliberateSeekSignal] = useState(0);
+  const markDeliberateSeek = useCallback((): void => {
+    setDeliberateSeekSignal((count) => count + 1);
+  }, []);
+
   const setPlayhead = useCallback(
     (ms: number): void => {
       engine.playheadMs = Math.min(momentWindow.endMs, Math.max(momentWindow.startMs, ms));
@@ -483,6 +517,7 @@ function ReplayStageInner({
     if (target.closest('button, input, a, select')) return;
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
       event.preventDefault();
+      markDeliberateSeek();
       setPlayhead(stepFrame(engine.playheadMs, event.key === 'ArrowRight' ? 1 : -1, momentWindow));
     } else if (event.key === ' ') {
       event.preventDefault();
@@ -738,6 +773,7 @@ function ReplayStageInner({
   }, [compiled, engine]);
 
   const onSliderInput = (event: React.FormEvent<HTMLInputElement>): void => {
+    markDeliberateSeek();
     const value = Number((event.target as HTMLInputElement).value);
     if (Number.isFinite(value)) setPlayhead(value);
   };
@@ -847,6 +883,7 @@ function ReplayStageInner({
               className="stage__evidence-context-seek"
               onClick={() => {
                 setPlaying(false);
+                markDeliberateSeek();
                 setPlayhead(MEASURED_WINDOW.startMs);
               }}
             >
@@ -900,6 +937,7 @@ function ReplayStageInner({
 
           {lens === 'accessible' ? (
             <AccessiblePanel
+              deliberateSeekSignal={deliberateSeekSignal}
               scene={scene}
               evidence={evidenceSafe ?? evidence}
               engine={engine}
@@ -974,10 +1012,12 @@ function ReplayStageInner({
             onSeek={(ms) => {
               if (ghostClick()) return;
               setPlaying(false);
+              markDeliberateSeek();
               setPlayhead(ms);
             }}
             onReturn={(ms) => {
               if (ghostClick()) return;
+              markDeliberateSeek();
               setPlayhead(ms);
               setInspectorOpen(false);
             }}
@@ -1028,7 +1068,10 @@ function ReplayStageInner({
             <button
               type="button"
               className="stage__step"
-              onClick={() => setPlayhead(stepFrame(engine.playheadMs, -1, momentWindow))}
+              onClick={() => {
+                markDeliberateSeek();
+                setPlayhead(stepFrame(engine.playheadMs, -1, momentWindow));
+              }}
               title="Step back one 100 ms frame (←)"
             >
               <span className="visually-hidden">Step back one frame</span>
@@ -1039,7 +1082,10 @@ function ReplayStageInner({
             <button
               type="button"
               className="stage__step"
-              onClick={() => setPlayhead(stepFrame(engine.playheadMs, 1, momentWindow))}
+              onClick={() => {
+                markDeliberateSeek();
+                setPlayhead(stepFrame(engine.playheadMs, 1, momentWindow));
+              }}
               title="Step forward one 100 ms frame (→)"
             >
               <span className="visually-hidden">Step forward one frame</span>
@@ -1052,6 +1098,7 @@ function ReplayStageInner({
               className="stage__step stage__step--reset"
               onClick={() => {
                 setPlaying(false);
+                markDeliberateSeek();
                 setPlayhead(resetPlayhead(momentWindow, scene.checkpointMs));
               }}
               title="Deterministic reset to the confirmed 22-player checkpoint"
@@ -1107,6 +1154,7 @@ function ReplayStageInner({
                   // playback even while the scrubber holds focus.
                   if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
                     event.preventDefault();
+                    markDeliberateSeek();
                     setPlayhead(
                       stepFrame(
                         engine.playheadMs,
