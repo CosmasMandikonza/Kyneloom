@@ -63,12 +63,12 @@ export async function resolveAskMoment(
       : source.snapshot.context.events.find((event) => event.kind === 'goal');
 
   let proposal = corpus.golden;
-  let explanation: string;
-  let evidenceNote: string;
+  let explanation = '';
+  let evidenceNote = '';
   let sourceEventIds: readonly string[] = [];
   let evidenceIds: readonly string[] = [];
   let claimIds: readonly string[] = [];
-  let focusPlayheadMs: number;
+  let focusPlayheadMs = 0;
 
   switch (classification.intentId) {
     case 'off-ball-run': {

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { resolveAskMoment } from '@/lib/ask-intent';
 import { ASK_ROUTE_VERSION, MAX_PROMPT_LENGTH, SUPPORTED_INTENTS } from '@/lib/ask-intent-shared';
+import { readFoundryEnv } from '@/lib/foundry/live-provider';
+import { resolveAskMomentViaFoundry } from '@/lib/foundry/ask-bridge';
 
 /**
  * KYN "Ask Kyneloom" — `POST /api/moment/intent`.
@@ -88,6 +90,17 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  // KYN-15: when Foundry is EXPLICITLY enabled and configured, the same Ask
+  // request runs the real multi-agent workflow (provider port — live
+  // provider UNVERIFIED until authorized access exists; tests inject).
+  // Disabled (default): the deterministic resolver, unchanged. Enabled but
+  // unavailable: truthful needs_review/provider-unavailable — never a local
+  // output labeled Foundry.
+  const foundryConfig = readFoundryEnv();
+  if (foundryConfig.enabled) {
+    const outcome = await resolveAskMomentViaFoundry(prompt, foundryConfig);
+    return NextResponse.json(outcome);
+  }
   const outcome = await resolveAskMoment(prompt);
   return NextResponse.json(outcome);
 }
