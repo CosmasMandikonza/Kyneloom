@@ -22,7 +22,7 @@ import type { CompileResult } from '@kyneloom/moment-compiler';
 export const ASK_ROUTE_VERSION = 'kyneloom-ask-intent-v1';
 export const ASK_RESOLVER_LABEL = 'Local deterministic interpretation · Synthetic match';
 
-export type AskIntentId = 'off-ball-run' | 'goal-buildup' | 'broadcast-wide';
+export type AskIntentId = 'off-ball-run' | 'goal-buildup' | 'broadcast-wide' | 'foundry-experience';
 
 export const SUPPORTED_INTENTS: readonly { id: AskIntentId; example: string }[] = [
   { id: 'off-ball-run', example: 'Show me how the off-ball run opened space' },
@@ -64,7 +64,7 @@ export type AskMomentOutcome =
   | {
       readonly ok: true;
       readonly routeVersion: typeof ASK_ROUTE_VERSION;
-      readonly resolver: typeof ASK_RESOLVER_LABEL;
+      readonly resolver: string;
       readonly intentId: AskIntentId;
       /** ONLY accepted source event ids (authoritative eventIds). */
       readonly sourceEventIds: readonly string[];
@@ -83,7 +83,7 @@ export type AskMomentOutcome =
   | {
       readonly ok: false;
       readonly routeVersion: typeof ASK_ROUTE_VERSION;
-      readonly resolver: typeof ASK_RESOLVER_LABEL;
+      readonly resolver: string;
       readonly kind: 'unsupported';
       readonly message: string;
       readonly supportedExamples: readonly string[];
