@@ -1,5 +1,7 @@
 import { mkdirSync, appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { azureModeRequested } from './azure-adapters';
+import { liveProcessState } from './process-state';
 import {
   LiveProjectionWorker,
   LocalFixtureProducer,
@@ -9,7 +11,7 @@ import {
   type StreamEnvelope,
   type ProducerChaos,
 } from '@kyneloom/match-core';
-import { loadGoldenMatch } from '@/lib/match-fixture';
+import { loadGoldenMatch } from '../match-fixture';
 import type { MatchEvent, TrackingSample } from '@kyneloom/contracts';
 
 /**
@@ -25,9 +27,10 @@ import type { MatchEvent, TrackingSample } from '@kyneloom/contracts';
  *
  * DURABILITY (docs/09): Event Hubs retention is NOT an archive. Every
  * admitted, rejected and corrected envelope is appended to a local
- * append-only JSONL archive (the Blob equivalent when deployed), plus a
- * durable quarantine file with trace ids. Checkpoints (last durably
- * processed envelope id) are written only after the archive append
+ * append-only JSONL archive, plus a quarantine file with trace ids. In cloud
+ * mode these local files are ephemeral diagnostics: azure-runtime writes Blob
+ * FIRST and restores from Blob only; it never restores from this directory.
+ * Checkpoints (last durably processed envelope id) are written only after the archive append
  * succeeds — never merely because a handler saw the message.
  */
 
@@ -59,12 +62,11 @@ interface Subscriber {
 
 export type LiveSpeed = 1 | 2 | 4;
 
-export class LiveMatchService {
-  private static instance: LiveMatchService | null = null;
+const processState = liveProcessState();
 
+export class LiveMatchService {
   static get(): LiveMatchService {
-    LiveMatchService.instance ??= new LiveMatchService();
-    return LiveMatchService.instance;
+    return (processState.service ??= new LiveMatchService());
   }
 
   readonly matchId = 'synthetic-derby-01';
@@ -85,6 +87,8 @@ export class LiveMatchService {
   private initializationEpoch: number | null = null;
   /** True after an intentional stop: public auto-start must not revive. */
   private operatorStopped = false;
+  /** True while the session is fed by the CLOUD ingestion worker (KYN-14). */
+  private externalSession = false;
   private worker: LiveProjectionWorker;
   private producer: LocalFixtureProducer | null = null;
   private stopProducer: (() => void) | null = null;
@@ -144,6 +148,56 @@ export class LiveMatchService {
     return this.operatorStopped;
   }
 
+  /** True while a cloud-fed (external ingestion) session is active. */
+  get isExternalSession(): boolean {
+    return this.externalSession;
+  }
+
+  /**
+   * KYN-14 — begin an EXTERNALLY FED stream session (the cloud worker).
+   * Same generation laws as a local start — new session id, new worker,
+   * sequence space reset — but NO local producer: envelopes arrive from
+   * Event Hubs via the runtime. Idempotent while running. The LiveMatch
+   * service stays the ONE canonical reducer owner either way.
+   */
+  beginExternalSession(sessionId?: string): void {
+    if (this.running) return;
+    // External ingestion also writes local quarantine/checkpoint diagnostics.
+    // Initialize before claiming a running session; Blob remains cloud recovery.
+    mkdirSync(this.archiveDir, { recursive: true });
+    this.lifecycleEpoch += 1; // invalidate any stale initialization
+    this.sessionCounter += 1;
+    this.sessionId = sessionId ?? `live-${String(this.sessionCounter)}-${String(Date.now())}`;
+    this.worker = new LiveProjectionWorker({ matchId: this.matchId, sessionId: this.sessionId });
+    this.running = true;
+    this.externalSession = true;
+    this.operatorStopped = false;
+  }
+
+  /**
+   * End the external session TRUTHFULLY (ingestion stopped/failed). Unlike
+   * an operator stop this does NOT set operatorStopped — the next
+   * authorized activation (local start or a new external session) is not
+   * blocked; viewers see a truthful disconnected frame.
+   */
+  endExternalSession(detail: string): void {
+    if (!this.running) return;
+    this.lifecycleEpoch += 1;
+    this.running = false;
+    this.externalSession = false;
+    for (const subscriber of this.subscribers.values()) {
+      this.pushToSubscriber(subscriber, {
+        type: 'status',
+        matchId: this.matchId,
+        sessionId: this.sessionId,
+        seq: this.worker.currentSeq,
+        status: 'disconnected',
+        detail: `cloud ingestion ended — ${detail}`,
+        traceId: '',
+      });
+    }
+  }
+
   /**
    * Start the local producer. IDEMPOTENT while running (same generation);
    * after a stop this allocates a NEW session id — a fresh generation with
@@ -176,6 +230,8 @@ export class LiveMatchService {
     chaos?: ProducerChaos;
     sessionId?: string;
   }): Promise<void> {
+    if (azureModeRequested(process.env))
+      throw new Error('cloud ingestion is ownership-managed; local producer disabled');
     const entryEpoch = this.lifecycleEpoch;
     if (this.running) return;
     if (this.initialization !== null) {
@@ -237,6 +293,7 @@ export class LiveMatchService {
     mkdirSync(this.archiveDir, { recursive: true });
     this.running = true;
     this.operatorStopped = false;
+    this.externalSession = false;
     this.stopProducer = this.producer.start((batch) => this.ingest(batch));
   }
 
@@ -247,6 +304,7 @@ export class LiveMatchService {
     this.stopProducer?.();
     this.stopProducer = null;
     this.running = false;
+    this.externalSession = false;
     // An intentional stop must STAY stopped: the public GET auto-start
     // refuses to revive the stream until an explicitly issued start()
     // (authorized control route / operator) clears this on activation.
@@ -356,10 +414,23 @@ export class LiveMatchService {
     return frames;
   }
 
+  /**
+   * Cloud fan-out hook (KYN-14): when the Azure runtime is active, every
+   * authoritative frame the service broadcasts to local SSE subscribers is
+   * ALSO delivered to the Web PubSub match group — one publication point,
+   * one wire contract, no second protocol.
+   */
+  private publishHook: ((frame: LiveFrame) => void) | null = null;
+
+  setPublishHook(hook: ((frame: LiveFrame) => void) | null): void {
+    this.publishHook = hook;
+  }
+
   private broadcast(frame: LiveFrame): void {
     for (const subscriber of this.subscribers.values()) {
       this.pushToSubscriber(subscriber, frame);
     }
+    this.publishHook?.(frame);
   }
 
   private pushToSubscriber(subscriber: Subscriber, frame: LiveFrame): void {

@@ -1,3 +1,4 @@
+import type { SubscribeOptions } from '@azure/event-hubs';
 import type { StreamEnvelope, LiveFrame, LiveConnectionStatus } from '@kyneloom/match-core';
 import { STREAM_CONTRACT_VERSION, validateLiveFrame } from '@kyneloom/match-core';
 
@@ -7,7 +8,7 @@ import { STREAM_CONTRACT_VERSION, validateLiveFrame } from '@kyneloom/match-core
  *
  * STATUS: NOT DEPLOYED — this host has no Azure CLI and no authenticated
  * subscription. These adapters are contract-true implementations awaiting
- * `az login` + the Bicep in `infra/live-stream.bicep`; they follow the
+ * `az login` + the Bicep in `infra/azure`; they follow the
  * documented Event Hubs + Web PubSub SDK APIs exactly:
  *
  * - Event Hubs consumer: `@azure/event-hubs` `EventHubConsumerClient` with
@@ -29,37 +30,82 @@ export interface AzureLiveConfig {
   readonly eventHubName: string;
   readonly consumerGroup: string;
   readonly checkpointStorageContainerUrl: string;
+  /** Durable envelope-archive container (NOT Event Hubs retention). */
+  readonly archiveStorageContainerUrl: string;
   readonly webPubSubConnectionString: string;
   readonly hubName: string;
   readonly matchId: string;
+  /** User-assigned managed identity CLIENT ID (DefaultAzureCredential). */
+  readonly identityClientId: string;
 }
 
-export function azureConfigFromEnv(env: NodeJS.ProcessEnv): AzureLiveConfig | null {
+/** The ONE Web PubSub group identity, used on every boundary (KYN-14 D). */
+export function webPubSubGroupName(matchId: string): string {
+  return `match.${matchId}`;
+}
+
+/** Fully qualified Event Hubs namespace the SDK expects (not the name). */
+export function eventHubsFqdn(namespaceName: string): string {
+  return `${namespaceName}.servicebus.windows.net`;
+}
+
+export function azureConfigFromEnv(env: {
+  readonly [key: string]: string | undefined;
+}): AzureLiveConfig | null {
   const namespace = env.KYN_EVENTHUBS_NAMESPACE;
   const hub = env.KYN_EVENTHUB_NAME;
   const group = env.KYN_EVENTHUBS_CONSUMER_GROUP;
   const container = env.KYN_CHECKPOINT_CONTAINER_URL;
+  const archive = env.KYN_ARCHIVE_CONTAINER_URL;
   const wps = env.KYN_WEBPUBSUB_CONNECTION_STRING;
   const wpsHub = env.KYN_WEBPUBSUB_HUB;
+  const identityClientId = env.KYN_AZURE_CLIENT_ID;
   if (
     namespace === undefined ||
     hub === undefined ||
     group === undefined ||
     container === undefined ||
+    archive === undefined ||
     wps === undefined ||
-    wpsHub === undefined
+    wpsHub === undefined ||
+    identityClientId === undefined
   ) {
+    // Fail closed: an incomplete Azure contract never produces a
+    // seemingly-healthy cloud mode (KYN-14 review B).
     return null;
   }
+  if (
+    [namespace, hub, group, container, archive, wps, wpsHub, identityClientId].some(
+      (value) => value.trim() === '',
+    )
+  )
+    return null;
   return {
     eventHubsNamespace: namespace,
     eventHubName: hub,
     consumerGroup: group,
     checkpointStorageContainerUrl: container,
+    archiveStorageContainerUrl: archive,
     webPubSubConnectionString: wps,
     hubName: wpsHub,
     matchId: env.KYN_LIVE_MATCH_ID ?? 'synthetic-derby-01',
+    identityClientId,
   };
+}
+
+/** Partial cloud intent must never fall back to the local synthetic producer. */
+export function azureModeRequested(env: { readonly [key: string]: string | undefined }): boolean {
+  return [
+    'KYN_EVENTHUBS_NAMESPACE',
+    'KYN_EVENTHUB_NAME',
+    'KYN_EVENTHUBS_CONSUMER_GROUP',
+    'KYN_CHECKPOINT_CONTAINER_URL',
+    'KYN_ARCHIVE_CONTAINER_URL',
+    'KYN_WEBPUBSUB_CONNECTION_STRING',
+    'KYN_WEBPUBSUB_HUB',
+    'KYN_AZURE_CLIENT_ID',
+    'KYN_LIVE_MATCH_ID',
+  ].some((key) => env[key] !== undefined);
 }
 
 /**
@@ -72,68 +118,187 @@ export function azureConfigFromEnv(env: NodeJS.ProcessEnv): AzureLiveConfig | nu
  * Checkpoint law: `updateCheckpoint` runs ONLY after `onBatch` (which must
  * archive durably) resolves — an in-memory handler receipt is never enough.
  */
+/**
+ * Injectable SDK boundary (KYN-14 review B): tests substitute these to
+ * assert the REAL constructor contracts — fully qualified namespace, the
+ * DefaultAzureCredential instance, the checkpoint store, and the exact
+ * Web PubSub group — without any Azure account.
+ */
+export const azureClientFactories = {
+  async createCredential(config: AzureLiveConfig): Promise<object> {
+    const { DefaultAzureCredential } = await import('@azure/identity');
+    return new DefaultAzureCredential({
+      managedIdentityClientId: config.identityClientId,
+    });
+  },
+  async createCheckpointStore(config: AzureLiveConfig, credential: object): Promise<object> {
+    const { BlobCheckpointStore } = await import('@azure/eventhubs-checkpointstore-blob');
+    const { ContainerClient } = await import('@azure/storage-blob');
+    // Private containers REQUIRE a credential — an anonymous ContainerClient
+    // cannot read the checkpoint store (KYN-14 review B).
+    const container = new ContainerClient(
+      config.checkpointStorageContainerUrl,
+      credential as never,
+    );
+    return new BlobCheckpointStore(container);
+  },
+  async createConsumerClient(
+    config: AzureLiveConfig,
+    credential: object,
+    checkpointStore: object,
+  ): Promise<object> {
+    const { EventHubConsumerClient } = await import('@azure/event-hubs');
+    // The pinned SDK's AAD overload is POSITIONAL:
+    //   (consumerGroup, fullyQualifiedNamespace, eventHubName,
+    //    credential, checkpointStore, options?) — verified against
+    //   @azure/event-hubs@6.0.4's eventHubConsumerClient.d.ts.
+    return new EventHubConsumerClient(
+      config.consumerGroup,
+      eventHubsFqdn(config.eventHubsNamespace),
+      config.eventHubName,
+      credential as never,
+      checkpointStore as never,
+    );
+  },
+};
+
+export interface IngestionHealth {
+  assertOwned?(): void;
+  onReady(): void;
+  onError(error: unknown): void;
+}
+
 export async function startEventHubsIngestion(
   config: AzureLiveConfig,
   onBatch: (batch: readonly StreamEnvelope[]) => Promise<void>,
   signal: AbortSignal,
+  factories: typeof azureClientFactories = azureClientFactories,
+  health?: IngestionHealth,
 ): Promise<void> {
-  const { EventHubConsumerClient } = await import('@azure/event-hubs');
-  const { BlobCheckpointStore } = await import('@azure/eventhubs-checkpointstore-blob');
-  const { ContainerClient } = await import('@azure/storage-blob');
+  if (signal.aborted) return;
+  const credential = await factories.createCredential(config);
+  const checkpointStore = await factories.createCheckpointStore(config, credential);
+  const client = (await factories.createConsumerClient(config, credential, checkpointStore)) as {
+    subscribe(
+      handlers: {
+        processEvents: (
+          events: {
+            body: unknown;
+            offset?: number;
+            sequenceNumber?: number;
+            enqueuedTimeUtc?: Date;
+          }[],
+          context: { updateCheckpoint: (event: unknown) => Promise<void> },
+        ) => Promise<void>;
+        processError: (err: unknown) => Promise<void>;
+        processClose: (reason: string) => Promise<void>;
+      },
+      options: SubscribeOptions,
+    ): { close(): Promise<void> };
+    close(): Promise<void>;
+  };
 
-  const container = new ContainerClient(config.checkpointStorageContainerUrl);
-  const checkpointStore = new BlobCheckpointStore(container);
-  const client = new EventHubConsumerClient(
-    config.consumerGroup,
-    config.eventHubsNamespace,
-    config.eventHubName,
-    checkpointStore,
-  );
-
-  const subscriptions = client.subscribe({
-    processEvents: async (events, context) => {
-      if (events.length === 0) return;
-      const batch: StreamEnvelope[] = [];
-      for (const event of events) {
-        const body = event.body as Record<string, unknown> | undefined;
-        if (
-          body === undefined ||
-          body.contractVersion !== STREAM_CONTRACT_VERSION ||
-          typeof body.envelopeId !== 'string'
-        ) {
-          // Poison envelope: quarantine via a synthetic record; the worker's
-          // quarantine store captures the trace id when present.
-          batch.push({
-            contractVersion: STREAM_CONTRACT_VERSION,
-            envelopeId: `poison-${String(event.offset ?? event.sequenceNumber)}`,
-            matchId: config.matchId,
-            kind: 'event',
-            event: body as StreamEnvelope['event'],
-            emittedAt: event.enqueuedTimeUtc?.getTime() ?? Date.now(),
-            traceId: typeof body?.traceId === 'string' ? (body.traceId as string) : 'trc-unknown',
-          });
-          continue;
-        }
-        batch.push(body as unknown as StreamEnvelope);
-      }
-      // Durable obligations FIRST (archive etc.), then checkpoint — the
-      // documented at-least-once contract.
-      await onBatch(batch);
-      for (const event of events) {
-        await context.updateCheckpoint(event);
-      }
-    },
-    processError: async (err) => {
-      // Bounded retry policy lives in the SDK client options; surface the
-      // error for telemetry without crashing the consumer loop.
-      console.error('[live] event hubs consumer error:', String(err).slice(0, 200));
-    },
+  let resolveStopped: () => void = () => undefined;
+  let rejectStopped: (error: unknown) => void = () => undefined;
+  const stopped = new Promise<void>((resolve, reject) => {
+    resolveStopped = resolve;
+    rejectStopped = reject;
   });
-
-  signal.addEventListener('abort', () => {
-    void subscriptions.close();
-  });
-  await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()));
+  const onAbort = (): void => resolveStopped();
+  signal.addEventListener('abort', onAbort, { once: true });
+  let subscription: { close(): Promise<void> } | undefined;
+  const inFlight = new Set<Promise<void>>();
+  const guard = (): void => {
+    signal.throwIfAborted();
+    health?.assertOwned?.();
+  };
+  try {
+    if (signal.aborted) return;
+    guard();
+    subscription = client.subscribe(
+      {
+        processEvents: (events, context) => {
+          const task = (async () => {
+            if (signal.aborted) return;
+            guard();
+            if (events.length === 0) {
+              health?.onReady(); // A successful empty receive also proves consumer connectivity.
+              return;
+            }
+            const batch: StreamEnvelope[] = [];
+            for (const event of events) {
+              const body = event.body as Record<string, unknown> | undefined;
+              if (
+                body === undefined ||
+                body.contractVersion !== STREAM_CONTRACT_VERSION ||
+                typeof body.envelopeId !== 'string'
+              ) {
+                // Poison envelope: quarantine via a synthetic record; the worker's
+                // quarantine store captures the trace id when present.
+                batch.push({
+                  contractVersion: STREAM_CONTRACT_VERSION,
+                  envelopeId: `poison-${String(event.offset ?? event.sequenceNumber)}`,
+                  matchId: config.matchId,
+                  kind: 'event',
+                  event: body as StreamEnvelope['event'],
+                  emittedAt: event.enqueuedTimeUtc?.getTime() ?? Date.now(),
+                  traceId:
+                    typeof body?.traceId === 'string' ? (body.traceId as string) : 'trc-unknown',
+                });
+                continue;
+              }
+              batch.push(body as unknown as StreamEnvelope);
+            }
+            // Durable obligations FIRST (archive etc.), then checkpoint — the
+            // documented at-least-once contract.
+            await onBatch(batch);
+            signal.throwIfAborted();
+            for (const event of events) {
+              guard();
+              await context.updateCheckpoint(event);
+            }
+            guard();
+            health?.onReady();
+          })();
+          inFlight.add(task);
+          void task.then(
+            () => inFlight.delete(task),
+            () => inFlight.delete(task),
+          );
+          return task;
+        },
+        processError: async (err) => {
+          // Fail closed: let the runtime withdraw readiness and end the session.
+          // Recovery is a process restart; no second consumer is started here.
+          if (!signal.aborted) {
+            health?.onError(err); // Withdraw readiness before potentially slow SDK cleanup.
+            rejectStopped(err);
+          }
+        },
+        processClose: async (reason) => {
+          if (!signal.aborted) {
+            const error = new Error(`event hubs partition closed: ${reason}`);
+            health?.onError(error);
+            rejectStopped(error);
+          }
+        },
+      },
+      {
+        // The SDK uses this only when no checkpoint exists; its default is
+        // latest, which can silently skip source queued before the first receive.
+        startPosition: { offset: '-1' },
+      },
+    );
+    await stopped;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+    try {
+      await subscription?.close();
+    } finally {
+      while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
+      await client.close();
+    }
+  }
 }
 
 /**
@@ -144,10 +309,15 @@ export async function startEventHubsIngestion(
 export async function broadcastViaWebPubSub(
   config: AzureLiveConfig,
   frame: LiveFrame,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   const { WebPubSubServiceClient } = await import('@azure/web-pubsub');
+  signal?.throwIfAborted();
   const service = new WebPubSubServiceClient(config.webPubSubConnectionString, config.hubName);
-  const group = service.group(config.matchId);
+  // The ONE group identity — identical on broadcast, negotiation and any
+  // future browser subscription (KYN-14 review D).
+  const group = service.group(webPubSubGroupName(config.matchId));
   await group.sendToAll(JSON.stringify(frame), { contentType: 'text/plain' });
 }
 
@@ -162,8 +332,9 @@ export async function negotiateWebPubSubAccess(
   const { WebPubSubServiceClient } = await import('@azure/web-pubsub');
   const service = new WebPubSubServiceClient(config.webPubSubConnectionString, config.hubName);
   // Join/leave the synthetic match group ONLY — no publish permission, so a
-  // viewer can never inject match state through negotiated access.
-  const roles = [`webpubsub.joinLeaveGroup.match.${config.matchId}`];
+  // viewer can never inject match state through negotiated access. The role
+  // suffix is EXACTLY the group the server broadcasts to.
+  const roles = [`webpubsub.joinLeaveGroup.${webPubSubGroupName(config.matchId)}`];
   const result = await service.getClientAccessToken({ roles });
   return { url: result.url, scopes: roles };
 }

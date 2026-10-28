@@ -1,0 +1,31 @@
+# Keep host dependencies and build outputs out of the frozen container build.
+.git
+**/node_modules
+**/.pnpm-store
+**/.next
+**/dist
+**/build
+**/out
+**/coverage
+**/*.tsbuildinfo
+
+# Local credentials, agent tooling, and ingestion scratch data.
+**/.env
+**/.env.*
+.aws
+.azure
+.ssh
+.agents
+.codex
+.tools
+**/.live-archive
+.fixture-scratch
+*.log
+**/*.log
+.pr-body.md
+
+# Review evidence stays in Git, but is not needed by the application image.
+qa
+
+# Preserve the excluded legacy file on the host, outside the image context.
+infra/live-stream.bicep

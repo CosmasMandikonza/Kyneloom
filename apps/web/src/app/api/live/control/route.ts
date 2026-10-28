@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { LiveMatchService } from '@/lib/live/service';
+import { azureModeRequested } from '@/lib/live/azure-adapters';
 import {
   decideLiveControl,
   LIVE_CONTROL_HEADER,
@@ -42,6 +43,16 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ ok: false, code: 'malformed-body' }, { status: 400 });
   }
   const action = (body as { action?: unknown }).action;
+  if (azureModeRequested(process.env)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: 'cloud-managed',
+        detail: 'Use the revision handoff runbook; local controls are disabled in cloud mode',
+      },
+      { status: 409 },
+    );
+  }
   const service = LiveMatchService.get();
 
   if (action === 'stop') {

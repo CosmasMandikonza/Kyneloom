@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { LiveMatchService } from '@/lib/live/service';
+import { azureModeRequested } from '@/lib/live/azure-adapters';
+import { azureRuntimeStatus } from '@/lib/live/azure-runtime';
 import type { LiveFrame } from '@kyneloom/match-core';
 
 /**
@@ -35,7 +37,12 @@ export async function GET(request: Request): Promise<Response> {
   // reconnect can never reverse the operator's decision by hitting this
   // endpoint. Only an explicitly issued start() (the authorized control
   // route) clears the operator-stopped state.
-  if (!service.status.running && !service.isOperatorStopped) {
+  // KYN-14: in AZURE mode (full adapter env contract present) the local
+  // producer NEVER auto-starts — envelopes arrive from Event Hubs via the
+  // in-process ingestion worker, and a second producer would violate the
+  // one-authoritative-producer law.
+  const azureMode = azureModeRequested(process.env);
+  if (!service.status.running && !service.isOperatorStopped && !azureMode) {
     try {
       await service.start({ speed });
     } catch (error) {
@@ -87,7 +94,11 @@ export async function GET(request: Request): Promise<Response> {
           // check and the drain/send below are one synchronous block, so no
           // broadcast can interleave between them; after every await the
           // guard re-runs before anything is sent.
-          if (!service.status.running || service.status.sessionId !== generation) {
+          if (
+            (azureMode && !azureRuntimeStatus().active) ||
+            !service.status.running ||
+            service.status.sessionId !== generation
+          ) {
             send({
               type: 'status',
               matchId: service.matchId,
