@@ -13,7 +13,7 @@ import type {
 import { FoundryProviderError } from './provider';
 import { parseChallengerVerdict, parseDirectorPlan, parseInterpretation } from './provider';
 import type { ChallengerVerdict, DirectorPlan, InterpretationResult } from './types';
-import { createInMemoryJobStore } from './job-store';
+import { createInMemoryJobStore, createProductionJobStore } from './job-store';
 import { runFoundryExperience } from './orchestrator';
 import { isStaleSource, verifyClaims } from './verify';
 import { runFoundryAsk } from './ask-bridge';
@@ -401,5 +401,108 @@ describe('KYN-15 foundry orchestration — injected provider, real compiler', ()
       reason: 'y',
     });
     expect(okPlan.baseProposalId).toBe('golden');
+  });
+});
+
+describe('KYN-15 review round — truth gates, honest persistence', () => {
+  it('R1 — director free-text NEVER reaches the audience answer even when compilation succeeds', async () => {
+    const poison = 'The defender was exactly 14 metres away and that caused the goal.';
+    const provider = scriptProvider({
+      interpret: GOOD_INTERPRETATION,
+      direct: [{ ...GOOD_PLAN, reason: poison, captionText: 'A clean caption.' }],
+      challenge: ACCEPT,
+    });
+    const { outcome } = await runFoundryAsk(
+      'why did space open',
+      provider,
+      createInMemoryJobStore(),
+    );
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const surfaces = `${outcome.explanation} ${outcome.evidenceNote}`;
+    expect(surfaces).not.toContain('14 metres');
+    expect(surfaces).not.toContain(poison);
+    expect(surfaces).not.toContain('caused the goal');
+  });
+
+  it('R2 — numeric + causal claims stay needs_review even with an ACCEPTING challenger', async () => {
+    const provider = scriptProvider({
+      interpret: {
+        ...GOOD_INTERPRETATION,
+        claims: [
+          {
+            text: 'The defender was exactly 14 metres away.',
+            uncertainty: 'measured',
+            evidenceIds: ['ev-separation'],
+          },
+          {
+            text: 'The run directly led to the goal.',
+            uncertainty: 'observed',
+            evidenceIds: ['ev-separation'],
+          },
+        ],
+      },
+      direct: [GOOD_PLAN],
+      challenge: ACCEPT, // an over-persuaded challenger: the GATE must hold anyway
+    });
+    const run = await runFoundryExperience('was he 14m away?', provider, createInMemoryJobStore());
+    expect(run.status).toBe('needs_review');
+    expect(run.job.errorMessage).toContain('unresolved factual-verification findings');
+    const codes = run.job.verifierFindings.map((finding) => finding.code);
+    expect(codes).toContain('unsupported_number');
+    expect(codes).toContain('overstated_causation');
+  });
+
+  it('R2b — the bounded repair RE-VERIFIES claims: sanitized claims can complete, unrepairable stay blocked', async () => {
+    // A number written into a measured claim is deterministically repairable
+    // (strip digits, downgrade to hypothesis) — after repair it verifies.
+    const provider = scriptProvider({
+      interpret: {
+        ...GOOD_INTERPRETATION,
+        claims: [
+          {
+            text: 'The defender was exactly 14 metres away.',
+            uncertainty: 'measured',
+            evidenceIds: ['ev-separation'],
+          },
+        ],
+      },
+      direct: [GOOD_PLAN, { ...GOOD_PLAN, captionText: 'The run may have opened the space.' }],
+      challenge: {
+        verdict: 'needs_revision',
+        defects: [
+          {
+            fieldPath: 'claims[0].text',
+            severity: 'blocker',
+            kind: 'unsupported_number',
+            instruction: 'strip the number',
+          },
+        ],
+      },
+    });
+    const run = await runFoundryExperience('distance?', provider, createInMemoryJobStore());
+    expect(run.status).toBe('completed');
+    expect(run.job.repairUsed).toBe(true);
+    expect(provider.calls.direct).toBe(2);
+  });
+
+  it('R3 — production job persistence FAILS CLOSED (no store, no job)', async () => {
+    const provider = scriptProvider({
+      interpret: GOOD_INTERPRETATION,
+      direct: [GOOD_PLAN],
+      challenge: ACCEPT,
+    });
+    const run = await runFoundryExperience('q', provider, createProductionJobStore());
+    expect(run.status).toBe('needs_review');
+    // The provider was never even called — persistence gates the run.
+    expect(provider.calls.interpret).toBe(0);
+  });
+
+  it('R4 — the live provider passes a REAL abort signal into the SDK request', async () => {
+    const fs = await import('node:fs');
+    const file = new URL('./live-provider.ts', import.meta.url);
+    const source = await fs.promises.readFile(file, 'utf-8');
+    expect(source).toContain('{ signal: controller.signal }');
+    expect(source).toContain('controller.abort()');
   });
 });

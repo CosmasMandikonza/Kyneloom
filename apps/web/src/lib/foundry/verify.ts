@@ -139,6 +139,53 @@ export async function applyAndCompile(
   };
 }
 
+/** Finding codes that BLOCK a completed result until resolved. */
+export const BLOCKER_CODES = [
+  'unsupported_number',
+  'overstated_causation',
+  'unsupported_reference',
+] as const;
+
+export function unresolvedBlockers(findings: readonly { code: string }[]): readonly boolean[] {
+  return findings.map((finding) => (BLOCKER_CODES as readonly string[]).includes(finding.code));
+}
+
+/**
+ * Deterministic claim REPAIR (the one bounded semantic revision): strip
+ * model-written numbers from 'measured' prose (numbers live only in tool
+ * output), qualify causal phrasing into hypothesis language, and drop
+ * evidence references that do not exist. Returns the repaired claims — the
+ * orchestrator re-verifies them; anything still failing stays a blocker.
+ */
+export function repairClaims(
+  claims: readonly ProposedClaim[],
+  verifiedEvidenceIds: readonly string[],
+): ProposedClaim[] {
+  return claims.map((claim) => {
+    let text = claim.text;
+    let uncertainty: ProposedClaim['uncertainty'] = claim.uncertainty;
+    // Numbers may never live in model prose labelled measured: strip digits
+    // and downgrade to an explicitly hedged reading.
+    if (uncertainty === 'measured' && /\d/.test(text)) {
+      text = text
+        .replace(/\b\d+(?:\.\d+)?\s*(?:m|metres|meters|ms|seconds?|%)?\b/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      uncertainty = 'hypothesis';
+      if (text.length === 0) text = 'The measured detail is available from the verified metric.';
+    }
+    // Causation phrasing is only ever hypothesis language.
+    if (/(caused|directly led|made it happen)/i.test(text) && uncertainty !== 'hypothesis') {
+      text = text
+        .replace(/caused/gi, 'may have contributed to')
+        .replace(/directly led/gi, 'likely contributed to');
+      uncertainty = 'hypothesis';
+    }
+    const evidenceIds = claim.evidenceIds.filter((id) => verifiedEvidenceIds.includes(id));
+    return { text, uncertainty, evidenceIds };
+  });
+}
+
 /** Stale-source check: basedOn must equal the CURRENT source identity. */
 export function isStaleSource(
   basedOn: { reducerRevision: number; sourceHash: string },

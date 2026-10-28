@@ -10,7 +10,7 @@
 import type { AskMomentOutcome } from '@/lib/ask-intent-shared';
 import { createLiveFoundryProvider, type FoundryEnvConfig } from './live-provider';
 import { runFoundryExperience, type FoundryRunResult } from './orchestrator';
-import { createInMemoryJobStore } from './job-store';
+import { createProductionJobStore } from './job-store';
 import type { FoundryProvider } from './provider';
 import type { FoundryJobStore } from './job-store';
 
@@ -90,10 +90,11 @@ export async function resolveAskMomentViaFoundry(
   config: FoundryEnvConfig,
 ): Promise<FoundryAskOutcome> {
   const provider = createLiveFoundryProvider(config);
-  // Job durability FAILS CLOSED: without authorized Blob storage the run is
-  // ephemeral and that limitation is reported, not hidden. (Tests inject a
-  // store; production storage wiring lands with the authorized resource.)
-  const store = createInMemoryJobStore();
+  // Production durability FAILS CLOSED: the fail-closed store refuses job
+  // creation, so the orchestrator returns needs_review before any provider
+  // call. (Tests inject the in-memory TEST DOUBLE; the real durable store
+  // lands with authorized Azure Storage — post-KYN-14 hookup.)
+  const store = createProductionJobStore();
   const { outcome } = await runFoundryAsk(prompt, provider, store);
   if (outcome.ok !== true) {
     return {

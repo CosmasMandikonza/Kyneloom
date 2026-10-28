@@ -65,17 +65,22 @@ async function completeJson(
     id?: string;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   }> => {
+    // The REAL per-call timeout: the abort signal is passed into the SDK
+    // request options, so a hung provider call is actually cancelled.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
     try {
-      const completion = await client.chat.completions.create({
-        model: deployment,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      });
+      const completion = await client.chat.completions.create(
+        {
+          model: deployment,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        },
+        { signal: controller.signal },
+      );
       return {
         content: completion.choices[0]?.message?.content ?? null,
         id: completion.id,

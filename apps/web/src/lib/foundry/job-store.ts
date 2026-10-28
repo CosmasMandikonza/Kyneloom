@@ -44,95 +44,29 @@ export function newJobId(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Azure Blob implementation (conditional writes; separate from KYN-14).
+// Production durable store: NOT IMPLEMENTED (review 6458967638, honest
+// option b). The previously sketched Blob conditional-write store was
+// removed: it was untested against real Azure Storage, used a synthetic
+// If-Match value instead of a real Blob ETag, and never wrote the
+// idempotency pointer it read. Building a real durable store requires
+// authorized Azure Storage (owner approval; separate from KYN-14's
+// archive). Until then production persistence FAILS CLOSED via this
+// factory; durability/resume-after-interruption claims are deferred.
 // ---------------------------------------------------------------------------
 
-export interface BlobJobStoreConfig {
-  readonly storageAccount: string;
-  readonly containerName: string;
-  readonly credential: { getToken: (scope: string) => Promise<{ token: string } | null> };
-}
-
-export function createBlobJobStore(config: BlobJobStoreConfig): FoundryJobStore {
-  const base = `https://${config.storageAccount}.blob.core.windows.net/${config.containerName}`;
-  const authHeaders = async (): Promise<Record<string, string>> => {
-    const token = await config.credential.getToken('https://storage.azure.com/.default');
-    if (token === null) throw new Error('storage credential returned no token');
-    return { Authorization: `Bearer ${token.token}`, 'x-ms-version': '2021-08-06' };
-  };
-  const unavailable = (message: string): JobStoreOutcome => ({
+export function createProductionJobStore(): FoundryJobStore {
+  const refuse = (): JobStoreOutcome => ({
     ok: false,
     kind: 'unavailable',
-    message,
+    message:
+      'durable job persistence is NOT IMPLEMENTED: no authorized Azure Storage is configured. Production Foundry runs fail closed; wire an authorized conditional-write store to enable them (tracked for the post-KYN-14 hookup).',
   });
+  const refuseLoad = (): null => null;
   return {
-    async createIfAbsent(record) {
-      try {
-        const headers = await authHeaders();
-        const response = await fetch(`${base}/${record.jobId}.json`, {
-          method: 'PUT',
-          headers: { ...headers, 'If-None-Match': '*', 'Content-Type': 'application/json' },
-          body: JSON.stringify(record),
-        });
-        if (response.status === 201) return { ok: true, record };
-        if (response.status === 409 || response.status === 412) {
-          const existing = await this.load(record.jobId);
-          if (existing !== null) return { ok: false, kind: 'conflict', existing };
-        }
-        return unavailable(`blob put answered ${String(response.status)}`);
-      } catch (error) {
-        return unavailable(error instanceof Error ? error.message : String(error));
-      }
-    },
-    async load(jobId) {
-      try {
-        const headers = await authHeaders();
-        const response = await fetch(`${base}/${jobId}.json`, { headers });
-        if (response.status === 404) return null;
-        if (!response.ok) return null;
-        return (await response.json()) as FoundryJobRecord;
-      } catch {
-        return null;
-      }
-    },
-    async findByIdempotencyKey(key) {
-      // The key indexes the job id deterministically: jobs/<key> holds the id.
-      try {
-        const headers = await authHeaders();
-        const response = await fetch(`${base}/key-${key}.json`, { headers });
-        if (!response.ok) return null;
-        const pointer = (await response.json()) as { jobId?: string };
-        if (typeof pointer.jobId !== 'string') return null;
-        return this.load(pointer.jobId);
-      } catch {
-        return null;
-      }
-    },
-    async compareAndSwap(record, expectedPhase) {
-      try {
-        const headers = await authHeaders();
-        const response = await fetch(`${base}/${record.jobId}.json?comp=metadata`, {
-          method: 'GET',
-          headers,
-        });
-        void response;
-        // Optimistic concurrency via If-Match on the record's phase etag.
-        const put = await fetch(`${base}/${record.jobId}.json`, {
-          method: 'PUT',
-          headers: {
-            ...headers,
-            'If-Match': `"phase-${expectedPhase}"`,
-            'Content-Type': 'application/json',
-            'x-ms-meta-phase': record.phase,
-          },
-          body: JSON.stringify(record),
-        });
-        if (put.status === 201 || put.ok) return { ok: true, record };
-        return unavailable(`conditional update answered ${String(put.status)}`);
-      } catch (error) {
-        return unavailable(error instanceof Error ? error.message : String(error));
-      }
-    },
+    createIfAbsent: async () => refuse(),
+    load: async () => refuseLoad(),
+    findByIdempotencyKey: async () => refuseLoad(),
+    compareAndSwap: async () => refuse(),
   };
 }
 

@@ -16,8 +16,9 @@ import { buildCompileCorpus } from '@kyneloom/moment-compiler';
 import type { FoundryProvider } from './provider';
 import { FoundryProviderError } from './provider';
 import { executeToolCall, buildToolContext } from './tools';
-import { applyAndCompile, verifyClaims } from './verify';
+import { applyAndCompile, repairClaims, verifyClaims } from './verify';
 import type {
+  ProposedClaim,
   ChallengerVerdict,
   DirectorPlan,
   FoundryJobRecord,
@@ -214,6 +215,29 @@ export async function runFoundryExperience(
       },
     };
   }
+  if (!created.ok && created.kind === 'unavailable') {
+    // Durable persistence is REQUIRED for production runs: no store, no job
+    // (and no provider call).
+    return {
+      status: 'needs_review',
+      job: {
+        ...baseJob,
+        status: 'needs_review',
+        phase: 'needs_review',
+        errorMessage: created.message,
+      },
+      compile: null,
+      focusPlayheadMs: null,
+      explanation: null,
+      provenance: {
+        agentRoles: [],
+        correctionOccurred: false,
+        toolResults: [],
+        verifiedEvidenceIds: [],
+        turns: [],
+      },
+    };
+  }
   let job = created.ok ? created.record : baseJob;
   const turns: FoundryJobRecord['turns'] = [];
   const turnsMutable = turns as unknown as {
@@ -251,6 +275,7 @@ export async function runFoundryExperience(
   let verdict: ChallengerVerdict | null = null;
   let repairPlan: DirectorPlan | null = null;
   let claimFindings: ReturnType<typeof verifyClaims> = [];
+  let effectiveClaims: readonly ProposedClaim[] = [];
 
   try {
     // ---- Phase 1: interpretation (+ bounded tools) ----
@@ -269,7 +294,8 @@ export async function runFoundryExperience(
         usage: call.meta.usage,
       });
       interpretation = call.payload;
-      claimFindings = verifyClaims(call.payload.claims, verifiedEvidenceIds, ctx.allowedEventIds);
+      effectiveClaims = call.payload.claims;
+      claimFindings = verifyClaims(effectiveClaims, verifiedEvidenceIds, ctx.allowedEventIds);
     });
     if (!withinDeadline()) return await finalize('needs_review', 'end-to-end timeout');
 
@@ -307,7 +333,7 @@ export async function runFoundryExperience(
     await step('challenge', 'challenged', async () => {
       const call = await provider.challenge({
         plan: plan!,
-        claims: interpretation?.claims ?? [],
+        claims: effectiveClaims,
         verifierFindings: [...claimFindings, ...appliedFirst.findings],
       });
       turnsMutable.push({
@@ -324,14 +350,12 @@ export async function runFoundryExperience(
       verdict: string;
       defects: readonly { instruction?: string }[];
     } | null;
+    // The single bounded repair runs ONLY on an explicit challenger
+    // revision request: an ACCEPTing challenger that let flagged claims
+    // through means the findings stay UNRESOLVED — the truth gate below
+    // then forces needs_review (compiler success never overrides it).
     const needsRepair =
-      verdict !== null &&
-      ((verdictRef !== null && verdictRef.verdict === 'needs_revision') ||
-        appliedFirst.findings.some(
-          (finding) =>
-            finding.code === 'unsupported_number' || finding.code === 'overstated_causation',
-        ) ||
-        claimFindings.length > 0);
+      verdict !== null && verdictRef !== null && verdictRef.verdict === 'needs_revision';
     if (needsRepair && !job.repairUsed) {
       await step('repair', 'repaired', async () => {
         const defect = verdictRef?.defects[0];
@@ -351,6 +375,11 @@ export async function runFoundryExperience(
         });
         repairPlan = { ...call.payload, captionText: repairedCaption };
       });
+      // The repair repairs the INTERPRETATION, not just the caption:
+      // claims are deterministically sanitized then RE-VERIFIED; anything
+      // still failing keeps the job out of `completed`.
+      effectiveClaims = repairClaims(effectiveClaims, verifiedEvidenceIds);
+      claimFindings = verifyClaims(effectiveClaims, verifiedEvidenceIds, ctx.allowedEventIds);
       job = { ...job, repairUsed: true };
     }
 
@@ -362,6 +391,23 @@ export async function runFoundryExperience(
       return await finalizeWith(
         'needs_review',
         'the deterministic compiler rejected the proposal',
+        appliedFinal,
+      );
+    }
+    // TRUTH GATE (review 6458967638 #2): unresolved factual-verification
+    // findings MUST prevent a completed result — compiler success alone
+    // never marks a claim set verified.
+    const blocker = (code: string): boolean =>
+      code === 'unsupported_number' ||
+      code === 'overstated_causation' ||
+      code === 'unsupported_reference';
+    if (
+      claimFindings.some((finding) => blocker(finding.code)) ||
+      appliedFinal.findings.some((finding) => blocker(finding.code))
+    ) {
+      return await finalizeWith(
+        'needs_review',
+        'unresolved factual-verification findings — the claim set never reached verified status',
         appliedFinal,
       );
     }
@@ -380,10 +426,21 @@ export async function runFoundryExperience(
       turns,
     };
     await store.compareAndSwap(job, 'repaired').catch(() => undefined);
+    // Audience-facing text comes ONLY from the compiled manifest — director
+    // `reason` and interpretation free-text are NEVER shown as verified fact.
+    const manifestClaims = appliedFinal.result.ok ? appliedFinal.result.manifest.claims : [];
+    const verifiedLine = manifestClaims
+      .filter((claim) => claim.status !== 'hypothesis')
+      .map((claim) => (claim as unknown as { headline?: string }).headline ?? '')
+      .filter((line) => line.length > 0)
+      .join(' ');
+    const hypothesisClaim = manifestClaims.find(
+      (claim) => claim.status === 'hypothesis',
+    ) as unknown as { text?: string } | undefined;
+    const editorial = hypothesisClaim?.text ?? '';
     const explanation =
-      finalPlan.captionText.length > 0
-        ? `${finalPlan.reason} ${finalPlan.captionText}`.trim()
-        : finalPlan.reason;
+      [verifiedLine, editorial].filter((part) => part.length > 0).join(' ') ||
+      'A verified experience was compiled for this question.';
     return {
       status: 'completed',
       job,
